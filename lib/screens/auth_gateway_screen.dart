@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
 import 'admin_dashboard_screen.dart';
+import '../config/api_config.dart';
 
 /// VayalConnect Login & Registration Gateway
 ///
@@ -193,6 +194,67 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     );
   }
 
+  void _showServerConfigDialog() {
+    final urlController = TextEditingController(text: ApiConfig.baseUrl);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.dns_rounded, color: AppTheme.primaryGreen),
+            SizedBox(width: 8),
+            Text('Server IP / URL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Configure the FastAPI backend server URL:',
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: urlController,
+              decoration: InputDecoration(
+                hintText: 'http://10.196.30.227:8000',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                prefixIcon: const Icon(Icons.link, size: 20),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              ApiConfig.setBaseUrl(urlController.text.trim());
+              Navigator.pop(ctx);
+              setState(() {});
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Server connected: ${ApiConfig.baseUrl}'),
+                  backgroundColor: AppTheme.primaryGreen,
+                ),
+              );
+            },
+            child: const Text('Save URL'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = SessionManager();
@@ -205,7 +267,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top Bar: Leaf Emblem & Language Switcher
+              // Top Bar: Leaf Emblem & Language Switcher & Server Settings
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -230,35 +292,68 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       ),
                     ],
                   ),
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        session.toggleLanguage();
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
+                  Row(
+                    children: [
+                      // Server IP button
+                      InkWell(
+                        onTap: _showServerConfigDialog,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppTheme.cardBorder, width: 1),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.language, size: 14, color: AppTheme.primaryGreen),
-                          const SizedBox(width: 4),
-                          Text(
-                            session.isTamil ? 'தமிழ்' : 'Eng',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.primaryGreen,
-                            ),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppTheme.cardBorder, width: 1),
                           ),
-                        ],
+                          child: const Row(
+                            children: [
+                              Icon(Icons.dns, size: 14, color: AppTheme.primaryGreen),
+                              SizedBox(width: 4),
+                              Text(
+                                'IP',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 6),
+                      // Language button
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            session.toggleLanguage();
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppTheme.cardBorder, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.language, size: 14, color: AppTheme.primaryGreen),
+                              const SizedBox(width: 4),
+                              Text(
+                                session.isTamil ? 'தமிழ்' : 'Eng',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.primaryGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
