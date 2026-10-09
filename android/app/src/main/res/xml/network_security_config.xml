@@ -15,5 +15,7 @@
         <domain includeSubdomains="true">127.0.0.1</domain>
         <!-- Computer Wi-Fi LAN IP for physical device testing -->
         <domain includeSubdomains="true">10.20.18.110</domain>
+        <domain includeSubdomains="true">10.241.69.227</domain>
+        <domain includeSubdomains="true">100.86.121.15</domain>
     </domain-config>
 </network-security-config>
