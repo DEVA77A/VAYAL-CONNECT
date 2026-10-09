@@ -1,0 +1,153 @@
+import 'package:flutter/material.dart';
+import '../services/session_manager.dart';
+import '../theme/app_theme.dart';
+import '../models/auth_models.dart';
+
+/// Reusable Top App Bar matching Stitch Design System
+///
+/// Features:
+/// - Brand logo & bilingual title ('வயல் Connect')
+/// - Active role badge (விவசாயி / வாங்குபவர் / நிர்வாகி)
+/// - Language switcher pill (தமிழ் / English)
+/// - Notification trigger
+class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
+  final String? title;
+  final String? subtitle;
+  final bool showBack;
+  final bool showRoleBadge;
+  final List<Widget>? actions;
+
+  const VayalAppBar({
+    Key? key,
+    this.title,
+    this.subtitle,
+    this.showBack = false,
+    this.showRoleBadge = true,
+    this.actions,
+  }) : super(key: key);
+
+  @override
+  Size get preferredSize => const Size.fromHeight(64);
+
+  @override
+  Widget build(BuildContext context) {
+    final session = SessionManager();
+
+    String roleName;
+    Color roleBadgeColor;
+    switch (session.activeRole) {
+      case AppRole.farmer:
+        roleName = session.isTamil ? 'விவசாயி' : 'Farmer';
+        roleBadgeColor = AppTheme.accentGold;
+        break;
+      case AppRole.buyer:
+        roleName = session.isTamil ? 'வாங்குபவர்' : 'Buyer';
+        roleBadgeColor = Colors.lightBlueAccent;
+        break;
+      case AppRole.admin:
+        roleName = session.isTamil ? 'நிர்வாகி' : 'Admin';
+        roleBadgeColor = Colors.amberAccent;
+        break;
+    }
+
+    return AppBar(
+      backgroundColor: AppTheme.primaryGreen,
+      elevation: 0,
+      automaticallyImplyLeading: false,
+      leading: showBack
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+              onPressed: () => Navigator.of(context).maybePop(),
+            )
+          : null,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.eco, size: 20, color: AppTheme.accentGold),
+              const SizedBox(width: 6),
+              Text(
+                title ?? (session.isTamil ? 'வயல் Connect' : 'VayalConnect'),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              if (showRoleBadge) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: BorderSide(color: roleBadgeColor.withOpacity(0.6), width: 1),
+                  ),
+                  child: Text(
+                    roleName,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: roleBadgeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 1),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.white70,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        // Language Toggle Pill
+        TextButton(
+          onPressed: () {
+            session.toggleLanguage();
+          },
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.language, size: 14, color: Colors.white),
+                const SizedBox(width: 4),
+                Text(
+                  session.isTamil ? 'தமிழ்' : 'Eng',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (actions != null) ...actions!,
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+}
