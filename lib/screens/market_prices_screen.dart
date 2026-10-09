@@ -159,12 +159,15 @@ class _MarketPricesScreenState extends State<MarketPricesScreen> {
                     ),
                   ],
                 ),
-                Text(
-                  _dataSource,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
+                Tooltip(
+                  message: _statusMessage ?? _dataSource,
+                  child: Text(
+                    _dataSource,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
                 ),
               ],

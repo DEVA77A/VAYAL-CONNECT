@@ -203,7 +203,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                border: BorderSide(color: AppTheme.cardBorder),
+                border: Border.all(color: AppTheme.cardBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +249,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     decoration: BoxDecoration(
                       color: AppTheme.surfaceCream,
                       borderRadius: BorderRadius.circular(8),
-                      border: BorderSide(color: AppTheme.accentGold.withOpacity(0.3)),
+                      border: Border.all(color: AppTheme.accentGold.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
@@ -277,7 +277,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                border: BorderSide(color: AppTheme.cardBorder),
+                border: Border.all(color: AppTheme.cardBorder),
               ),
               child: Row(
                 children: [
@@ -355,7 +355,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                border: BorderSide(color: AppTheme.cardBorder),
+                border: Border.all(color: AppTheme.cardBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -468,7 +468,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       decoration: BoxDecoration(
         color: AppTheme.backgroundLight,
         borderRadius: BorderRadius.circular(8),
-        border: BorderSide(color: AppTheme.primaryLightGreen.withOpacity(0.3)),
+        border: Border.all(color: AppTheme.primaryLightGreen.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -43,7 +43,6 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
   bool _isLoginTab = true;
   String? _errorMessage;
 
-  AppRole _selectedRole = AppRole.farmer;
 
   @override
   void dispose() {
@@ -243,7 +242,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        border: BorderSide(color: AppTheme.cardBorder, width: 1),
+                        border: Border.all(color: AppTheme.cardBorder, width: 1),
                       ),
                       child: Row(
                         children: [
@@ -379,7 +378,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFEBEE),
                     borderRadius: BorderRadius.circular(8),
-                    border: BorderSide(color: AppTheme.errorRed.withOpacity(0.5)),
+                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.5)),
                   ),
                   child: Row(
                     children: [
@@ -406,7 +405,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceCream,
                   borderRadius: BorderRadius.circular(12),
-                  border: BorderSide(color: AppTheme.accentGold.withOpacity(0.4)),
+                  border: Border.all(color: AppTheme.accentGold.withOpacity(0.4)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -477,7 +476,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(10),
-                  border: BorderSide(color: AppTheme.cardBorder),
+                  border: Border.all(color: AppTheme.cardBorder),
                 ),
                 child: Row(
                   children: [

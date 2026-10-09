@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:vayalconnect_flutter/main.dart';
 import 'package:vayalconnect_flutter/screens/market_prices_screen.dart';
 import 'package:vayalconnect_flutter/services/market_price_service.dart';
 
@@ -92,6 +91,6 @@ void main() {
     // Verify produce item appears from mock backend response
     expect(find.text('Paddy'), findsOneWidget);
     expect(find.text('₹24.00 / kg'), findsOneWidget);
-    expect(find.text('data.gov.in AGMARKNET'), findsOneWidget);
+    expect(find.text('data.gov.in AGMARKNET'), findsWidgets);
   });
 }

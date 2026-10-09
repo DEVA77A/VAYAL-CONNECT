@@ -134,7 +134,7 @@ class MarketPriceCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppTheme.surfaceCream,
                 borderRadius: BorderRadius.circular(10),
-                border: BorderSide(
+                border: Border.all(
                   color: AppTheme.accentGold.withOpacity(0.3),
                   width: 1,
                 ),
@@ -218,7 +218,7 @@ class MarketPriceCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8F5E9),
                     borderRadius: BorderRadius.circular(6),
-                    border: BorderSide(
+                    border: Border.all(
                       color: AppTheme.successGreen.withOpacity(0.4),
                     ),
                   ),

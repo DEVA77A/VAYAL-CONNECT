@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/session_manager.dart';
-import '../theme/app_theme.dart';
 import '../screens/auth_gateway_screen.dart';
 
 /// Explicit visual banner shown whenever the application is in Demo Preview Mode.

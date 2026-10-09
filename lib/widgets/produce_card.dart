@@ -52,7 +52,7 @@ class ProduceCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-          border: BorderSide(color: AppTheme.cardBorder, width: 1),
+          border: Border.all(color: AppTheme.cardBorder, width: 1),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.02),

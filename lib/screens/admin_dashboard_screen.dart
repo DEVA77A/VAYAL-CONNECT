@@ -179,6 +179,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
 
               const SizedBox(height: 12),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: LinearProgressIndicator(color: AppTheme.primaryGreen),
+                ),
 
               if (_errorMessage != null)
                 Container(
@@ -187,7 +192,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   decoration: BoxDecoration(
                     color: Colors.red.shade50,
                     borderRadius: BorderRadius.circular(12),
-                    border: BorderSide(color: Colors.red.shade200),
+                    border: Border.all(color: Colors.red.shade200),
                   ),
                   child: Column(
                     children: [
@@ -291,7 +296,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           decoration: BoxDecoration(
                             color: AppTheme.goldLight,
                             borderRadius: BorderRadius.circular(10),
-                            border: BorderSide(color: AppTheme.accentGold.withOpacity(0.4)),
+                            border: Border.all(color: AppTheme.accentGold.withOpacity(0.4)),
                           ),
                           child: Text(
                             '${_pendingFarmers.length} காத்திருப்பில்',
@@ -313,7 +318,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                    border: BorderSide(color: AppTheme.cardBorder),
+                    border: Border.all(color: AppTheme.cardBorder),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -434,7 +439,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(10),
-                    border: BorderSide(color: AppTheme.cardBorder),
+                    border: Border.all(color: AppTheme.cardBorder),
                   ),
                   child: Row(
                     children: [

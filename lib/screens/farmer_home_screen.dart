@@ -143,7 +143,7 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFEBEE),
                     borderRadius: BorderRadius.circular(10),
-                    border: BorderSide(color: AppTheme.errorRed.withOpacity(0.5)),
+                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.5)),
                   ),
                   child: Row(
                     children: [
@@ -225,7 +225,7 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                  border: BorderSide(color: AppTheme.cardBorder),
+                  border: Border.all(color: AppTheme.cardBorder),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.02),
@@ -290,7 +290,7 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen> {
                           decoration: BoxDecoration(
                             color: AppTheme.goldLight,
                             borderRadius: BorderRadius.circular(6),
-                            border: BorderSide(color: AppTheme.accentGold.withOpacity(0.4)),
+                            border: Border.all(color: AppTheme.accentGold.withOpacity(0.4)),
                           ),
                           child: Row(
                             children: [
@@ -411,7 +411,7 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: BorderSide(color: AppTheme.cardBorder),
+                    border: Border.all(color: AppTheme.cardBorder),
                   ),
                   child: Column(
                     children: [

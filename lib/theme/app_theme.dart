@@ -10,6 +10,7 @@ class AppTheme {
 
   // Core Brand Palette
   static const Color primaryGreen = Color(0xFF1B5E20);      // Deep forest emerald
+  static const Color primaryDarkGreen = Color(0xFF123D25);  // Deep forest header
   static const Color deepGreen = Color(0xFF123D25);         // Header & elevation green
   static const Color primaryLightGreen = Color(0xFF2E7D32); // Fresh foliage green
   static const Color softGreen = Color(0xFFE8F5E9);         // Status pill & badge tint
@@ -51,7 +52,6 @@ class AppTheme {
         secondary: accentGold,
         tertiary: earthBrown,
         surface: Colors.white,
-        background: backgroundWarm,
         error: errorRed,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
@@ -70,7 +70,7 @@ class AppTheme {
         ),
         iconTheme: IconThemeData(color: Colors.white),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 1.0,
         margin: EdgeInsets.zero,

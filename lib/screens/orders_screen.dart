@@ -139,7 +139,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: BorderSide(color: AppTheme.cardBorder),
+            border: Border.all(color: AppTheme.cardBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +206,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: BorderSide(color: AppTheme.cardBorder),
+            border: Border.all(color: AppTheme.cardBorder),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

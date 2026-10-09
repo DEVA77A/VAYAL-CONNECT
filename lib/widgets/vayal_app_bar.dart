@@ -84,7 +84,7 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(12),
-                    border: BorderSide(color: roleBadgeColor.withOpacity(0.6), width: 1),
+                    border: Border.all(color: roleBadgeColor.withOpacity(0.6), width: 1),
                   ),
                   child: Text(
                     roleName,

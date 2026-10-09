@@ -167,7 +167,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceCream,
                   borderRadius: BorderRadius.circular(10),
-                  border: BorderSide(color: AppTheme.accentGold.withOpacity(0.35)),
+                  border: Border.all(color: AppTheme.accentGold.withOpacity(0.35)),
                 ),
                 child: Row(
                   children: [
@@ -296,7 +296,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                    border: BorderSide(color: AppTheme.cardBorder),
+                    border: Border.all(color: AppTheme.cardBorder),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,

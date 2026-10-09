@@ -223,7 +223,7 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen> {
                         decoration: BoxDecoration(
                           color: isSelected ? AppTheme.primaryGreen : Colors.white,
                           borderRadius: BorderRadius.circular(20),
-                          border: BorderSide(
+                          border: Border.all(
                             color: isSelected ? AppTheme.primaryGreen : AppTheme.cardBorder,
                             width: 1,
                           ),
@@ -251,7 +251,7 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen> {
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceCream,
                   borderRadius: BorderRadius.circular(12),
-                  border: BorderSide(color: AppTheme.accentGold.withOpacity(0.35)),
+                  border: Border.all(color: AppTheme.accentGold.withOpacity(0.35)),
                 ),
                 child: Row(
                   children: [
@@ -320,7 +320,7 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.red.shade50,
                     borderRadius: BorderRadius.circular(12),
-                    border: BorderSide(color: Colors.red.shade200),
+                    border: Border.all(color: Colors.red.shade200),
                   ),
                   child: Column(
                     children: [
@@ -353,7 +353,7 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: BorderSide(color: AppTheme.cardBorder),
+                    border: Border.all(color: AppTheme.cardBorder),
                   ),
                   child: Center(
                     child: Column(
