@@ -3,16 +3,22 @@ import '../models/auth_models.dart';
 import '../services/auth_service.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
+import '../utils/localization.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
 import 'admin_dashboard_screen.dart';
 import '../config/api_config.dart';
 
-/// VayalConnect Login & Registration Gateway
+/// VayalConnect Mobile Authentication & Login Gateway
 ///
-/// Implements Stitch Screen b092d478375940738f19b6ede4f90af3
+/// Redesigned to provide a clean, minimal, mobile-first login experience:
+/// - Opens directly into the Login view (no competing tabs)
+/// - Default language: English, with seamless toggle to Tamil
+/// - Dynamic server IP configuration support for LAN testing
+/// - Robust network timeout & credential error handling
+/// - Unobtrusive, separate entry points for Registration, Forgot Password, and Offline Demo
 class AuthGatewayScreen extends StatefulWidget {
-  const AuthGatewayScreen({Key? key}) : super(key: key);
+  const AuthGatewayScreen({super.key});
 
   @override
   State<AuthGatewayScreen> createState() => _AuthGatewayScreenState();
@@ -21,47 +27,30 @@ class AuthGatewayScreen extends StatefulWidget {
 class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
   final _authService = AuthService();
   final _loginFormKey = GlobalKey<FormState>();
-  final _registerFormKey = GlobalKey<FormState>();
 
   // Login controllers
-  final _emailPhoneController = TextEditingController(text: 'farmer@vayalconnect.in');
-  final _passwordController = TextEditingController(text: 'Pass1234');
-
-  // Register controllers
-  final _regNameController = TextEditingController();
-  final _regEmailController = TextEditingController();
-  final _regPhoneController = TextEditingController();
-  final _regPasswordController = TextEditingController();
-  final _regAddressController = TextEditingController();
-  final _regLocationController = TextEditingController();
-  final _regAgeController = TextEditingController(text: '32');
-  String _regGender = 'male';
-  AppRole _regRole = AppRole.farmer;
+  final _emailPhoneController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _rememberMe = true;
   bool _isLoading = false;
-  bool _isLoginTab = true;
   String? _errorMessage;
-
 
   @override
   void dispose() {
     _emailPhoneController.dispose();
     _passwordController.dispose();
-    _regNameController.dispose();
-    _regEmailController.dispose();
-    _regPhoneController.dispose();
-    _regPasswordController.dispose();
-    _regAddressController.dispose();
-    _regLocationController.dispose();
-    _regAgeController.dispose();
     _authService.dispose();
     super.dispose();
   }
 
   void _handleLogin() async {
+    if (_isLoading) return; // Prevent duplicate concurrent submissions
     if (!_loginFormKey.currentState!.validate()) return;
+
+    // Unfocus keyboard
+    FocusScope.of(context).unfocus();
 
     setState(() {
       _isLoading = true;
@@ -82,97 +71,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-  }
-
-  void _handleRegister() async {
-    if (!_registerFormKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final email = _regEmailController.text.trim();
-      await _authService.register(
-        name: _regNameController.text.trim(),
-        email: email,
-        phone: _regPhoneController.text.trim(),
-        password: _regPasswordController.text,
-        address: _regAddressController.text.trim(),
-        areaLocation: _regLocationController.text.trim(),
-        gender: _regGender,
-        age: int.tryParse(_regAgeController.text) ?? 25,
-      );
-
-      if (!mounted) return;
-      _showOtpDialog(email);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      });
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _showOtpDialog(String email) {
-    final otpController = TextEditingController();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('மின்னஞ்சல் சரிபார்ப்பு (OTP Verification)'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('OTP அனுப்பப்பட்ட முகவரி: $email', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: otpController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                hintText: '6-இலக்க OTP உள்ளிடவும்',
-                prefixIcon: Icon(Icons.security),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('ரத்து செய்'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await _authService.verifyOtp(email, otpController.text.trim());
-                await _authService.selectRole(_regRole);
-                if (!mounted) return;
-                Navigator.of(ctx).pop();
-                _navigateToRoleHome(_regRole);
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('சரிபார்ப்பு பிழை: $e'), backgroundColor: AppTheme.errorRed),
-                );
-              }
-            },
-            child: const Text('சரிபார்'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _enterDemoMode(AppRole role) {
-    SessionManager().enterDemoMode(role);
-    _navigateToRoleHome(role);
   }
 
   void _navigateToRoleHome(AppRole role) {
@@ -194,6 +96,20 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     );
   }
 
+  void _enterDemoMode(AppRole role) {
+    SessionManager().enterDemoMode(role);
+    _navigateToRoleHome(role);
+  }
+
+  // Quick fill helper for testing
+  void _fillCredentials(String email, String password) {
+    setState(() {
+      _emailPhoneController.text = email;
+      _passwordController.text = password;
+      _errorMessage = null;
+    });
+  }
+
   void _showServerConfigDialog() {
     final urlController = TextEditingController(text: ApiConfig.baseUrl);
     showDialog(
@@ -204,7 +120,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
           children: [
             Icon(Icons.dns_rounded, color: AppTheme.primaryGreen),
             SizedBox(width: 8),
-            Text('Server IP / URL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Server IP / URL', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -212,7 +128,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Configure the FastAPI backend server URL:',
+              'Configure the FastAPI backend server URL for local phone testing:',
               style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 12),
@@ -255,6 +171,582 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     );
   }
 
+  void _showForgotPasswordSheet() {
+    final emailController = TextEditingController(text: _emailPhoneController.text.trim());
+    final otpController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    bool otpSent = false;
+    bool isSubmitting = false;
+    String? dialogError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.lock_reset, color: AppTheme.primaryGreen),
+                          const SizedBox(width: 8),
+                          Text(
+                            VayalStrings.resetPasswordTitle,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    VayalStrings.resetPasswordSubtitle,
+                    style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 16),
+                  if (dialogError != null)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        dialogError!,
+                        style: const TextStyle(color: AppTheme.errorRed, fontSize: 12),
+                      ),
+                    ),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: !otpSent,
+                    decoration: InputDecoration(
+                      labelText: VayalStrings.phoneOrEmail,
+                      prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                    ),
+                  ),
+                  if (otpSent) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: otpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: InputDecoration(
+                        labelText: VayalStrings.enterOtp,
+                        prefixIcon: const Icon(Icons.security, size: 20),
+                        hintText: '6-digit OTP',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: newPasswordController,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: VayalStrings.newPassword,
+                        prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  ElevatedButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final email = emailController.text.trim();
+                            if (email.isEmpty) {
+                              setSheetState(() => dialogError = VayalStrings.emailRequired);
+                              return;
+                            }
+
+                            setSheetState(() {
+                              isSubmitting = true;
+                              dialogError = null;
+                            });
+
+                            if (!otpSent) {
+                              try {
+                                await _authService.forgotPassword(email);
+                                setSheetState(() {
+                                  otpSent = true;
+                                  isSubmitting = false;
+                                });
+                              } catch (e) {
+                                setSheetState(() {
+                                  dialogError = e.toString().replaceFirst('Exception: ', '');
+                                  isSubmitting = false;
+                                });
+                              }
+                            } else {
+                              final otp = otpController.text.trim();
+                              final newPass = newPasswordController.text;
+                              if (otp.length < 6 || newPass.length < 8) {
+                                setSheetState(() => dialogError = 'Please enter a valid 6-digit OTP and 8+ char password.');
+                                return;
+                              }
+
+                              try {
+                                await _authService.resetPassword(
+                                  email: email,
+                                  otp: otp,
+                                  newPassword: newPass,
+                                );
+                                if (!context.mounted) return;
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Password reset successfully! Please login.'),
+                                    backgroundColor: AppTheme.successGreen,
+                                  ),
+                                );
+                              } catch (e) {
+                                setSheetState(() {
+                                  dialogError = e.toString().replaceFirst('Exception: ', '');
+                                  isSubmitting = false;
+                                });
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: isSubmitting
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : Text(otpSent ? VayalStrings.resetPasswordBtn : VayalStrings.sendOtp),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showRegistrationSheet() {
+    final regFormKey = GlobalKey<FormState>();
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    final phoneController = TextEditingController();
+    final passwordController = TextEditingController();
+    final addressController = TextEditingController();
+    final locationController = TextEditingController();
+    final ageController = TextEditingController(text: '30');
+    AppRole selectedRole = AppRole.farmer;
+    bool isSubmitting = false;
+    String? regError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.88,
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person_add_rounded, color: AppTheme.primaryGreen),
+                          const SizedBox(width: 8),
+                          Text(
+                            VayalStrings.register,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Form(
+                        key: regFormKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (regError != null)
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFEBEE),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  regError!,
+                                  style: const TextStyle(color: AppTheme.errorRed, fontSize: 12),
+                                ),
+                              ),
+                            TextFormField(
+                              controller: nameController,
+                              validator: (v) => v == null || v.trim().length < 2 ? 'Enter valid name' : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Full Name',
+                                prefixIcon: Icon(Icons.badge_outlined, size: 20),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: TextFormField(
+                                    controller: emailController,
+                                    keyboardType: TextInputType.emailAddress,
+                                    validator: (v) => v == null || !v.contains('@') ? 'Valid email required' : null,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Email Address',
+                                      prefixIcon: Icon(Icons.email_outlined, size: 20),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  flex: 2,
+                                  child: TextFormField(
+                                    controller: ageController,
+                                    keyboardType: TextInputType.number,
+                                    validator: (v) => (int.tryParse(v ?? '') ?? 0) < 18 ? '18+' : null,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Age',
+                                      prefixIcon: Icon(Icons.cake_outlined, size: 20),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: phoneController,
+                              keyboardType: TextInputType.phone,
+                              validator: (v) => v == null || v.trim().length < 10 ? '10-digit phone required' : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Phone Number',
+                                prefixIcon: Icon(Icons.phone_outlined, size: 20),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: passwordController,
+                              obscureText: true,
+                              validator: (v) => v == null || v.length < 8 ? '8+ chars (A-Z & 0-9)' : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon: Icon(Icons.lock_outline, size: 20),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: addressController,
+                              validator: (v) => v == null || v.trim().length < 5 ? 'Address required' : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Address',
+                                prefixIcon: Icon(Icons.home_outlined, size: 20),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: locationController,
+                              validator: (v) => v == null || v.trim().length < 2 ? 'District required' : null,
+                              decoration: const InputDecoration(
+                                labelText: 'District / Area',
+                                prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Select Account Role:',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ChoiceChip(
+                                    label: const Text('🌾 Farmer'),
+                                    selected: selectedRole == AppRole.farmer,
+                                    onSelected: (_) => setSheetState(() => selectedRole = AppRole.farmer),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ChoiceChip(
+                                    label: const Text('🛒 Buyer'),
+                                    selected: selectedRole == AppRole.buyer,
+                                    onSelected: (_) => setSheetState(() => selectedRole = AppRole.buyer),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: isSubmitting
+                                  ? null
+                                  : () async {
+                                      if (!regFormKey.currentState!.validate()) return;
+                                      setSheetState(() {
+                                        isSubmitting = true;
+                                        regError = null;
+                                      });
+
+                                      try {
+                                        final email = emailController.text.trim();
+                                        await _authService.register(
+                                          name: nameController.text.trim(),
+                                          email: email,
+                                          phone: phoneController.text.trim(),
+                                          password: passwordController.text,
+                                          address: addressController.text.trim(),
+                                          areaLocation: locationController.text.trim(),
+                                          gender: 'other',
+                                          age: int.tryParse(ageController.text) ?? 25,
+                                        );
+
+                                        if (!context.mounted) return;
+                                        Navigator.pop(ctx);
+                                        _showOtpVerificationDialog(email, selectedRole);
+                                      } catch (e) {
+                                        setSheetState(() {
+                                          regError = e.toString().replaceFirst('Exception: ', '');
+                                          isSubmitting = false;
+                                        });
+                                      }
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryGreen,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              child: isSubmitting
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : Text(VayalStrings.register),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showOtpVerificationDialog(String email, AppRole role) {
+    final otpController = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Email OTP Verification'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Verification OTP sent for: $email', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: otpController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                hintText: 'Enter 6-digit OTP',
+                prefixIcon: Icon(Icons.security),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _authService.verifyOtp(email, otpController.text.trim());
+                await _authService.selectRole(role);
+                if (!ctx.mounted) return;
+                Navigator.of(ctx).pop();
+                _navigateToRoleHome(role);
+              } catch (e) {
+                if (!ctx.mounted) return;
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('Verification error: $e'), backgroundColor: AppTheme.errorRed),
+                );
+              }
+            },
+            child: const Text('Verify'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDemoPreviewSheet(SessionManager session) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.preview_rounded, color: AppTheme.accentGold),
+                      const SizedBox(width: 8),
+                      Text(
+                        VayalStrings.offlineDemoPreview,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                VayalStrings.offlineDemoSubtitle,
+                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _enterDemoMode(AppRole.farmer);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: AppTheme.primaryGreen),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('🌾', style: TextStyle(fontSize: 20)),
+                          SizedBox(height: 4),
+                          Text('Farmer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _enterDemoMode(AppRole.buyer);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: AppTheme.primaryGreen),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('🛒', style: TextStyle(fontSize: 20)),
+                          SizedBox(height: 4),
+                          Text('Buyer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _enterDemoMode(AppRole.admin);
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: AppTheme.primaryGreen),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('🛡️', style: TextStyle(fontSize: 20)),
+                          SizedBox(height: 4),
+                          Text('Admin', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = SessionManager();
@@ -262,592 +754,480 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundWarm,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Top Bar: Leaf Emblem & Language Switcher & Server Settings
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - 24),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.softGreen,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.eco, color: AppTheme.primaryGreen, size: 20),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'தமிழ்நாடு APMC நெட்வொர்க்',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryGreen,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      // Server IP button
-                      InkWell(
-                        onTap: _showServerConfigDialog,
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppTheme.cardBorder, width: 1),
+                      // Top Compact Bar: Attribution Badge + Actions
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Left Network Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.softGreen,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.eco, color: AppTheme.primaryGreen, size: 16),
+                                const SizedBox(width: 6),
+                                Text(
+                                  VayalStrings.governmentAttribution,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryGreen,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          child: const Row(
+                          // Right Controls: Server IP & Language Toggle
+                          Row(
                             children: [
-                              Icon(Icons.dns, size: 14, color: AppTheme.primaryGreen),
-                              SizedBox(width: 4),
-                              Text(
-                                'IP',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryGreen,
+                              // Server IP Config Button
+                              InkWell(
+                                onTap: _showServerConfigDialog,
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: AppTheme.cardBorder),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.dns_rounded, size: 13, color: AppTheme.primaryGreen),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'IP',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primaryGreen,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              // Language Selector
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    session.toggleLanguage();
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: AppTheme.cardBorder),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.language, size: 14, color: AppTheme.primaryGreen),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        session.isTamil ? 'English' : 'தமிழ்',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primaryGreen,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
                           ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Brand Hero Section (Compact)
+                      Center(
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppTheme.primaryGreen.withOpacity(0.2),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: const Center(
+                                child: Icon(Icons.agriculture_rounded, size: 32, color: Colors.white),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              VayalStrings.appName,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              VayalStrings.tagline,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      // Language button
-                      InkWell(
-                        onTap: () {
-                          setState(() {
-                            session.toggleLanguage();
-                          });
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+
+                      const SizedBox(height: 24),
+
+                      // Error Banner
+                      if (_errorMessage != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          margin: const EdgeInsets.only(bottom: 16),
                           decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppTheme.cardBorder, width: 1),
+                            color: const Color(0xFFFFEBEE),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppTheme.errorRed.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.language, size: 14, color: AppTheme.primaryGreen),
-                              const SizedBox(width: 4),
+                              const Icon(Icons.error_outline, size: 20, color: AppTheme.errorRed),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.errorRed,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Direct Login Form Card
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppTheme.cardBorder),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Form(
+                          key: _loginFormKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Email / Phone Field
                               Text(
-                                session.isTamil ? 'தமிழ்' : 'Eng',
+                                VayalStrings.phoneOrEmail,
                                 style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.primaryGreen,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextFormField(
+                                controller: _emailPhoneController,
+                                keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
+                                validator: (v) {
+                                  if (v == null || v.trim().isEmpty) {
+                                    return VayalStrings.emailRequired;
+                                  }
+                                  return null;
+                                },
+                                decoration: InputDecoration(
+                                  prefixIcon: const Icon(Icons.mail_outline_rounded, size: 20, color: AppTheme.textSecondary),
+                                  hintText: VayalStrings.phoneOrEmailHint,
+                                ),
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Password Field
+                              Text(
+                                VayalStrings.password,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              TextFormField(
+                                controller: _passwordController,
+                                obscureText: _obscurePassword,
+                                textInputAction: TextInputAction.done,
+                                onFieldSubmitted: (_) => _handleLogin(),
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return VayalStrings.passwordRequired;
+                                  }
+                                  return null;
+                                },
+                                decoration: InputDecoration(
+                                  prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppTheme.textSecondary),
+                                  hintText: VayalStrings.passwordHint,
+                                  suffixIcon: IconButton(
+                                    key: const Key('password_visibility_toggle'),
+                                    icon: Icon(
+                                      _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                      size: 20,
+                                      color: AppTheme.textSecondary,
+                                    ),
+                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // Remember Me & Forgot Password Row
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: Checkbox(
+                                          value: _rememberMe,
+                                          activeColor: AppTheme.primaryGreen,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                          onChanged: (val) => setState(() => _rememberMe = val ?? true),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        VayalStrings.rememberMe,
+                                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                      ),
+                                    ],
+                                  ),
+                                  TextButton(
+                                    onPressed: _showForgotPasswordSheet,
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      VayalStrings.forgotPassword,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.primaryGreen,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 18),
+
+                              // Primary Login Button
+                              ElevatedButton(
+                                onPressed: _isLoading ? null : _handleLogin,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  foregroundColor: Colors.white,
+                                  disabledBackgroundColor: AppTheme.primaryGreen.withOpacity(0.6),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  elevation: 0,
+                                ),
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            VayalStrings.login,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.3,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Icon(Icons.arrow_forward_rounded, size: 18),
+                                        ],
+                                      ),
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Registration Option
+                              Center(
+                                child: InkWell(
+                                  onTap: _showRegistrationSheet,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    child: RichText(
+                                      text: TextSpan(
+                                        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                        children: [
+                                          TextSpan(text: VayalStrings.dontHaveAccount),
+                                          TextSpan(
+                                            text: VayalStrings.registerNow,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: AppTheme.primaryGreen,
+                                              decoration: TextDecoration.underline,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 20),
-
-              // Brand Hero Card
-              Center(
-                child: Column(
-                  children: [
-                    Container(
-                      width: 62,
-                      height: 62,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.primaryGreen.withOpacity(0.25),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.agriculture_rounded, size: 34, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      session.isTamil ? 'வயல் Connect' : 'VayalConnect',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      session.isTamil ? '\"நம்ம வயல், நேரடி CONNECT\"' : 'Direct Farmer-to-Buyer Marketplace',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
-              // Auth Tab Segmented Switcher
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFEFE9),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => setState(() => _isLoginTab = true),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          decoration: BoxDecoration(
-                            color: _isLoginTab ? AppTheme.primaryGreen : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            session.isTamil ? 'உள்நுழைக (Login)' : 'Login',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: _isLoginTab ? Colors.white : AppTheme.textSecondary,
+                      // Test account quick-fill pills (clean helper for testers)
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            ActionChip(
+                              avatar: const Text('🌾', style: TextStyle(fontSize: 12)),
+                              label: const Text('Farmer Fill', style: TextStyle(fontSize: 11)),
+                              backgroundColor: Colors.white,
+                              side: const BorderSide(color: AppTheme.cardBorder),
+                              onPressed: () => _fillCredentials('farmer@vayalconnect.in', 'Password123!'),
                             ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => setState(() => _isLoginTab = false),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          decoration: BoxDecoration(
-                            color: !_isLoginTab ? AppTheme.primaryGreen : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            session.isTamil ? 'பதிவு செய் (Register)' : 'Register',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: !_isLoginTab ? Colors.white : AppTheme.textSecondary,
+                            ActionChip(
+                              avatar: const Text('🛒', style: TextStyle(fontSize: 12)),
+                              label: const Text('Buyer Fill', style: TextStyle(fontSize: 11)),
+                              backgroundColor: Colors.white,
+                              side: const BorderSide(color: AppTheme.cardBorder),
+                              onPressed: () => _fillCredentials('buyer@vayalconnect.in', 'Password123!'),
                             ),
-                          ),
+                            ActionChip(
+                              avatar: const Text('🛡️', style: TextStyle(fontSize: 12)),
+                              label: const Text('Admin Fill', style: TextStyle(fontSize: 11)),
+                              backgroundColor: Colors.white,
+                              side: const BorderSide(color: AppTheme.cardBorder),
+                              onPressed: () => _fillCredentials('admin@vayalconnect.com', 'AdminSecurePassword123!'),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: 14),
+                      const Spacer(),
 
-              // Error Banner
-              if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFEBEE),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.5)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline, size: 18, color: AppTheme.errorRed),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(fontSize: 12, color: AppTheme.errorRed, fontWeight: FontWeight.w500),
+                      const SizedBox(height: 16),
+
+                      // Offline Demo Entry Point (Clean & Unobtrusive)
+                      OutlinedButton.icon(
+                        onPressed: () => _showDemoPreviewSheet(session),
+                        icon: const Icon(Icons.explore_outlined, size: 16, color: AppTheme.accentGold),
+                        label: Text(
+                          VayalStrings.tryOfflineDemo,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: AppTheme.surfaceCream,
+                          side: BorderSide(color: AppTheme.accentGold.withOpacity(0.35)),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
+
+                      const SizedBox(height: 10),
+
+                      // Unobtrusive Kisan Support Helpline
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppTheme.cardBorder),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.support_agent_rounded, size: 20, color: AppTheme.primaryGreen),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                VayalStrings.kisanHelplineTitle,
+                                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                              ),
+                            ),
+                            Text(
+                              VayalStrings.kisanHelplineNumber,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.primaryGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
                     ],
                   ),
                 ),
-
-              // Form: Login vs Register
-              if (_isLoginTab) _buildLoginForm(session) else _buildRegisterForm(session),
-
-              const SizedBox(height: 20),
-
-              // ISOLATED DEMO PREVIEW SECTION
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceCream,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.accentGold.withOpacity(0.4)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.visibility_outlined, size: 16, color: AppTheme.accentGold),
-                        const SizedBox(width: 6),
-                        Text(
-                          session.isTamil ? 'ஆஃப்லைன் டெமோ முன்னோட்டம் (Demo Preview)' : 'Offline Demo Preview',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      session.isTamil
-                          ? 'பரிசோதனைக்காக ஆஃப்லைன் மாதிரி தரவுகளுடன் திரைகளை உடனடியாகப் பார்வையிடவும்.'
-                          : 'Explore the full UI experience using isolated sample fixtures without a live backend.',
-                      style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _enterDemoMode(AppRole.farmer),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              side: const BorderSide(color: AppTheme.primaryGreen),
-                            ),
-                            child: const Text('🌾 Farmer', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _enterDemoMode(AppRole.buyer),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              side: const BorderSide(color: AppTheme.primaryGreen),
-                            ),
-                            child: const Text('🛒 Buyer', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _enterDemoMode(AppRole.admin),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              side: const BorderSide(color: AppTheme.primaryGreen),
-                            ),
-                            child: const Text('🛡️ Admin', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
-
-              const SizedBox(height: 16),
-
-              // Helpline footer
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.cardBorder),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.support_agent_rounded, size: 24, color: AppTheme.primaryGreen),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            session.isTamil ? 'உழவர் உதவி மையம் (Toll-Free Kisan Help)' : 'Kisan Support Helpline',
-                            style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                          ),
-                          const Text(
-                            '1800-425-1661',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
+            );
+          },
         ),
-      ),
-    );
-  }
-
-  Widget _buildLoginForm(SessionManager session) {
-    return Form(
-      key: _loginFormKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            session.isTamil ? 'கைபேசி அல்லது மின்னஞ்சல்' : 'Phone or Email',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _emailPhoneController,
-            validator: (v) => v == null || v.trim().isEmpty ? 'மின்னஞ்சல் அல்லது கைபேசி எண் உள்ளிடவும்' : null,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.email_outlined, size: 20, color: AppTheme.textSecondary),
-              hintText: 'உதாரணம்: farmer@vayalconnect.in',
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            session.isTamil ? 'கடவுச்சொல் (Password)' : 'Password',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 6),
-          TextFormField(
-            controller: _passwordController,
-            obscureText: _obscurePassword,
-            validator: (v) => v == null || v.isEmpty ? 'கடவுச்சொல் உள்ளிடவும்' : null,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.lock_outline, size: 20, color: AppTheme.textSecondary),
-              hintText: '••••••••',
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                  size: 20,
-                  color: AppTheme.textSecondary,
-                ),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Checkbox(
-                      value: _rememberMe,
-                      activeColor: AppTheme.primaryGreen,
-                      onChanged: (val) => setState(() => _rememberMe = val ?? true),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    session.isTamil ? 'நினைவில் கொள்' : 'Remember me',
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                  ),
-                ],
-              ),
-              TextButton(
-                onPressed: () {},
-                child: Text(
-                  session.isTamil ? 'கடவுச்சொல் மறந்ததா?' : 'Forgot Password?',
-                  style: const TextStyle(fontSize: 12, color: AppTheme.primaryGreen),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: _isLoading ? null : _handleLogin,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryGreen,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: _isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(session.isTamil ? 'உள்நுழைக • Login' : 'Login', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_rounded, size: 18),
-                    ],
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRegisterForm(SessionManager session) {
-    return Form(
-      key: _registerFormKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(session.isTamil ? 'முழு பெயர் (Full Name)' : 'Full Name', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          TextFormField(
-            controller: _regNameController,
-            validator: (v) => v == null || v.trim().length < 2 ? 'பெயர் குறைந்தது 2 எழுத்துக்கள் இருக்க வேண்டும்' : null,
-            decoration: const InputDecoration(hintText: 'எ.கா: சுப்பிரமணியன்'),
-          ),
-          const SizedBox(height: 10),
-
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(session.isTamil ? 'மின்னஞ்சல் (Email)' : 'Email', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    TextFormField(
-                      controller: _regEmailController,
-                      validator: (v) => v == null || !v.contains('@') ? 'சரியான மின்னஞ்சல் உள்ளிடவும்' : null,
-                      decoration: const InputDecoration(hintText: 'farmer@vayal.in'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(session.isTamil ? 'வயது (Age)' : 'Age', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    TextFormField(
-                      controller: _regAgeController,
-                      keyboardType: TextInputType.number,
-                      validator: (v) {
-                        final n = int.tryParse(v ?? '');
-                        if (n == null || n < 18) return '18+';
-                        return null;
-                      },
-                      decoration: const InputDecoration(hintText: '32'),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          Text(session.isTamil ? 'கைபேசி எண் (Phone)' : 'Phone', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          TextFormField(
-            controller: _regPhoneController,
-            validator: (v) => v == null || v.trim().length < 10 ? 'சரியான கைபேசி எண் உள்ளிடவும்' : null,
-            decoration: const InputDecoration(hintText: '9876543210'),
-          ),
-          const SizedBox(height: 10),
-
-          Text(session.isTamil ? 'கடவுச்சொல் (Password)' : 'Password', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          TextFormField(
-            controller: _regPasswordController,
-            obscureText: _obscurePassword,
-            validator: (v) {
-              if (v == null || v.length < 8) return 'குறைந்தது 8 எழுத்துக்கள் தேவை';
-              if (!v.contains(RegExp(r'[A-Z]'))) return 'ஒரு பெரிய எழுத்து (Uppercase) தேவை';
-              if (!v.contains(RegExp(r'[0-9]'))) return 'ஒரு எண் (Digit) தேவை';
-              return null;
-            },
-            decoration: InputDecoration(
-              hintText: 'குறைந்தது 8 எழுத்துக்கள் (A-Z & 0-9)',
-              suffixIcon: IconButton(
-                icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, size: 20),
-                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          Text(session.isTamil ? 'முகவரி (Address)' : 'Address', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          TextFormField(
-            controller: _regAddressController,
-            validator: (v) => v == null || v.trim().length < 5 ? 'முகவரி உள்ளிடவும்' : null,
-            decoration: const InputDecoration(hintText: '12 மேலத்தெரு, பாபநாசம்'),
-          ),
-          const SizedBox(height: 10),
-
-          Text(session.isTamil ? 'பகுதி / மாவட்டம் (Location)' : 'Location / District', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          TextFormField(
-            controller: _regLocationController,
-            validator: (v) => v == null || v.trim().length < 2 ? 'மாவட்டத்தை உள்ளிடவும்' : null,
-            decoration: const InputDecoration(hintText: 'தஞ்சாவூர் (Thanjavur)'),
-          ),
-          const SizedBox(height: 10),
-
-          // Role Selection for Registration
-          Text(session.isTamil ? 'கணக்கு வகை (Role)' : 'Role', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('🌾 விவசாயி (Farmer)'),
-                  selected: _regRole == AppRole.farmer,
-                  onSelected: (_) => setState(() => _regRole = AppRole.farmer),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('🛒 வாங்குபவர் (Buyer)'),
-                  selected: _regRole == AppRole.buyer,
-                  onSelected: (_) => setState(() => _regRole = AppRole.buyer),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          ElevatedButton(
-            onPressed: _isLoading ? null : _handleRegister,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryGreen,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: _isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(session.isTamil ? 'பதிவு செய் & OTP பெறு' : 'Register & Get OTP', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_rounded, size: 18),
-                    ],
-                  ),
-          ),
-        ],
       ),
     );
   }

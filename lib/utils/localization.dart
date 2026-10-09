@@ -4,7 +4,7 @@
 class VayalStrings {
   VayalStrings._();
 
-  static bool isTamil = true; // Tamil default for authentic agricultural experience
+  static bool isTamil = false; // English default as per project requirements
 
   static void setLanguage(bool tamil) {
     isTamil = tamil;
@@ -12,10 +12,10 @@ class VayalStrings {
 
   // Brand
   static String get appName => isTamil ? 'வயல் Connect' : 'VayalConnect';
-  static String get tagline => isTamil ? 'நம்ம வயல், நேரடி CONNECT' : 'Direct Farm-to-Buyer Marketplace';
+  static String get tagline => isTamil ? 'நம்ம வயல், நேரடி CONNECT' : 'Direct Farmer-to-Buyer Marketplace';
   static String get governmentAttribution => isTamil
-      ? 'AGMARKNET • data.gov.in அரசு அங்கீகாரம்'
-      : 'Official data.gov.in AGMARKNET Rates';
+      ? 'தமிழ்நாடு APMC நெட்வொர்க்'
+      : 'TN APMC Network';
 
   // Auth & Roles
   static String get login => isTamil ? 'உள்நுழைக' : 'Login';
@@ -34,6 +34,52 @@ class VayalStrings {
   static String get adminSubtitle => isTamil
       ? 'சந்தை மேற்பார்வை, சரிபார்ப்பு, ஒப்புதல்'
       : 'Market oversight, approvals, revenue tracking';
+
+  // Login Form Localizations
+  static String get phoneOrEmail => isTamil ? 'கைபேசி அல்லது மின்னஞ்சல்' : 'Phone or Email';
+  static String get phoneOrEmailHint => isTamil ? 'எ.கா: farmer@vayalconnect.in' : 'e.g. farmer@vayalconnect.in';
+  static String get password => isTamil ? 'கடவுச்சொல்' : 'Password';
+  static String get passwordHint => isTamil ? '••••••••' : '••••••••';
+  static String get rememberMe => isTamil ? 'நினைவில் கொள்' : 'Remember me';
+  static String get forgotPassword => isTamil ? 'கடவுச்சொல் மறந்ததா?' : 'Forgot Password?';
+  static String get dontHaveAccount => isTamil ? 'கணக்கு இல்லையா? ' : "Don't have an account? ";
+  static String get registerNow => isTamil ? 'பதிவு செய்' : 'Register';
+  static String get emailRequired => isTamil ? 'மின்னஞ்சல் அல்லது கைபேசி எண் உள்ளிடவும்' : 'Please enter your email or phone number';
+  static String get passwordRequired => isTamil ? 'கடவுச்சொல் உள்ளிடவும்' : 'Please enter your password';
+
+  // Error Messages (Strictly compliant with Section 10)
+  static String get errorNoNetwork => isTamil
+      ? 'இணையம் அல்லது Wi-Fi இணைப்பைச் சரிபார்க்கவும்.'
+      : 'Please check your internet or Wi-Fi connection.';
+  static String get errorBackendUnavailable => isTamil
+      ? 'சேவையகத்துடன் இணைக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.'
+      : 'Unable to connect to the server. Please try again.';
+  static String get errorTimeout => isTamil
+      ? 'கோரிக்கை நேரம் முடிந்தது. மீண்டும் முயற்சிக்கவும்.'
+      : 'The request took too long. Please try again.';
+  static String get errorInvalidCredentials => isTamil
+      ? 'தவறான மின்னஞ்சல் அல்லது கடவுச்சொல்.'
+      : 'Invalid email/phone or password.';
+
+  // Password Recovery Dialog Localizations
+  static String get resetPasswordTitle => isTamil ? 'கடவுச்சொல் மீட்டமைக்க' : 'Reset Password';
+  static String get resetPasswordSubtitle => isTamil
+      ? 'உங்கள் பதிவு செய்யப்பட்ட மின்னஞ்சலை உள்ளிட்டு OTP பெறவும்.'
+      : 'Enter your registered email to receive a password reset OTP.';
+  static String get sendOtp => isTamil ? 'OTP அனுப்புக' : 'Send OTP';
+  static String get enterOtp => isTamil ? 'OTP உள்ளிடவும்' : 'Enter OTP';
+  static String get newPassword => isTamil ? 'புதிய கடவுச்சொல்' : 'New Password';
+  static String get resetPasswordBtn => isTamil ? 'கடவுச்சொல் மாற்று' : 'Confirm Reset';
+  static String get cancel => isTamil ? 'ரத்து செய்' : 'Cancel';
+
+  // Demo & Support
+  static String get offlineDemoPreview => isTamil ? 'ஆஃப்லைன் டெமோ முன்னோட்டம்' : 'Offline Demo Preview';
+  static String get offlineDemoSubtitle => isTamil
+      ? 'மாதிரித் தரவுகளுடன் செயலியை ஆராயுங்கள் (Farmer, Buyer, Admin).'
+      : 'Explore the UI with sample fixtures without live backend.';
+  static String get tryOfflineDemo => isTamil ? 'ஆஃப்லைன் டெமோ முயற்சிக்க' : 'Try Offline Demo';
+  static String get kisanHelplineTitle => isTamil ? 'உழவர் உதவி மையம்' : 'Kisan Support Helpline';
+  static String get kisanHelplineNumber => '1800-425-1661';
 
   // Navigation Tabs
   static String get home => isTamil ? 'முகப்பு' : 'Home';

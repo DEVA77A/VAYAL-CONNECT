@@ -7,6 +7,8 @@ import '../config/api_config.dart';
 import '../models/auth_models.dart';
 import 'session_manager.dart';
 
+import '../utils/localization.dart';
+
 class AuthService {
   final http.Client _client;
 
@@ -39,17 +41,21 @@ class AuthService {
           user: authData.user,
         );
         return authData;
+      } else if (response.statusCode == 401) {
+        throw Exception(VayalStrings.errorInvalidCredentials);
       } else {
-        final errMsg = decoded['error']?['message'] ?? 'Login failed. Please check your credentials.';
+        final errMsg = decoded['error']?['message'] ?? VayalStrings.errorInvalidCredentials;
         throw Exception(errMsg);
       }
     } on SocketException catch (_) {
-      throw Exception('Unable to connect to VayalConnect server at ${ApiConfig.baseUrl}. Please verify backend is running.');
+      throw Exception(VayalStrings.errorNoNetwork);
+    } on http.ClientException catch (_) {
+      throw Exception(VayalStrings.errorBackendUnavailable);
     } on TimeoutException catch (_) {
-      throw Exception('Login request timed out.');
+      throw Exception(VayalStrings.errorTimeout);
     } catch (e) {
       if (e is Exception) rethrow;
-      throw Exception('Login error: $e');
+      throw Exception(VayalStrings.errorBackendUnavailable);
     }
   }
 
@@ -181,6 +187,72 @@ class AuthService {
     } catch (e) {
       if (e is Exception) rethrow;
       throw Exception('Role selection error: $e');
+    }
+  }
+
+  /// Request password reset OTP
+  Future<String> forgotPassword(String email) async {
+    final uri = Uri.parse(ApiConfig.forgotPasswordUrl);
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: json.encode({'email': email.trim().toLowerCase()}),
+      ).timeout(const Duration(seconds: 12));
+
+      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && decoded['success'] == true) {
+        return decoded['data']?['message'] as String? ?? 'OTP sent to your email.';
+      } else {
+        throw Exception(decoded['error']?['message'] ?? 'Failed to send reset OTP.');
+      }
+    } on SocketException catch (_) {
+      throw Exception(VayalStrings.errorNoNetwork);
+    } on http.ClientException catch (_) {
+      throw Exception(VayalStrings.errorBackendUnavailable);
+    } on TimeoutException catch (_) {
+      throw Exception(VayalStrings.errorTimeout);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Forgot password error: $e');
+    }
+  }
+
+  /// Reset password using OTP
+  Future<String> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final uri = Uri.parse(ApiConfig.resetPasswordUrl);
+
+    try {
+      final response = await _client.post(
+        uri,
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: json.encode({
+          'email': email.trim().toLowerCase(),
+          'otp': otp.trim(),
+          'new_password': newPassword,
+        }),
+      ).timeout(const Duration(seconds: 12));
+
+      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 && decoded['success'] == true) {
+        return decoded['data']?['message'] as String? ?? 'Password reset successfully.';
+      } else {
+        throw Exception(decoded['error']?['message'] ?? 'Failed to reset password.');
+      }
+    } on SocketException catch (_) {
+      throw Exception(VayalStrings.errorNoNetwork);
+    } on http.ClientException catch (_) {
+      throw Exception(VayalStrings.errorBackendUnavailable);
+    } on TimeoutException catch (_) {
+      throw Exception(VayalStrings.errorTimeout);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Reset password error: $e');
     }
   }
 

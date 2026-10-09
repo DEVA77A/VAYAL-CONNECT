@@ -17,7 +17,7 @@ class ApiConfig {
   /// - Desktop / Web / Local: http://localhost:8000
   static String baseUrl = const String.fromEnvironment(
     'BACKEND_BASE_URL',
-    defaultValue: emulatorBaseUrl,
+    defaultValue: 'http://10.196.30.227:8000',
   );
 
   /// Centralized setter for physical device IP or dynamic runtime configuration
@@ -38,6 +38,8 @@ class ApiConfig {
   static String get selectRoleUrl => '$baseUrl/api/v1/auth/select-role';
   static String get refreshUrl => '$baseUrl/api/v1/auth/refresh';
   static String get logoutUrl => '$baseUrl/api/v1/auth/logout';
+  static String get forgotPasswordUrl => '$baseUrl/api/v1/auth/forgot-password';
+  static String get resetPasswordUrl => '$baseUrl/api/v1/auth/reset-password';
 
   // Products endpoints
   static String get productsUrl => '$baseUrl/api/v1/products/';

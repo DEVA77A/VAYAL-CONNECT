@@ -14,7 +14,7 @@ class SessionManager extends ChangeNotifier {
   String? _accessToken;
   UserProfile? _currentUser;
   AppRole _activeRole = AppRole.farmer;
-  bool _isTamil = true;
+  bool _isTamil = false; // Default language: English
   bool _isDemoMode = false;
 
   String? get accessToken => _accessToken;
@@ -43,6 +43,12 @@ class SessionManager extends ChangeNotifier {
 
   void toggleLanguage() {
     _isTamil = !_isTamil;
+    VayalStrings.setLanguage(_isTamil);
+    notifyListeners();
+  }
+
+  void setLanguage(bool tamil) {
+    _isTamil = tamil;
     VayalStrings.setLanguage(_isTamil);
     notifyListeners();
   }
