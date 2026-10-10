@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
 import '../utils/localization.dart';
+import '../utils/registration_validation.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
 import 'admin_dashboard_screen.dart';
@@ -495,9 +496,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               enabled: !accountCreated && !isSubmitting,
                               controller: phoneController,
                               keyboardType: TextInputType.phone,
-                              validator: (v) => v == null || v.trim().length < 10 ? '10-digit phone required' : null,
+                              validator: validateRegistrationPhone,
                               decoration: const InputDecoration(
                                 labelText: 'Phone Number',
+                                helperText: '10 digits or +91 followed by 10 digits',
                                 prefixIcon: Icon(Icons.phone_outlined, size: 20),
                               ),
                             ),

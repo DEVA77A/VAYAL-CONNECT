@@ -103,7 +103,7 @@ class AuthService {
       if (response.statusCode == 201 && decoded['success'] == true) {
         return decoded['data']?['user_id'] as String? ?? '';
       } else {
-        throw Exception(decoded['error']?['message'] ?? 'Registration failed.');
+        throw Exception(_authenticationError(decoded, 'Registration failed. Please try again.'));
       }
     } on SocketException catch (_) {
       throw Exception('Unable to connect to server at ${ApiConfig.baseUrl}.');
@@ -141,7 +141,7 @@ class AuthService {
       if (response.statusCode == 200 && decoded['success'] == true) {
         return decoded['data']?['message'] as String? ?? 'OTP sent to your email.';
       } else {
-        throw Exception(decoded['error']?['message'] ?? 'Unable to send OTP.');
+        throw Exception(_authenticationError(decoded, 'Unable to send OTP. Please try again later.'));
       }
     } catch (e) {
       if (e is Exception) rethrow;
@@ -269,6 +269,46 @@ class AuthService {
       if (e is Exception) rethrow;
       throw Exception('Reset password error: $e');
     }
+  }
+
+  String _authenticationError(Map<String, dynamic> decoded, String fallback) {
+    final error = decoded['error'];
+    final code = error is Map ? error['code'] : null;
+    const messages = {
+      'EMAIL_ALREADY_EXISTS': 'An account already uses this email. Sign in or complete its email verification.',
+      'PHONE_ALREADY_EXISTS': 'An account already uses this phone number. Sign in to that account or use a different number.',
+      'EMAIL_DELIVERY_FAILED': 'The OTP email could not be sent. Please try again later; your account is still unverified.',
+      'OTP_COOLDOWN': 'Please wait 60 seconds before requesting another OTP.',
+    };
+    if (messages.containsKey(code)) return messages[code]!;
+
+    // FastAPI validation responses contain user input; expose only static field hints.
+    final details = decoded['detail'];
+    if (details is List) {
+      const hints = {
+        'name': 'Enter a name between 2 and 100 characters.',
+        'email': 'Enter a valid email address.',
+        'phone': 'Enter a valid phone number: 10 digits, or +91 followed by 10 digits. Do not use spaces or hyphens.',
+        'password': 'Use 8-128 characters with an uppercase letter and a number.',
+        'address': 'Enter an address between 5 and 500 characters.',
+        'area_location': 'Enter a location between 2 and 200 characters.',
+        'age': 'Enter an age between 18 and 120.',
+        'gender': 'Select a valid gender.',
+        'preferred_language': 'Select English or Tamil.',
+        'purpose': 'Unable to request verification. Please use the registration verification option.',
+      };
+      final selected = <String>{};
+      for (final detail in details) {
+        if (detail is! Map) continue;
+        final location = detail['loc'];
+        if (location is List && location.length == 2 && location[0] == 'body') {
+          final hint = hints[location[1]];
+          if (hint != null) selected.add(hint);
+        }
+      }
+      if (selected.isNotEmpty) return selected.take(3).join(' ');
+    }
+    return fallback;
   }
 
   Map<String, dynamic> _decodeResponse(http.Response response) {
