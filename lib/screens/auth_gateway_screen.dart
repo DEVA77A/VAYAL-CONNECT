@@ -163,7 +163,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
             TextField(
               controller: urlController,
               decoration: InputDecoration(
-                hintText: 'http://10.196.30.227:8000',
+                hintText: 'https://vayal-connect.onrender.com',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 prefixIcon: const Icon(Icons.link, size: 20),
               ),

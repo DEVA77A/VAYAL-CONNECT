@@ -7,17 +7,16 @@ class ApiConfig {
   ApiConfig._();
 
   /// Default endpoints
+  static const String productionBaseUrl = 'https://vayal-connect.onrender.com';
   static const String emulatorBaseUrl = 'http://10.0.2.2:8000';
   static const String localhostBaseUrl = 'http://localhost:8000';
 
   /// Base URL for VayalConnect Backend API.
-  /// Configurable via `--dart-define=BACKEND_BASE_URL=http://<IP>:8000` or runtime call to `setBaseUrl()`.
-  /// - Default Android Emulator loopback: http://10.0.2.2:8000
-  /// - Physical device / Local network: http://<LAN_IP>:8000 (e.g., http://10.20.18.110:8000)
-  /// - Desktop / Web / Local: http://localhost:8000
+  /// Points to live production on Render by default, or configurable via
+  /// `--dart-define=BACKEND_BASE_URL=...` or runtime call to `setBaseUrl()`.
   static String baseUrl = const String.fromEnvironment(
     'BACKEND_BASE_URL',
-    defaultValue: emulatorBaseUrl,
+    defaultValue: productionBaseUrl,
   );
 
   /// Centralized setter for physical device IP or dynamic runtime configuration
