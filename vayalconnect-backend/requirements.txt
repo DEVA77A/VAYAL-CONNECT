@@ -21,6 +21,8 @@ sib-api-v3-sdk==7.6.0
 
 # Payments (Razorpay)
 razorpay==1.4.2
+# This SDK imports pkg_resources, removed in setuptools 82.
+setuptools==81.0.0
 
 # HTTP Client
 httpx==0.28.1
