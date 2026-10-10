@@ -61,6 +61,8 @@ async def test_otp_states(state):
     if state == "expired": record["expires_at"] = datetime.now(timezone.utc)-timedelta(seconds=1)
     if state == "limited": record["attempts"] = 5
     collection.find_one.return_value = None if state == "used" else record
+    collection.find_one_and_update.return_value = record
+    collection.update_one.return_value = MagicMock(modified_count=1)
     service = OTPService(db)
     if state == "valid":
         assert await service.verify("test@example.com", code, "REGISTRATION")

@@ -23,6 +23,7 @@ class BrevoEmailService:
         self._configured = bool(settings.BREVO_API_KEY)
         if self._configured:
             configuration = sib_api_v3_sdk.Configuration()
+            configuration.host = "https://api.brevo.com/v3"
             configuration.api_key["api-key"] = settings.BREVO_API_KEY
             self.api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
                 sib_api_v3_sdk.ApiClient(configuration)

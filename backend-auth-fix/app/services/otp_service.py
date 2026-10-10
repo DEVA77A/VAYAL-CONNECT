@@ -112,11 +112,15 @@ class OTPService:
             )
             raise OTPMaxAttemptsError()
 
-        # Increment attempt count
-        await self.collection.update_one(
-            {"_id": record["_id"]},
+        # Claim one attempt atomically so concurrent requests cannot exceed the limit.
+        record = await self.collection.find_one_and_update(
+            {"_id": record["_id"], "is_used": False,
+             "attempts": {"$lt": record["max_attempts"]},
+             "expires_at": {"$gt": datetime.now(timezone.utc)}},
             {"$inc": {"attempts": 1}},
         )
+        if not record:
+            raise OTPInvalidError()
 
         # Verify OTP hash
         if not verify_otp(otp, record["otp_hash"]):
@@ -130,9 +134,11 @@ class OTPService:
             raise OTPInvalidError()
 
         # Mark as used
-        await self.collection.update_one(
-            {"_id": record["_id"]},
+        consumed = await self.collection.update_one(
+            {"_id": record["_id"], "is_used": False},
             {"$set": {"is_used": True}},
         )
+        if not consumed.modified_count:
+            raise OTPInvalidError()
 
         return True

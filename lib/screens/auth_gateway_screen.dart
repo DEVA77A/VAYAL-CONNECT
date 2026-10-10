@@ -138,15 +138,6 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     _navigateToRoleHome(role);
   }
 
-  // Quick fill helper for testing
-  void _fillCredentials(String email, String password) {
-    setState(() {
-      _emailPhoneController.text = email;
-      _passwordController.text = password;
-      _errorMessage = null;
-    });
-  }
-
   void _showServerConfigDialog() {
     final urlController = TextEditingController(text: ApiConfig.baseUrl);
     showDialog(
@@ -1201,39 +1192,6 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               ),
                             ],
                           ),
-                        ),
-                      ),
-
-                      // Test account quick-fill pills (clean helper for testers)
-                      const SizedBox(height: 14),
-                      Center(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            ActionChip(
-                              avatar: const Text('🌾', style: TextStyle(fontSize: 12)),
-                              label: const Text('Farmer Fill', style: TextStyle(fontSize: 11)),
-                              backgroundColor: Colors.white,
-                              side: const BorderSide(color: AppTheme.cardBorder),
-                              onPressed: () => _fillCredentials('farmer@vayalconnect.in', 'Password123!'),
-                            ),
-                            ActionChip(
-                              avatar: const Text('🛒', style: TextStyle(fontSize: 12)),
-                              label: const Text('Buyer Fill', style: TextStyle(fontSize: 11)),
-                              backgroundColor: Colors.white,
-                              side: const BorderSide(color: AppTheme.cardBorder),
-                              onPressed: () => _fillCredentials('buyer@vayalconnect.in', 'Password123!'),
-                            ),
-                            ActionChip(
-                              avatar: const Text('🛡️', style: TextStyle(fontSize: 12)),
-                              label: const Text('Admin Fill', style: TextStyle(fontSize: 11)),
-                              backgroundColor: Colors.white,
-                              side: const BorderSide(color: AppTheme.cardBorder),
-                              onPressed: () => _fillCredentials('admin@vayalconnect.com', 'AdminSecurePassword123!'),
-                            ),
-                          ],
                         ),
                       ),
 

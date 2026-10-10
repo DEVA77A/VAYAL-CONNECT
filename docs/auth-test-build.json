@@ -1,0 +1,10 @@
+{
+  "proposed_version": "v0.3.1-test",
+  "apk_sha256": "bb5a7ce7a6ab6c9f93ff6583fcbce2d4a9c912564f40a22ac3a3e71d5ed6abd0",
+  "apk_bytes": 166356716,
+  "api_url": "http://192.168.137.195:8000",
+  "backend_tests_passed": 79,
+  "flutter_tests_passed": 24,
+  "email_delivery_verified": false,
+  "release_published": false
+}
