@@ -17,7 +17,7 @@ class ApiConfig {
   /// - Desktop / Web / Local: http://localhost:8000
   static String baseUrl = const String.fromEnvironment(
     'BACKEND_BASE_URL',
-    defaultValue: 'http://10.196.30.227:8000',
+    defaultValue: emulatorBaseUrl,
   );
 
   /// Centralized setter for physical device IP or dynamic runtime configuration

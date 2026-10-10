@@ -32,10 +32,15 @@ class AuthService {
         }),
       ).timeout(const Duration(seconds: 15));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
 
       if (response.statusCode == 200 && decoded['success'] == true && decoded['data'] != null) {
-        final authData = AuthTokenResponse.fromJson(decoded['data'] as Map<String, dynamic>);
+        final data = decoded['data'] as Map<String, dynamic>;
+        if (data['access_token'] is! String || (data['access_token'] as String).isEmpty ||
+            data['user'] is! Map<String, dynamic> || data['user']['id'] is! String) {
+          throw Exception('Invalid server response. Please try again later.');
+        }
+        final authData = AuthTokenResponse.fromJson(data);
         SessionManager().setSession(
           token: authData.accessToken,
           user: authData.user,
@@ -94,7 +99,7 @@ class AuthService {
         }),
       ).timeout(const Duration(seconds: 15));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
       if (response.statusCode == 201 && decoded['success'] == true) {
         return decoded['data']?['user_id'] as String? ?? '';
       } else {
@@ -122,7 +127,7 @@ class AuthService {
         }),
       ).timeout(const Duration(seconds: 12));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
       if (response.statusCode == 200 && decoded['success'] == true) {
         return decoded['data']?['message'] as String? ?? 'OTP sent to your email.';
       } else {
@@ -149,9 +154,9 @@ class AuthService {
         }),
       ).timeout(const Duration(seconds: 12));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
       if (response.statusCode == 200 && decoded['success'] == true) {
-        return decoded['data']?['verified'] as bool? ?? true;
+        return decoded['data']?['verified'] == true;
       } else {
         throw Exception(decoded['error']?['message'] ?? 'Invalid OTP entered.');
       }
@@ -177,7 +182,7 @@ class AuthService {
         body: json.encode({'role': role.value}),
       ).timeout(const Duration(seconds: 12));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
       if (response.statusCode == 200 && decoded['success'] == true) {
         SessionManager().switchRole(role);
         return decoded['data']?['message'] as String? ?? 'Role assigned successfully.';
@@ -201,7 +206,7 @@ class AuthService {
         body: json.encode({'email': email.trim().toLowerCase()}),
       ).timeout(const Duration(seconds: 12));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
       if (response.statusCode == 200 && decoded['success'] == true) {
         return decoded['data']?['message'] as String? ?? 'OTP sent to your email.';
       } else {
@@ -238,7 +243,7 @@ class AuthService {
         }),
       ).timeout(const Duration(seconds: 12));
 
-      final decoded = json.decode(response.body) as Map<String, dynamic>;
+      final decoded = _decodeResponse(response);
       if (response.statusCode == 200 && decoded['success'] == true) {
         return decoded['data']?['message'] as String? ?? 'Password reset successfully.';
       } else {
@@ -254,6 +259,14 @@ class AuthService {
       if (e is Exception) rethrow;
       throw Exception('Reset password error: $e');
     }
+  }
+
+  Map<String, dynamic> _decodeResponse(http.Response response) {
+    try {
+      final decoded = json.decode(response.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    throw Exception('Invalid server response. Please try again later.');
   }
 
   void dispose() {

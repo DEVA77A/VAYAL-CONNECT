@@ -40,6 +40,7 @@ class UserProfile {
   final String email;
   final String phone;
   final AppRole role;
+  final bool hasAssignedRole;
   final String? address;
   final String? areaLocation;
   final String preferredLanguage;
@@ -50,6 +51,7 @@ class UserProfile {
     required this.email,
     this.phone = '',
     required this.role,
+    this.hasAssignedRole = true,
     this.address,
     this.areaLocation,
     this.preferredLanguage = 'en',
@@ -62,6 +64,7 @@ class UserProfile {
       email: json['email'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
       role: AppRoleExtension.fromString(json['role'] as String?),
+      hasAssignedRole: ['FARMER', 'BUYER', 'ADMIN'].contains(json['role']),
       address: json['address'] as String?,
       areaLocation: json['area_location'] as String?,
       preferredLanguage: json['preferred_language'] as String? ?? 'en',

@@ -18,14 +18,15 @@ import '../config/api_config.dart';
 /// - Robust network timeout & credential error handling
 /// - Unobtrusive, separate entry points for Registration, Forgot Password, and Offline Demo
 class AuthGatewayScreen extends StatefulWidget {
-  const AuthGatewayScreen({super.key});
+  final AuthService? authService;
+  const AuthGatewayScreen({super.key, this.authService});
 
   @override
   State<AuthGatewayScreen> createState() => _AuthGatewayScreenState();
 }
 
 class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
-  final _authService = AuthService();
+  late final _authService = widget.authService ?? AuthService();
   final _loginFormKey = GlobalKey<FormState>();
 
   // Login controllers
@@ -64,7 +65,16 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       );
 
       if (!mounted) return;
-      _navigateToRoleHome(res.user.role);
+      if (!res.user.hasAssignedRole) {
+        final role = await _chooseRegistrationRole();
+        if (role == null) { SessionManager().logout(); return; }
+        await _authService.selectRole(role);
+        final confirmed = await _authService.login(_emailPhoneController.text, _passwordController.text);
+        if (!mounted) return;
+        _navigateToRoleHome(confirmed.user.role);
+      } else {
+        _navigateToRoleHome(res.user.role);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -74,6 +84,33 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<AppRole?> _chooseRegistrationRole() => showDialog<AppRole>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Choose your account role'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, AppRole.farmer), child: const Text('Farmer')),
+        TextButton(onPressed: () => Navigator.pop(ctx, AppRole.buyer), child: const Text('Buyer')),
+      ],
+    ),
+  );
+
+  Future<void> _resumeVerification() async {
+    if (_isLoading) return;
+    final role = await _chooseRegistrationRole();
+    if (role == null || !mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      await _authService.requestOtp(_emailPhoneController.text);
+      if (!mounted) return;
+      _showOtpVerificationDialog(_emailPhoneController.text.trim(), role, _passwordController.text);
+    } catch (e) {
+      if (mounted) setState(() => _errorMessage = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -302,7 +339,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               final otp = otpController.text.trim();
                               final newPass = newPasswordController.text;
                               if (otp.length < 6 || newPass.length < 8) {
-                                setSheetState(() => dialogError = 'Please enter a valid 6-digit OTP and 8+ char password.');
+                                setSheetState(() { isSubmitting = false; dialogError = 'Please enter a valid 6-digit OTP and 8+ char password.'; });
                                 return;
                               }
 
@@ -358,6 +395,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     final ageController = TextEditingController(text: '30');
     AppRole selectedRole = AppRole.farmer;
     bool isSubmitting = false;
+    bool accountCreated = false;
     String? regError;
 
     showModalBottomSheet(
@@ -421,6 +459,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 ),
                               ),
                             TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                               controller: nameController,
                               validator: (v) => v == null || v.trim().length < 2 ? 'Enter valid name' : null,
                               decoration: const InputDecoration(
@@ -434,6 +473,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 Expanded(
                                   flex: 3,
                                   child: TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                                     controller: emailController,
                                     keyboardType: TextInputType.emailAddress,
                                     validator: (v) => v == null || !v.contains('@') ? 'Valid email required' : null,
@@ -447,9 +487,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 Expanded(
                                   flex: 2,
                                   child: TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                                     controller: ageController,
                                     keyboardType: TextInputType.number,
-                                    validator: (v) => (int.tryParse(v ?? '') ?? 0) < 18 ? '18+' : null,
+                                    validator: (v) => (int.tryParse(v ?? '') ?? 0) < 18 || (int.tryParse(v ?? '') ?? 0) > 120 ? '18-120' : null,
                                     decoration: const InputDecoration(
                                       labelText: 'Age',
                                       prefixIcon: Icon(Icons.cake_outlined, size: 20),
@@ -460,6 +501,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                             ),
                             const SizedBox(height: 10),
                             TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                               controller: phoneController,
                               keyboardType: TextInputType.phone,
                               validator: (v) => v == null || v.trim().length < 10 ? '10-digit phone required' : null,
@@ -470,9 +512,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                             ),
                             const SizedBox(height: 10),
                             TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                               controller: passwordController,
                               obscureText: true,
-                              validator: (v) => v == null || v.length < 8 ? '8+ chars (A-Z & 0-9)' : null,
+                              validator: (v) => v == null || v.length < 8 || !RegExp(r'[A-Z]').hasMatch(v) || !RegExp(r'[0-9]').hasMatch(v) ? '8+ chars, uppercase letter and number' : null,
                               decoration: const InputDecoration(
                                 labelText: 'Password',
                                 prefixIcon: Icon(Icons.lock_outline, size: 20),
@@ -480,6 +523,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                             ),
                             const SizedBox(height: 10),
                             TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                               controller: addressController,
                               validator: (v) => v == null || v.trim().length < 5 ? 'Address required' : null,
                               decoration: const InputDecoration(
@@ -489,6 +533,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                             ),
                             const SizedBox(height: 10),
                             TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
                               controller: locationController,
                               validator: (v) => v == null || v.trim().length < 2 ? 'District required' : null,
                               decoration: const InputDecoration(
@@ -534,6 +579,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
 
                                       try {
                                         final email = emailController.text.trim();
+                                        if (!accountCreated) {
                                         await _authService.register(
                                           name: nameController.text.trim(),
                                           email: email,
@@ -545,9 +591,12 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                           age: int.tryParse(ageController.text) ?? 25,
                                         );
 
+                                        accountCreated = true;
+                                        }
+                                        await _authService.requestOtp(email);
                                         if (!context.mounted) return;
                                         Navigator.pop(ctx);
-                                        _showOtpVerificationDialog(email, selectedRole);
+                                        _showOtpVerificationDialog(email, selectedRole, passwordController.text);
                                       } catch (e) {
                                         setSheetState(() {
                                           regError = e.toString().replaceFirst('Exception: ', '');
@@ -579,55 +628,71 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     );
   }
 
-  void _showOtpVerificationDialog(String email, AppRole role) {
+  void _showOtpVerificationDialog(String email, AppRole role, String password) {
     final otpController = TextEditingController();
+    bool busy = false;
+    bool verified = false;
+    bool roleAssigned = false;
+    String? error;
+    DateTime resendAfter = DateTime.now().add(const Duration(seconds: 60));
     showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      context: context, barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, update) => AlertDialog(
         title: const Text('Email OTP Verification'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Verification OTP sent for: $email', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: otpController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                hintText: 'Enter 6-digit OTP',
-                prefixIcon: Icon(Icons.security),
-              ),
-            ),
-          ],
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Email provider accepted the OTP email for $email. Check your inbox and spam folder. Delivery may take a few minutes.'),
+          if (error != null) Text(error!, style: const TextStyle(color: AppTheme.errorRed)),
+          TextField(controller: otpController, enabled: !busy && !verified,
+            keyboardType: TextInputType.number, maxLength: 6,
+            decoration: const InputDecoration(hintText: 'Enter 6-digit OTP')),
+        ]),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await _authService.verifyOtp(email, otpController.text.trim());
-                await _authService.selectRole(role);
-                if (!ctx.mounted) return;
-                Navigator.of(ctx).pop();
-                _navigateToRoleHome(role);
-              } catch (e) {
-                if (!ctx.mounted) return;
-                ScaffoldMessenger.of(ctx).showSnackBar(
-                  SnackBar(content: Text('Verification error: $e'), backgroundColor: AppTheme.errorRed),
-                );
+          TextButton(onPressed: busy ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: busy || verified ? null : () async {
+            if (DateTime.now().isBefore(resendAfter)) {
+              update(() => error = 'Please wait 60 seconds between OTP requests.');
+              return;
+            }
+            update(() { busy = true; error = null; });
+            try {
+              await _authService.requestOtp(email);
+              resendAfter = DateTime.now().add(const Duration(seconds: 60));
+            } catch (e) {
+              if (ctx.mounted) update(() => error = e.toString().replaceFirst('Exception: ', ''));
+            } finally {
+              if (ctx.mounted) update(() => busy = false);
+            }
+          }, child: const Text('Resend OTP')),
+          ElevatedButton(onPressed: busy ? null : () async {
+            if (!verified && !RegExp(r'^\d{6}$').hasMatch(otpController.text.trim())) {
+              update(() => error = 'Enter a valid 6-digit OTP.');
+              return;
+            }
+            update(() { busy = true; error = null; });
+            try {
+              if (!verified) {
+                if (!await _authService.verifyOtp(email, otpController.text.trim())) {
+                  throw Exception('Email verification was not confirmed.');
+                }
+                verified = true;
               }
-            },
-            child: const Text('Verify'),
-          ),
+              final initial = await _authService.login(email, password);
+              if (!roleAssigned && !initial.user.hasAssignedRole) {
+                await _authService.selectRole(role);
+                roleAssigned = true;
+              }
+              final session = await _authService.login(email, password);
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              _navigateToRoleHome(session.user.role);
+            } catch (e) {
+              if (ctx.mounted) update(() => error = e.toString().replaceFirst('Exception: ', ''));
+            } finally {
+              if (ctx.mounted) update(() => busy = false);
+            }
+          }, child: Text(busy ? 'Please wait...' : verified ? 'Continue' : 'Verify')),
         ],
-      ),
+      )),
     );
   }
 
@@ -908,6 +973,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       const SizedBox(height: 24),
 
                       // Error Banner
+                      if (_errorMessage?.contains('Email not verified') == true)
+                        TextButton(onPressed: _isLoading ? null : _resumeVerification,
+                          child: const Text('Verify email / Resend OTP')),
                       if (_errorMessage != null)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
