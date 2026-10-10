@@ -27,13 +27,13 @@ Set-Location 'C:\VAYAL CONNECT\vayalconnect-backend'
 .\venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-If port 8000 is already occupied by the working backend, use its existing process; restart it after changing .env or code. Do not start a second server. Open http://192.168.137.195:8000/api/docs from the phone browser before testing.
+If port 8000 is already occupied by the working backend, use its existing process; restart it after changing .env or code. Do not start a second server. Open http://10.196.30.227:8000/api/docs from the phone browser before testing.
 
 ## C. Install APK
 
 Open https://github.com/DEVA77A/VAYAL-CONNECT/releases with an account authorized for this repository. Select the new test release only once publication is confirmed and download vayalconnect-android-test.apk. Verify its SHA-256 against that release's notes. Allow installation from your trusted download source when Android requests it. Debug builds may conflict with an app signed with a different key; preserve local app data before considering an uninstall.
 
-This build targets http://192.168.137.195:8000. DHCP can change the laptop IP. The app's Server IP / URL dialog can update the current session. Rebuild with the new BACKEND_BASE_URL for a different compile-time default:
+This build targets http://10.196.30.227:8000. DHCP can change the laptop IP. The app's Server IP / URL dialog can update the current session. Rebuild with the new BACKEND_BASE_URL for a different compile-time default:
 
 ```powershell
 Set-Location 'C:\VAYAL CONNECT\vayalconnect-flutter'

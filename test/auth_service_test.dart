@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +8,25 @@ import 'package:vayalconnect_flutter/services/session_manager.dart';
 
 void main() {
   tearDown(() => SessionManager().logout());
+  testWidgets('registration timeout explains Wi-Fi and backend requirements', (tester) async {
+    final service = AuthService(client: MockClient((_) => Completer<http.Response>().future));
+    final request = service.register(name: 'User', email: 'user@example.invalid', phone: '9876543210',
+      password: 'SyntheticTest123!', address: 'Test address', areaLocation: 'Village', gender: 'other', age: 30);
+    final result = expectLater(request, throwsA(predicate((e) =>
+      e.toString().contains('same Wi-Fi') && e.toString().contains('backend is running') &&
+      !e.toString().contains('TimeoutException'))));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 16));
+    await result;
+    service.dispose();
+  });
+  test('registration client error explains backend connectivity', () async {
+    final service = AuthService(client: MockClient((_) async => throw http.ClientException('connection failed')));
+    await expectLater(service.register(name: 'User', email: 'user@example.invalid', phone: '9876543210',
+      password: 'SyntheticTest123!', address: 'Test address', areaLocation: 'Village', gender: 'other', age: 30),
+      throwsA(predicate((e) => e.toString().contains('same Wi-Fi') && e.toString().contains('Cannot reach'))));
+    service.dispose();
+  });
   test('registration sends actual backend fields', () async {
     final service = AuthService(client: MockClient((request) async {
       expect(request.url.path, '/api/v1/auth/register');

@@ -107,6 +107,16 @@ class AuthService {
       }
     } on SocketException catch (_) {
       throw Exception('Unable to connect to server at ${ApiConfig.baseUrl}.');
+    } on TimeoutException catch (_) {
+      throw Exception(
+        'Connection timed out. Connect your phone and laptop to the same Wi-Fi '
+        'and check that the backend is running at ${ApiConfig.baseUrl}.',
+      );
+    } on http.ClientException catch (_) {
+      throw Exception(
+        'Cannot reach ${ApiConfig.baseUrl}. Check the backend and connect '
+        'your phone and laptop to the same Wi-Fi.',
+      );
     } catch (e) {
       if (e is Exception) rethrow;
       throw Exception('Registration error: $e');
