@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: vayalconnect-backend
+    runtime: docker
+    rootDir: vayalconnect-backend
+    dockerfilePath: vayalconnect-backend/Dockerfile
+    dockerContext: vayalconnect-backend
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: VayalConnect
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DATABASE
+        value: Vayalconnect
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: "Vayal Connect"
+      - key: GOVERNMENT_MARKET_API_KEY
+        sync: false
+      - key: GOVERNMENT_MARKET_API_BASE_URL
+        value: https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["*"]'
+    healthCheckPath: /health
