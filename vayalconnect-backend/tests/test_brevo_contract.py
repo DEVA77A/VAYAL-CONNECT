@@ -71,3 +71,36 @@ async def test_concurrent_consumption_cannot_reuse_code():
     with pytest.raises(OTPInvalidError):
         await OTPService(db).verify('test@example.invalid', code, 'REGISTRATION')
     assert collection.update_one.await_args.args[0]['is_used'] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reset", [False, True])
+@pytest.mark.parametrize("status,code,message,category", [
+    (401, "unauthorized", "Key not found", "invalid_api_key"),
+    (401, "unauthorized", "We have detected you are using an unrecognised IP", "ip_not_authorized"),
+    (400, "invalid_parameter", "Sender is not valid", "sender_not_validated"),
+    (402, "not_enough_credits", "Not enough credits", "credits_unavailable"),
+    (403, "permission_denied", "Account is not activated", "account_unavailable"),
+    (429, "too_many_requests", "Too many requests", "provider_rejection"),
+])
+async def test_provider_diagnostic_is_allowlisted(reset, status, code, message, category, caplog):
+    import json
+    error = ApiException(status=status, reason="private-provider-diagnostic")
+    error.body = json.dumps({"code": code, "message": message + " recipient@example.invalid secret-value 123456", "api-key": "secret-value"})
+    mail = BrevoEmailService()
+    mail._configured = True
+    mail.api_instance = MagicMock()
+    mail.api_instance.send_transac_email.side_effect = error
+    method = mail.send_password_reset_email if reset else mail.send_otp_email
+    assert await method("recipient@example.invalid", "Private Name", "123456") is False
+    assert f"status={status} code={code} category={category}" in caplog.text
+    for private in ("recipient@example.invalid", "secret-value", "123456", "Private Name", "private-provider-diagnostic"):
+        assert private not in caplog.text
+
+
+@pytest.mark.parametrize("body", ['not-json', '[]', '{"code":"secret-value","message":"recipient@example.invalid"}', '{"code":{},"message":123}'])
+def test_untrusted_provider_body_never_leaks(body):
+    from app.integrations.brevo import sanitized_provider_error
+    error = ApiException(status=400)
+    error.body = body
+    assert sanitized_provider_error(error) == (400, "unknown", "provider_rejection")

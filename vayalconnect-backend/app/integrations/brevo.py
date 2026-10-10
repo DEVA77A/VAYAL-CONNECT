@@ -9,11 +9,54 @@ import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 import logging
 import asyncio
+import json
 from html import escape
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def sanitized_provider_error(error: ApiException) -> tuple:
+    """Keep only status and allowlisted classifications; never return raw data."""
+    status = error.status if type(error.status) is int else None
+    code, category = "unknown", "provider_rejection"
+    try:
+        body = json.loads(error.body or "{}")
+        if not isinstance(body, dict):
+            return status, code, category
+        candidate = body.get("code")
+        if candidate in (
+            "unauthorized", "permission_denied", "invalid_parameter",
+            "missing_parameter", "out_of_range", "not_enough_credits",
+            "duplicate_parameter", "document_not_found", "method_not_allowed",
+            "too_many_requests", "bad_request",
+        ):
+            code = candidate
+        message = body.get("message", "")
+        if isinstance(message, str):
+            message = message.lower()
+            if "unrecognised ip" in message or "unrecognized ip" in message:
+                category = "ip_not_authorized"
+            elif "key not found" in message or "invalid api key" in message:
+                category = "invalid_api_key"
+            elif "sender" in message and ("valid" in message or "verif" in message):
+                category = "sender_not_validated"
+            elif "credit" in message:
+                category = "credits_unavailable"
+            elif "account" in message and ("activat" in message or "suspend" in message):
+                category = "account_unavailable"
+    except (ValueError, TypeError):
+        pass
+    return status, code, category
+
+
+def log_provider_error(error: ApiException) -> None:
+    status, code, category = sanitized_provider_error(error)
+    logger.error(
+        "Brevo request failed: status=%s code=%s category=%s",
+        status, code, category,
+    )
 
 
 class BrevoEmailService:
@@ -84,14 +127,15 @@ class BrevoEmailService:
                 self.api_instance.send_transac_email, send_smtp_email, _request_timeout=10
             )
             if not getattr(response, "message_id", None):
+                logger.error("Brevo request failed: category=missing_message_id")
                 return False
             logger.info("Email provider accepted the message.")
             return True
-        except ApiException:
-            logger.error("Email provider rejected or failed the request.")
+        except ApiException as error:
+            log_provider_error(error)
             return False
         except Exception:
-            logger.error("Email provider rejected or failed the request.")
+            logger.error("Brevo request failed: category=transport_or_client_error")
             return False
 
     async def send_password_reset_email(
@@ -136,14 +180,15 @@ class BrevoEmailService:
                 self.api_instance.send_transac_email, send_smtp_email, _request_timeout=10
             )
             if not getattr(response, "message_id", None):
+                logger.error("Brevo request failed: category=missing_message_id")
                 return False
             logger.info("Email provider accepted the message.")
             return True
-        except ApiException:
-            logger.error("Email provider rejected or failed the request.")
+        except ApiException as error:
+            log_provider_error(error)
             return False
         except Exception:
-            logger.error("Email provider rejected or failed the request.")
+            logger.error("Brevo request failed: category=transport_or_client_error")
             return False
 
 
