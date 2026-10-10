@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 import secrets
+import hashlib
 import logging
 
 from app.core.security import (
@@ -74,6 +75,9 @@ class AuthService:
             "preferred_language": data.get("preferred_language", "en"),
         }
 
+        if data.get("latitude") is not None and data.get("longitude") is not None:
+            user_doc["latitude"] = round(data["latitude"], 6)
+            user_doc["longitude"] = round(data["longitude"], 6)
         user_id = await self.user_repo.create(user_doc)
 
         await self.audit_service.log(
@@ -181,7 +185,7 @@ class AuthService:
             raise ForbiddenError("Email not verified. Please verify your email first.")
 
         # Create tokens
-        token_data = {"sub": user["id"], "role": user.get("role", "")}
+        token_data = {"sub": user["id"], "role": user.get("role", ""), "session_version": user.get("session_version", 0)}
         access_token = create_access_token(token_data)
         refresh_token = create_refresh_token(token_data)
 
@@ -225,26 +229,31 @@ class AuthService:
             raise InvalidTokenError()
 
         # Verify refresh token exists and is not revoked
-        token_hash = hash_otp(refresh_token)  # reuse hash function
+        token_hash = "sha256:" + hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
         stored = await self.refresh_tokens_collection.find_one({
             "user_id": ObjectId(user_id),
             "is_revoked": False,
+            "token_hash": token_hash,
         })
         if not stored:
             raise InvalidTokenError()
 
         user = await self.user_repo.find_by_id(user_id)
-        if not user or not user.get("is_active"):
+        if (not user or not user.get("is_active")
+                or payload.get("session_version", 0) != user.get("session_version", 0)):
             raise InvalidTokenError()
 
         # Revoke old refresh token
-        await self.refresh_tokens_collection.update_one(
-            {"_id": stored["_id"]},
+        consumed = await self.refresh_tokens_collection.update_one(
+            {"_id": stored["_id"], "is_revoked": False, "token_hash": token_hash},
             {"$set": {"is_revoked": True}},
         )
 
+        if not consumed.modified_count:
+            raise InvalidTokenError()
+
         # Issue new tokens
-        token_data = {"sub": user["id"], "role": user.get("role", "")}
+        token_data = {"sub": user["id"], "role": user.get("role", ""), "session_version": user.get("session_version", 0)}
         new_access = create_access_token(token_data)
         new_refresh = create_refresh_token(token_data)
 
@@ -258,7 +267,8 @@ class AuthService:
         }
 
     async def logout(self, user_id: str):
-        """Revoke all refresh tokens for the user."""
+        """Revoke access and refresh sessions for the user."""
+        await self.user_repo.invalidate_sessions(user_id)
         await self.refresh_tokens_collection.update_many(
             {"user_id": ObjectId(user_id)},
             {"$set": {"is_revoked": True}},
@@ -308,7 +318,7 @@ class AuthService:
         """Store a hashed refresh token."""
         await self.refresh_tokens_collection.insert_one({
             "user_id": ObjectId(user_id),
-            "token_hash": hash_otp(token),
+            "token_hash": "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest(),
             "is_revoked": False,
             "expires_at": datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
             "created_at": datetime.now(timezone.utc),

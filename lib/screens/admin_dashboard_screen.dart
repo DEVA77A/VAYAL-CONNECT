@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/dashboard_models.dart';
 import '../services/admin_service.dart';
 import '../services/session_manager.dart';
+import '../utils/localization.dart';
 import '../theme/app_theme.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/demo_banner.dart';
@@ -14,66 +15,26 @@ import 'profile_screen.dart';
 ///
 /// Implements Stitch Screen 9960b4207c924cbdbde84f0c82eaec15
 class AdminDashboardScreen extends StatefulWidget {
-  const AdminDashboardScreen({Key? key}) : super(key: key);
+  final AdminService? adminService;
+  const AdminDashboardScreen({super.key, this.adminService});
 
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  final _adminService = AdminService();
+  late final _adminService = widget.adminService ?? AdminService();
   int _currentNavIndex = 0;
   bool _isLoading = true;
   String? _errorMessage;
   String _selectedTimeline = 'இன்று (Today)';
   AdminDashboardMetrics _metrics = AdminDashboardMetrics();
 
-  final List<Map<String, dynamic>> _pendingFarmers = [
-    {
-      'id': 'farmer-001',
-      'name': 'சுப்பிரமணியன் கே. (Subramanian K.)',
-      'location': 'தஞ்சாவூர் (Thanjavur)',
-      'crop': 'பொன்னி நெல் - 12 ஏக்கர்',
-      'docs': 'ஆதார் & பட்டா சமர்ப்பிக்கப்பட்டது',
-    },
-    {
-      'id': 'farmer-002',
-      'name': 'மாரியப்பன் ஆர். (Mariappan R.)',
-      'location': 'மதுரை (Madurai)',
-      'crop': 'நாட்டுத் தக்காளி - 5 ஏக்கர்',
-      'docs': 'வங்கி கணக்கு புத்தகம் சரிபார்க்கப்பட்டது',
-    },
-  ];
-
-  final List<Map<String, dynamic>> _recentOrders = [
-    {
-      'num': 'VY-8921',
-      'buyer': 'சென்னை ஆர்கானிக்ஸ் (Chennai Organics)',
-      'farmer': 'முருகன் கே. (தஞ்சை)',
-      'crop': 'பொன்னி நெல் • 50 Quintals',
-      'amount': '₹1,12,500',
-      'status': 'CONFIRMED',
-      'color': AppTheme.successGreen,
-    },
-    {
-      'num': 'VY-8920',
-      'buyer': 'கோவை ஃப்ரெஷ் (Kovai Fresh)',
-      'farmer': 'செந்தில் குமார் (திண்டுக்கல்)',
-      'crop': 'நாட்டுத் தக்காளி • 800 Kg',
-      'amount': '₹22,400',
-      'status': 'PAID',
-      'color': Colors.blue,
-    },
-    {
-      'num': 'VY-8919',
-      'buyer': 'ஈரோடு மசாலா பிரைவேட் லிமிடெட்',
-      'farmer': 'ராமசாமி பி. (ஈரோடு)',
-      'crop': 'விரலி மஞ்சள் • 20 Quintals',
-      'amount': '₹2,70,000',
-      'status': 'PENDING',
-      'color': AppTheme.warningOrange,
-    },
-  ];
+  final List<Map<String, dynamic>> _pendingFarmers = [];
+  final List<Map<String, dynamic>> _recentOrders = [];
+  final Set<String> _decidingFarmers = {};
+  final _farmersKey = GlobalKey();
+  String get _period => _selectedTimeline.contains('Week') ? 'week' : _selectedTimeline.contains('Month') ? 'month' : 'today';
 
   @override
   void initState() {
@@ -93,10 +54,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       _errorMessage = null;
     });
     try {
-      final data = await _adminService.fetchDashboardMetrics();
+      final results = await Future.wait<Object>([
+        _adminService.fetchDashboardMetrics(period: _period),
+        _adminService.fetchPendingFarmers(),
+        _adminService.fetchRecentOrders(period: _period),
+      ]);
       if (mounted) {
         setState(() {
-          _metrics = data;
+          _metrics = results[0] as AdminDashboardMetrics;
+          _pendingFarmers
+            ..clear()
+            ..addAll((results[1] as List<Map<String, dynamic>>).map((f) => {
+              ...f, 'id': f['user_id'], 'location': f['area_location'] ?? '',
+            }));
+          _recentOrders
+            ..clear()
+            ..addAll((results[2] as List<Map<String, dynamic>>).map((o) => {
+              ...o, 'num': o['order_number'] ?? '', 'buyer': o['buyer_name'] ?? '',
+              'farmer': o['farmer_name'] ?? '', 'crop': o['product_name'] ?? '',
+              'amount': o['buyer_total_display'] ?? '', 'status': o['order_status'] ?? '',
+              'color': AppTheme.primaryGreen,
+            }));
           _isLoading = false;
         });
       }
@@ -110,6 +88,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  Future<void> _decideFarmer(Map<String, dynamic> farmer, bool approved) async {
+    final id = farmer['id'];
+    if (id is! String || id.isEmpty || _decidingFarmers.contains(id)) return;
+    String? reason;
+    if (!approved) {
+      final controller = TextEditingController();
+      reason = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+        title: Text(VayalStrings.rejectionReason),
+        content: TextField(controller: controller, maxLength: 500, maxLines: 3),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () { if (controller.text.trim().isNotEmpty) Navigator.pop(ctx, controller.text.trim()); }, child: const Text('Reject'))],
+      ));
+      // The dialog route disposes its TextField after its transition.
+      if (reason == null || !mounted) return;
+    }
+    setState(() => _decidingFarmers.add(id));
+    try {
+      if (approved) { await _adminService.approveFarmer(id); }
+      else { await _adminService.rejectFarmer(id, reason!); }
+      await _loadMetrics();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save the decision. Please retry.')));
+    } finally {
+      if (mounted) setState(() => _decidingFarmers.remove(id));
+    }
+  }
+
   void _onBottomNavTapped(int index) {
     if (index == _currentNavIndex) return;
     switch (index) {
@@ -117,7 +122,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         // Overview
         break;
       case 1:
-        // Farmers
+        final target = _farmersKey.currentContext;
+        if (target != null) Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 300));
         break;
       case 2:
         Navigator.of(context).push(
@@ -171,7 +177,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           fontWeight: FontWeight.bold,
                           color: isSel ? Colors.white : AppTheme.textPrimary,
                         ),
-                        onSelected: (_) => setState(() => _selectedTimeline = period),
+                        onSelected: _isLoading ? null : (_) {
+                          setState(() => _selectedTimeline = period);
+                          _loadMetrics();
+                        },
                       ),
                     );
                   }).toList(),
@@ -280,6 +289,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
               // Actionable Section: Pending Farmer Approvals
               Padding(
+                key: _farmersKey,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -311,6 +321,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
               const SizedBox(height: 8),
 
+              if (!_isLoading && _pendingFarmers.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('No farmers awaiting review.')),
               ..._pendingFarmers.map((f) {
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -340,11 +351,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'பயிர்: ${f['crop']}',
+                        'Email: ${f['email'] ?? ''}',
                         style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                       ),
                       Text(
-                        'ஆவணங்கள்: ${f['docs']}',
+                        'Phone: ${f['phone'] ?? ''}',
                         style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                       const SizedBox(height: 10),
@@ -352,27 +363,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           OutlinedButton(
-                            onPressed: () async {
-                              final farmerId = f['id'] as String? ?? 'demo-id';
-                              try {
-                                await _adminService.rejectFarmer(farmerId, 'Verification documents incomplete');
-                                if (mounted) {
-                                  setState(() => _pendingFarmers.remove(f));
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('விண்ணப்பம் நிராகரிக்கப்பட்டது.')),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('நிராகரிப்பில் பிழை: $e'),
-                                      backgroundColor: AppTheme.errorRed,
-                                    ),
-                                  );
-                                }
-                              }
-                            },
+                            onPressed: _decidingFarmers.contains(f['id']) ? null : () => _decideFarmer(f, false),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppTheme.errorRed,
                               side: const BorderSide(color: AppTheme.errorRed),
@@ -382,30 +373,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            onPressed: () async {
-                              final farmerId = f['id'] as String? ?? 'demo-id';
-                              try {
-                                await _adminService.approveFarmer(farmerId);
-                                if (mounted) {
-                                  setState(() => _pendingFarmers.remove(f));
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('விவசாயி கணக்கு அங்கீகரிக்கப்பட்டது!'),
-                                      backgroundColor: AppTheme.primaryGreen,
-                                    ),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('அங்கீகாரத்தில் பிழை: $e'),
-                                      backgroundColor: AppTheme.errorRed,
-                                    ),
-                                  );
-                                }
-                              }
-                            },
+                            onPressed: _decidingFarmers.contains(f['id']) ? null : () => _decideFarmer(f, true),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryGreen,
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -432,6 +400,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
               const SizedBox(height: 8),
 
+              if (!_isLoading && _recentOrders.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('No orders in this period.')),
               ..._recentOrders.map((ord) {
                 return Container(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),

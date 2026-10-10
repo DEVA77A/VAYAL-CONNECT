@@ -5,7 +5,7 @@ Request/response models for registration, login, OTP, and tokens.
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from app.schemas.common import UserRole, Gender, Language, OTPPurpose
 from app.utils.validators import is_valid_email, is_valid_phone
 
@@ -21,6 +21,15 @@ class RegisterRequest(BaseModel):
     gender: Gender
     age: int = Field(..., ge=18, le=120)
     preferred_language: Language = Language.ENGLISH
+
+    latitude: Optional[float] = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: Optional[float] = Field(None, ge=-180, le=180, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def coordinate_pair(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Provide both latitude and longitude, or neither.")
+        return self
 
     @field_validator("email")
     @classmethod

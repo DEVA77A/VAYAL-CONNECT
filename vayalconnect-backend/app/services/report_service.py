@@ -24,11 +24,20 @@ class ReportService:
         self.payouts = db["payouts"]
         self.users = db["users"]
 
-    async def get_dashboard_metrics(self) -> Dict[str, Any]:
+    async def get_dashboard_metrics(self, period: Optional[str] = None) -> Dict[str, Any]:
         """Admin dashboard aggregate metrics."""
-        # Order totals
+        # Calendar/rolling windows are explicitly UTC; snapshots are not repriced.
+        now = datetime.now(timezone.utc)
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        starts = {"today": today, "week": today - timedelta(days=6),
+                  "month": today.replace(day=1), "year": today.replace(month=1, day=1)}
+        if period is not None and period not in starts:
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Unsupported dashboard period.")
+        window = {"created_at": {"$gte": starts[period], "$lte": now}} if period else {}
+        # Only completed, captured orders earn commission; failed/refunded/pending orders do not.
         order_pipeline = [
-            {"$match": {"order_status": {"$ne": "CANCELLED"}}},
+            {"$match": {"order_status": "COMPLETED", "payment_status": "CAPTURED", **window}},
             {"$group": {
                 "_id": None,
                 "total_orders": {"$sum": 1},
@@ -61,7 +70,7 @@ class ReportService:
         total_commission = order_data.get("total_commission", 0)
 
         return {
-            "total_orders": order_data.get("total_orders", 0),
+            "total_orders": await self.orders.count_documents(window),
             "total_sales_paise": total_sales,
             "total_sales_display": format_rupees(total_sales),
             "total_quantity_sold": order_data.get("total_quantity", 0),
@@ -168,10 +177,10 @@ class ReportService:
             yesterday = today_start - timedelta(days=1)
             return {"$gte": yesterday, "$lt": today_start}
         elif period == "week":
-            week_ago = today_start - timedelta(days=7)
+            week_ago = today_start - timedelta(days=6)
             return {"$gte": week_ago}
         elif period == "month":
-            month_ago = today_start - timedelta(days=30)
+            month_ago = today_start.replace(day=1)
             return {"$gte": month_ago}
         elif date_from or date_to:
             f: Dict[str, Any] = {}

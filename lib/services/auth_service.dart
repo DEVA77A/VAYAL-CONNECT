@@ -75,6 +75,8 @@ class AuthService {
     required String gender,
     required int age,
     String preferredLanguage = 'en',
+    double? latitude,
+    double? longitude,
   }) async {
     final uri = Uri.parse(ApiConfig.registerUrl);
 
@@ -96,6 +98,8 @@ class AuthService {
           'gender': gender.toLowerCase(),
           'age': age,
           'preferred_language': preferredLanguage,
+          if (latitude != null && longitude != null) 'latitude': latitude,
+          if (latitude != null && longitude != null) 'longitude': longitude,
         }),
       ).timeout(const Duration(seconds: 15));
 
@@ -269,6 +273,25 @@ class AuthService {
       if (e is Exception) rethrow;
       throw Exception('Reset password error: $e');
     }
+  }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    final token = SessionManager().accessToken;
+    if (token == null) throw Exception('Please sign in again.');
+    final response = await _client.put(Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/password'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'current_password': currentPassword, 'new_password': newPassword}))
+      .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw Exception('Unable to change password. Check your current password and new password requirements.');
+  }
+
+  Future<void> logout() async {
+    final token = SessionManager().accessToken;
+    if (token == null) return;
+    final response = await _client.post(Uri.parse(ApiConfig.logoutUrl),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'})
+      .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) throw Exception('Server sign-out could not be confirmed.');
   }
 
   String _authenticationError(Map<String, dynamic> decoded, String fallback) {

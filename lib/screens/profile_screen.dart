@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
 import '../services/session_manager.dart';
+import '../utils/localization.dart';
+import '../services/auth_service.dart';
+import '../services/farmer_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/demo_banner.dart';
 import '../widgets/vayal_app_bar.dart';
@@ -18,6 +21,41 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final _authService = AuthService();
+  final _farmerService = FarmerService();
+  late final Future<Map<String, dynamic>>? _bank;
+  bool _securityBusy = false;
+  @override
+  void initState() {
+    super.initState();
+    final session = SessionManager();
+    _bank = !session.isDemoMode && session.activeRole == AppRole.farmer ? _farmerService.fetchBankDetails() : null;
+  }
+  @override
+  void dispose() { _authService.dispose(); _farmerService.dispose(); super.dispose(); }
+  Future<void> _changePassword() async {
+    final current = TextEditingController();
+    final next = TextEditingController();
+    final key = GlobalKey<FormState>();
+    final submit = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: Text(VayalStrings.changePassword),
+      content: Form(key: key, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextFormField(controller: current, obscureText: true, decoration: const InputDecoration(labelText: 'Current password'), validator: (v) => v == null || v.isEmpty ? 'Required' : null),
+        TextFormField(controller: next, obscureText: true, decoration: const InputDecoration(labelText: 'New password'), validator: (v) => v == null || v.length < 8 || v.length > 128 || !RegExp(r'[A-Z]').hasMatch(v) || !RegExp(r'[0-9]').hasMatch(v) ? '8-128 characters, uppercase and a number' : null),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        TextButton(onPressed: () { if (key.currentState!.validate()) Navigator.pop(ctx, true); }, child: const Text('Save'))],
+    ));
+    if (submit != true || !mounted) return;
+    setState(() => _securityBusy = true);
+    try {
+      await _authService.changePassword(current.text, next.text);
+      if (mounted) _finishLogout();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to change password. Check your current password and requirements.')));
+    } finally { if (mounted) setState(() => _securityBusy = false); }
+  }
+
   void _switchRoleAndNavigate(AppRole role) {
     SessionManager().setDemoRole(role);
     Widget target;
@@ -39,7 +77,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _handleLogout() {
+  Future<void> _handleLogout() async {
+    if (_securityBusy) return;
+    setState(() => _securityBusy = true);
+    bool serverConfirmed = true;
+    try { if (!SessionManager().isDemoMode) await _authService.logout(); }
+    catch (_) { serverConfirmed = false; }
+    if (!mounted) return;
+    if (!serverConfirmed) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Signed out on this device. Server session revocation could not be confirmed.')));
+    _finishLogout();
+  }
+
+  void _finishLogout() {
     SessionManager().logout();
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const AuthGatewayScreen()),
@@ -94,11 +143,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          user?.phone ?? '+91 98765 43210',
+                          user?.phone ?? '',
                           style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                         ),
                         Text(
-                          user?.areaLocation ?? 'Tamil Nadu',
+                          user?.areaLocation ?? '',
                           style: const TextStyle(fontSize: 12, color: AppTheme.primaryGreen, fontWeight: FontWeight.w500),
                         ),
                       ],
@@ -110,57 +159,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 16),
 
-            // Bank Account Security Card (Masked as per security guidelines)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                border: Border.all(color: AppTheme.cardBorder),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.account_balance, color: AppTheme.primaryGreen, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            session.isTamil ? 'வங்கி கணக்கு (Bank Details)' : 'Bank Payout Details',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.softGreen,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'சரிபார்க்கப்பட்டது',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'வங்கி: State Bank of India • தஞ்சாவூர் கிளை',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'கணக்கு எண்: XXXX XXXX 4289 (பாதுகாப்பானது)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                  ),
-                ],
-              ),
+            if (_bank != null) FutureBuilder<Map<String, dynamic>>(
+              future: _bank,
+              builder: (context, snapshot) => Card(child: Padding(padding: const EdgeInsets.all(16), child:
+                snapshot.connectionState != ConnectionState.done ? const LinearProgressIndicator() :
+                snapshot.hasError ? const Text('Unable to load bank details. Please retry later.') :
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Bank payout details', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(snapshot.data?['bank_name'] as String? ?? 'Not configured'),
+                  Text(snapshot.data?['account_number_masked'] as String? ?? ''),
+                  Text(snapshot.data?['bank_details_verified'] == true ? 'Verified' : 'Not verified'),
+                ]))),
             ),
-
+            if (!session.isDemoMode) OutlinedButton.icon(
+              onPressed: _securityBusy ? null : _changePassword,
+              icon: const Icon(Icons.password), label: Text(VayalStrings.changePassword)),
             const SizedBox(height: 16),
 
             // Quick Role Switcher for Developer / Evaluator Testing (Demo mode only)
@@ -235,7 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             // Logout Button
             OutlinedButton.icon(
-              onPressed: _handleLogout,
+              onPressed: _securityBusy ? null : _handleLogout,
               icon: const Icon(Icons.logout, size: 18),
               label: Text(
                 session.isTamil ? 'வெளியேறு • Logout' : 'Logout',

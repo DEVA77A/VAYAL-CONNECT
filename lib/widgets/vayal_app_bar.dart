@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
+import 'vayal_logo.dart';
 import '../models/auth_models.dart';
 
 /// Reusable Top App Bar matching Stitch Design System
@@ -66,7 +67,7 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.eco, size: 20, color: AppTheme.accentGold),
+              const VayalLogo(width: 36, height: 36),
               const SizedBox(width: 6),
               Text(
                 title ?? (session.isTamil ? 'வயல் Connect' : 'VayalConnect'),
@@ -114,8 +115,11 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         // Language Toggle Pill
         TextButton(
-          onPressed: () {
-            session.toggleLanguage();
+          onPressed: session.savingLanguage ? null : () async {
+            try { await session.toggleLanguagePersisted(); }
+            catch (_) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save language preference. Please retry.')));
+            }
           },
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

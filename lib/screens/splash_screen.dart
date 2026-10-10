@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
+import '../widgets/vayal_logo.dart';
 import 'auth_gateway_screen.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
@@ -99,28 +100,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Agricultural Sprout & Paddy Emblem
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.eco,
-                            size: 54,
-                            color: AppTheme.primaryGreen,
-                          ),
-                        ),
-                      ),
+                      const VayalLogo(width: 200, height: 200),
                       const SizedBox(height: 24),
 
                       // Brand Name

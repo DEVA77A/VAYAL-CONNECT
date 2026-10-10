@@ -9,6 +9,7 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timezone
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +37,22 @@ class ProductRepository:
     async def find_active_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         if not ObjectId.is_valid(product_id):
             return None
-        doc = await self.collection.find_one({
-            "_id": ObjectId(product_id),
-            "is_active": True,
-            "status": "ACTIVE",
-        })
-        return self._serialize(doc)
+        docs = await self.collection.aggregate(
+            self._visible_pipeline({"_id": ObjectId(product_id)}) + [{"$limit": 1}]
+        ).to_list(1)
+        return self._serialize(docs[0]) if docs else None
+
+    @staticmethod
+    def _visible_pipeline(filters: Dict[str, Any]) -> list:
+        """Filter before pagination; approval is checked from current DB state."""
+        return [
+            {"$match": {"is_active": True, "status": "ACTIVE", "quantity_available": {"$gt": 0}, **filters}},
+            {"$lookup": {"from": "users", "localField": "farmer_id", "foreignField": "_id", "as": "seller"}},
+            {"$match": {"seller": {"$elemMatch": {"role": "FARMER", "is_active": True, "email_verified": True}}}},
+            {"$lookup": {"from": "farmer_profiles", "localField": "farmer_id", "foreignField": "user_id", "as": "farm"}},
+            {"$match": {"farm": {"$elemMatch": {"approval_status": "APPROVED"}}}},
+            {"$project": {"seller": 0, "farm": 0}},
+        ]
 
     async def list_by_farmer(
         self, farmer_id: str, page: int = 1, limit: int = 50
@@ -59,16 +70,19 @@ class ProductRepository:
         page: int = 1,
         limit: int = 50,
     ) -> tuple[List[Dict[str, Any]], int]:
-        query: Dict[str, Any] = {"is_active": True, "status": "ACTIVE"}
+        filters: Dict[str, Any] = {}
         if category:
-            query["category"] = {"$regex": category, "$options": "i"}
+            filters["category"] = {"$regex": re.escape(category), "$options": "i"}
         if location:
-            query["location"] = {"$regex": location, "$options": "i"}
-
-        total = await self.collection.count_documents(query)
-        cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
-        docs = [self._serialize(doc) async for doc in cursor]
-        return docs, total
+            filters["location"] = {"$regex": re.escape(location), "$options": "i"}
+        result = await self.collection.aggregate(self._visible_pipeline(filters) + [
+            {"$facet": {
+                "items": [{"$sort": {"created_at": -1, "_id": -1}}, {"$skip": (page - 1) * limit}, {"$limit": limit}],
+                "total": [{"$count": "count"}],
+            }}
+        ]).to_list(1)
+        data = result[0] if result else {"items": [], "total": []}
+        return [self._serialize(doc) for doc in data["items"]], (data["total"][0]["count"] if data["total"] else 0)
 
     async def list_all(
         self, page: int = 1, limit: int = 50

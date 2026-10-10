@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import hmac
 import hashlib
 import logging
+import asyncio
 
 from app.core.config import settings
 
@@ -68,6 +69,9 @@ class RazorpayPaymentProvider(PaymentProvider):
         self.webhook_secret = settings.RAZORPAY_WEBHOOK_SECRET
         self._configured = bool(self.key_id and self.key_secret)
         self.client = None
+        if self._configured and not self.key_id.startswith("rzp_test_"):
+            logger.error("Only Razorpay test-mode credentials are allowed.")
+            self._configured = False
 
         if self._configured:
             try:
@@ -82,7 +86,7 @@ class RazorpayPaymentProvider(PaymentProvider):
                 logger.error("razorpay package not installed")
                 self._configured = False
             except Exception as e:
-                logger.error(f"Failed to initialize Razorpay client: {e}")
+                logger.error("Razorpay client initialization failed.")
                 self._configured = False
         else:
             logger.warning("Razorpay credentials not configured")
@@ -107,7 +111,7 @@ class RazorpayPaymentProvider(PaymentProvider):
             order_data["notes"] = notes
 
         try:
-            order = self.client.order.create(data=order_data)
+            order = await asyncio.to_thread(self.client.order.create, data=order_data)
             logger.info(f"Razorpay order created: {order.get('id')}")
             return {
                 "razorpay_order_id": order["id"],
@@ -117,8 +121,14 @@ class RazorpayPaymentProvider(PaymentProvider):
                 "created_at": datetime.now(timezone.utc),
             }
         except Exception as e:
-            logger.error(f"Razorpay order creation failed: {e}")
+            logger.error("Razorpay order creation failed.")
             raise
+
+    async def fetch_payment(self, payment_id: str) -> Dict[str, Any]:
+        """Fetch authoritative capture status, amount, currency and gateway order."""
+        if not self._configured or not self.client:
+            raise RuntimeError("Razorpay test mode is not configured")
+        return await asyncio.to_thread(self.client.payment.fetch, payment_id)
 
     async def verify_payment_signature(
         self,
@@ -143,7 +153,7 @@ class RazorpayPaymentProvider(PaymentProvider):
             logger.info(f"Payment signature verified for order {razorpay_order_id}")
             return True
         except Exception as e:
-            logger.warning(f"Payment signature verification failed: {e}")
+            logger.warning("Payment signature verification failed.")
             return False
 
     async def verify_webhook_signature(
@@ -162,7 +172,7 @@ class RazorpayPaymentProvider(PaymentProvider):
             ).hexdigest()
             return hmac.compare_digest(expected, signature)
         except Exception as e:
-            logger.error(f"Webhook signature verification error: {e}")
+            logger.error("Razorpay provider operation failed.")
             return False
 
 
@@ -186,7 +196,7 @@ class RazorpayPayoutProvider(PayoutProvider):
                 import razorpay
                 self.client = razorpay.Client(auth=(self.key_id, self.key_secret))
             except (ImportError, Exception) as e:
-                logger.error(f"Razorpay payout client init failed: {e}")
+                logger.error("Razorpay provider operation failed.")
                 self._configured = False
 
     async def initiate_payout(

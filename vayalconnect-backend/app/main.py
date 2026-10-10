@@ -101,7 +101,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception):
-        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        logger.error("Unhandled exception category=%s", type(exc).__name__)
         return JSONResponse(
             status_code=500,
             content={

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
 import '../services/auth_service.dart';
+import '../services/location_service.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
 import '../utils/localization.dart';
+import '../widgets/vayal_logo.dart';
 import '../utils/registration_validation.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
@@ -388,6 +390,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     AppRole selectedRole = AppRole.farmer;
     bool isSubmitting = false;
     bool accountCreated = false;
+    bool locating = false;
+    LocationResult? registrationLocation;
+    String? locationMessage;
     String? regError;
 
     showModalBottomSheet(
@@ -515,6 +520,31 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               ),
                             ),
                             const SizedBox(height: 10),
+                            Text(VayalStrings.locationExplanation, style: const TextStyle(fontSize: 12)),
+                            TextButton.icon(
+                              icon: const Icon(Icons.my_location), label: Text(VayalStrings.useLocation),
+                              onPressed: locating || isSubmitting || accountCreated ? null : () async {
+                                setSheetState(() => locating = true);
+                                final result = await LocationService().request();
+                                if (!ctx.mounted) return;
+                                setSheetState(() {
+                                  locating = false;
+                                  registrationLocation = result;
+                                  locationMessage = switch (result.state) {
+                                    LocationState.available => VayalStrings.locationSaved,
+                                    LocationState.denied => VayalStrings.locationDenied,
+                                    LocationState.permanentlyDenied => VayalStrings.locationPermanent,
+                                    LocationState.disabled => VayalStrings.locationDisabled,
+                                    LocationState.unavailable => VayalStrings.locationUnavailable,
+                                  };
+                                });
+                              },
+                            ),
+                            if (locationMessage != null) Text(locationMessage!, style: const TextStyle(fontSize: 12)),
+                            if (registrationLocation?.state == LocationState.permanentlyDenied || registrationLocation?.state == LocationState.disabled)
+                              TextButton(onPressed: () async {
+                                await LocationService.openSettings(services: registrationLocation?.state == LocationState.disabled);
+                              }, child: Text(VayalStrings.openSettings)),
                             TextFormField(
                               enabled: !accountCreated && !isSubmitting,
                               controller: addressController,
@@ -582,6 +612,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                           areaLocation: locationController.text.trim(),
                                           gender: 'other',
                                           age: int.tryParse(ageController.text) ?? 25,
+                                          preferredLanguage: SessionManager().isTamil ? 'ta' : 'en',
+                                          latitude: registrationLocation?.latitude,
+                                          longitude: registrationLocation?.longitude,
                                         );
 
                                         accountCreated = true;
@@ -921,24 +954,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       Center(
                         child: Column(
                           children: [
-                            Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.primaryGreen.withOpacity(0.2),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ],
-                              ),
-                              child: const Center(
-                                child: Icon(Icons.agriculture_rounded, size: 32, color: Colors.white),
-                              ),
-                            ),
+                            const VayalLogo(),
                             const SizedBox(height: 12),
                             Text(
                               VayalStrings.appName,

@@ -62,6 +62,10 @@ class UserRepository:
         )
         return result.modified_count > 0
 
+    async def invalidate_sessions(self, user_id: str):
+        await self.collection.update_one({"_id": ObjectId(user_id)},
+            {"$inc": {"session_version": 1}, "$set": {"updated_at": datetime.now(timezone.utc)}})
+
     async def count_by_role(self, role: str, active_only: bool = True) -> int:
         query: Dict[str, Any] = {"role": role}
         if active_only:

@@ -51,6 +51,15 @@ class FarmerService {
     }
   }
 
+  Future<Map<String, dynamic>> fetchBankDetails() async {
+    final response = await _client.get(Uri.parse('${ApiConfig.baseUrl}/api/v1/farmers/me/bank'), headers: _headers())
+      .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) throw Exception('Unable to load bank details.');
+    final data = jsonDecode(response.body);
+    if (data is! Map || data['success'] != true || data['data'] is! Map) throw Exception('Invalid bank response.');
+    return Map<String, dynamic>.from(data['data']);
+  }
+
   void dispose() {
     _client.close();
   }

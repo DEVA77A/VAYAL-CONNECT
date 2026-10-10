@@ -29,12 +29,13 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 @router.get("/dashboard", response_model=APIResponse)
 async def get_dashboard(
     request: Request,
+    period: str = Query(None, pattern="^(today|week|month|year)$"),
     current_user: dict = Depends(get_current_admin),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """Admin dashboard with aggregate metrics."""
     report_service = ReportService(db)
-    metrics = await report_service.get_dashboard_metrics()
+    metrics = await report_service.get_dashboard_metrics(period=period)
     return APIResponse(
         success=True,
         data=AdminDashboardResponse(**metrics).model_dump(),
@@ -104,6 +105,7 @@ async def list_farmers(
             items.append({
                 "user_id": f.get("user_id", ""),
                 "name": user.get("name", ""),
+                "area_location": user.get("area_location", ""),
                 "email": user.get("email", ""),
                 "phone": user.get("phone", ""),
                 "approval_status": f.get("approval_status", ""),
@@ -172,6 +174,7 @@ async def reject_farmer(
     await farmer_repo.update_approval_status(
         user_id, "REJECTED", rejection_reason=data.reason
     )
+    await UserRepository(db).update(user_id, {"is_approved": False})
 
     await audit.log(
         actor_id=current_user["id"],

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_database
-from app.api.deps import get_current_user, get_current_farmer, get_request_id
+from app.api.deps import get_current_user, get_current_farmer, get_approved_farmer, get_request_id
 from app.repositories.products import ProductRepository
 from app.repositories.users import UserRepository
 from app.services.pricing_service import PricingEngine
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/products", tags=["Products"])
 async def create_product(
     data: CreateProductRequest,
     request: Request,
-    current_user: dict = Depends(get_current_farmer),
+    current_user: dict = Depends(get_approved_farmer),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """
@@ -248,7 +248,9 @@ async def get_product(
     product_repo = ProductRepository(db)
     user_repo = UserRepository(db)
 
-    product = await product_repo.find_by_id(product_id)
+    product = (await product_repo.find_active_by_id(product_id)
+               if current_user.get("role") == "BUYER"
+               else await product_repo.find_by_id(product_id))
     if not product:
         raise NotFoundError("Product")
 
@@ -334,7 +336,7 @@ async def update_product(
     product_id: str,
     data: UpdateProductRequest,
     request: Request,
-    current_user: dict = Depends(get_current_farmer),
+    current_user: dict = Depends(get_approved_farmer),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """Update own product (limited fields)."""

@@ -53,6 +53,13 @@ class PaymentService:
             raise PaymentAlreadyVerifiedError()
 
         # Amount from stored order — NEVER from client
+        if existing and existing.get("razorpay_order_id"):
+            return {
+                "payment_id": existing["id"], "razorpay_order_id": existing["razorpay_order_id"],
+                "amount_paise": existing["amount_paise"], "currency": existing.get("currency", "INR"),
+                "order_number": order.get("order_number", ""),
+            }
+
         amount_paise = order["buyer_total_paise"]
 
         # Create Razorpay order
@@ -118,6 +125,9 @@ class PaymentService:
         if payment["buyer_id"] != buyer_id:
             raise ForbiddenError("Payment does not belong to you.")
 
+        if payment.get("order_id") != order_id:
+            raise ForbiddenError("Payment does not match this order.")
+
         # Check idempotency — already verified?
         if payment.get("signature_verified"):
             return {
@@ -146,6 +156,18 @@ class PaymentService:
             await self.order_repo.update_payment_status(
                 order_id, PaymentStatus.FAILED.value
             )
+            raise PaymentVerificationFailedError()
+
+        # A signature authenticates checkout data, not capture status or amount.
+        try:
+            gateway_payment = await razorpay_payment.fetch_payment(razorpay_payment_id)
+        except Exception:
+            raise PaymentVerificationFailedError() from None
+        if (gateway_payment.get("id") != razorpay_payment_id
+                or gateway_payment.get("order_id") != payment["razorpay_order_id"]
+                or gateway_payment.get("amount") != payment.get("amount_paise")
+                or gateway_payment.get("currency") != payment.get("currency", "INR")
+                or gateway_payment.get("status") != "captured"):
             raise PaymentVerificationFailedError()
 
         # Mark payment as captured

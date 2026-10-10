@@ -10,6 +10,17 @@ class VayalStrings {
     isTamil = tamil;
   }
 
+  static String get locationExplanation => isTamil ? 'இருப்பிடத்தைப் பகிர்வது பண்ணை அல்லது விநியோகப் பகுதியைக் கண்டறிய உதவும். முழு முகவரியைத் தனியாக உள்ளிடவும். இது விருப்பத்தேர்வு.' : 'Optionally share your location to locate your farm or delivery area. Enter the full address separately.';
+  static String get useLocation => isTamil ? 'என் இருப்பிடத்தைப் பயன்படுத்து' : 'Use my location';
+  static String get locationSaved => isTamil ? 'இருப்பிடம் பெறப்பட்டது. முழு முகவரியை உள்ளிடவும்.' : 'Location obtained. Enter your full address below.';
+  static String get locationDenied => isTamil ? 'அனுமதி வழங்கப்படவில்லை. மீண்டும் முயற்சிக்கவும் அல்லது முகவரியை உள்ளிடவும்.' : 'Permission denied. Retry or enter your location manually.';
+  static String get locationDisabled => isTamil ? 'இருப்பிட சேவையை இயக்கவும் அல்லது முகவரியை உள்ளிடவும்.' : 'Location services are disabled. Enable them or enter your location manually.';
+  static String get locationUnavailable => isTamil ? 'இருப்பிடம் கிடைக்கவில்லை. மீண்டும் முயற்சிக்கவும் அல்லது முகவரியை உள்ளிடவும்.' : 'Location unavailable. Retry or enter your location manually.';
+  static String get locationPermanent => isTamil ? 'அமைப்புகளில் அனுமதி வழங்கவும் அல்லது முகவரியை உள்ளிடவும்.' : 'Allow location in device settings or enter your location manually.';
+  static String get openSettings => isTamil ? 'அமைப்புகளைத் திற' : 'Open settings';
+  static String get changePassword => isTamil ? 'கடவுச்சொல்லை மாற்று' : 'Change password';
+  static String get rejectionReason => isTamil ? 'நிராகரிப்புக்கான காரணம்' : 'Reason for rejection';
+
   // Brand
   static String get appName => isTamil ? 'வயல் Connect' : 'VayalConnect';
   static String get tagline => isTamil ? 'நம்ம வயல், நேரடி CONNECT' : 'Direct Farmer-to-Buyer Marketplace';

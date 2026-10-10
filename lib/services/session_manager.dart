@@ -1,4 +1,7 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import '../models/auth_models.dart';
 import '../utils/localization.dart';
 
@@ -16,6 +19,8 @@ class SessionManager extends ChangeNotifier {
   AppRole _activeRole = AppRole.farmer;
   bool _isTamil = false; // Default language: English
   bool _isDemoMode = false;
+  bool _savingLanguage = false;
+  bool get savingLanguage => _savingLanguage;
 
   String? get accessToken => _accessToken;
   UserProfile? get currentUser => _currentUser;
@@ -32,6 +37,8 @@ class SessionManager extends ChangeNotifier {
     _accessToken = token;
     _currentUser = user;
     _activeRole = user.role;
+    _isTamil = user.preferredLanguage == 'ta';
+    VayalStrings.setLanguage(_isTamil);
     _isDemoMode = false; // Strictly real live session
     notifyListeners();
   }
@@ -39,6 +46,31 @@ class SessionManager extends ChangeNotifier {
   void switchRole(AppRole newRole) {
     _activeRole = newRole;
     notifyListeners();
+  }
+
+  Future<void> toggleLanguagePersisted({http.Client? client}) async {
+    if (_savingLanguage) return;
+    if (_accessToken == null || _isDemoMode) { toggleLanguage(); return; }
+    final nextTamil = !_isTamil;
+    final accountId = _currentUser?.id;
+    final authToken = _accessToken;
+    final api = client ?? http.Client();
+    _savingLanguage = true;
+    notifyListeners();
+    try {
+      final response = await api.put(Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/language'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $authToken'},
+        body: jsonEncode({'preferred_language': nextTamil ? 'ta' : 'en'}))
+        .timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200 || (jsonDecode(response.body) as Map)['success'] != true) {
+        throw Exception('Unable to save language preference. Please retry.');
+      }
+      if (_currentUser?.id == accountId && _accessToken == authToken) setLanguage(nextTamil);
+    } finally {
+      if (client == null) api.close();
+      _savingLanguage = false;
+      notifyListeners();
+    }
   }
 
   void toggleLanguage() {

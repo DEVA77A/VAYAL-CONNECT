@@ -54,6 +54,11 @@ class OrderService:
         if idempotency_key:
             existing = await self.order_repo.find_by_idempotency_key(idempotency_key)
             if existing:
+                from app.core.exceptions import ForbiddenError
+                if existing.get("buyer_id") != buyer_id:
+                    raise ForbiddenError("Order does not belong to you.")
+                if existing.get("product_id") != product_id or existing.get("quantity") != quantity:
+                    raise ValidationError("Idempotency key was already used for a different order.")
                 return existing
 
         # Validate product

@@ -24,12 +24,12 @@ class AdminService {
   }
 
   /// Fetch Admin Dashboard Aggregate Metrics
-  Future<AdminDashboardMetrics> fetchDashboardMetrics() async {
+  Future<AdminDashboardMetrics> fetchDashboardMetrics({String? period}) async {
     if (SessionManager().isDemoMode) {
       return DemoFixtures.sampleAdminMetrics();
     }
 
-    final uri = Uri.parse(ApiConfig.adminDashboardUrl);
+    final uri = Uri.parse(ApiConfig.adminDashboardUrl).replace(queryParameters: period == null ? null : {'period': period});
 
     try {
       final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 12));
@@ -56,7 +56,7 @@ class AdminService {
     if (SessionManager().isDemoMode) return;
 
     final uri = Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/approve');
-    final response = await _client.post(uri, headers: _headers(), body: json.encode({}));
+    final response = await _client.put(uri, headers: _headers(), body: json.encode({}));
     if (response.statusCode != 200) {
       throw Exception('Failed to approve farmer. Status code ${response.statusCode}');
     }
@@ -67,10 +67,28 @@ class AdminService {
     if (SessionManager().isDemoMode) return;
 
     final uri = Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/reject');
-    final response = await _client.post(uri, headers: _headers(), body: json.encode({'reason': reason}));
+    final response = await _client.put(uri, headers: _headers(), body: json.encode({'reason': reason}));
     if (response.statusCode != 200) {
       throw Exception('Failed to reject farmer. Status code ${response.statusCode}');
     }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchPendingFarmers() =>
+      _fetchItems('/api/v1/admin/farmers?status=PENDING&limit=50');
+
+  Future<List<Map<String, dynamic>>> fetchRecentOrders({String? period}) =>
+      _fetchItems('/api/v1/reports/orders?limit=10${period == null ? '' : '&period=$period'}');
+
+  Future<List<Map<String, dynamic>>> _fetchItems(String path) async {
+    if (SessionManager().isDemoMode) return [];
+    final response = await _client.get(Uri.parse('${ApiConfig.baseUrl}$path'), headers: _headers())
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) throw Exception('Unable to load administrator data. Please retry.');
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['success'] != true || decoded['data'] is! Map || decoded['data']['items'] is! List) {
+      throw Exception('Invalid administrator response. Please retry.');
+    }
+    return (decoded['data']['items'] as List).map((item) => Map<String, dynamic>.from(item as Map)).toList();
   }
 
   void dispose() {

@@ -52,6 +52,9 @@ async def get_current_user(
     if not user:
         raise InvalidTokenError()
 
+    if payload.get("session_version", 0) != user.get("session_version", 0):
+        raise InvalidTokenError()
+
     if not user.get("is_active"):
         raise ForbiddenError("Account is deactivated.")
 
@@ -106,3 +109,17 @@ async def get_current_admin(
 def get_request_id(request: Request) -> Optional[str]:
     """Get request ID from middleware."""
     return getattr(request.state, "request_id", None)
+
+
+async def get_approved_farmer(
+    current_user: dict = Depends(get_current_farmer),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> dict:
+    """Publishing requires current verified identity and approved farm profile."""
+    from app.repositories.farmers import FarmerRepository
+    if not current_user.get("is_active") or not current_user.get("email_verified"):
+        raise ForbiddenError("An active, verified farmer account is required.")
+    profile = await FarmerRepository(db).find_by_user_id(current_user["id"])
+    if not profile or profile.get("approval_status") != "APPROVED":
+        raise ForbiddenError("Your farmer application must be approved before publishing products.")
+    return current_user
