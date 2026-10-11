@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -7,11 +8,14 @@ import '../config/api_config.dart';
 import '../fixtures/demo_fixtures.dart';
 import '../models/dashboard_models.dart';
 import 'session_manager.dart';
+import 'api_client.dart';
 
 class AdminService {
   final http.Client _client;
 
   AdminService({http.Client? client}) : _client = client ?? http.Client();
+
+  ApiClient get api => ApiClient(client: _client);
 
   Map<String, String> _headers() {
     final token = SessionManager().accessToken;
@@ -25,20 +29,25 @@ class AdminService {
 
   /// Fetch Admin Dashboard Aggregate Metrics
   Future<AdminDashboardMetrics> fetchDashboardMetrics({String? period}) async {
-    if (SessionManager().isDemoMode) {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
       return DemoFixtures.sampleAdminMetrics();
     }
 
-    final uri = Uri.parse(ApiConfig.adminDashboardUrl).replace(queryParameters: period == null ? null : {'period': period});
+    final uri = Uri.parse(ApiConfig.adminDashboardUrl)
+        .replace(queryParameters: period == null ? null : {'period': period});
 
     try {
-      final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 12));
+      final response = await _client
+          .get(uri, headers: _headers())
+          .timeout(const Duration(seconds: 12));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body) as Map<String, dynamic>;
         if (decoded['success'] == true && decoded['data'] != null) {
-          return AdminDashboardMetrics.fromJson(decoded['data'] as Map<String, dynamic>);
+          return AdminDashboardMetrics.fromJson(
+              decoded['data'] as Map<String, dynamic>);
         } else {
-          throw Exception(decoded['error']?['message'] ?? 'Failed to load admin metrics.');
+          throw Exception(
+              decoded['error']?['message'] ?? 'Failed to load admin metrics.');
         }
       } else {
         throw Exception('Server returned status ${response.statusCode}');
@@ -52,43 +61,71 @@ class AdminService {
   }
 
   /// Approve farmer account
-  Future<void> approveFarmer(String userId, {int applicationRevision = 0}) async {
-    if (SessionManager().isDemoMode) return;
+  Future<void> approveFarmer(String userId,
+      {int applicationRevision = 0}) async {
+    if (!kReleaseMode && SessionManager().isDemoMode) return;
 
-    final uri = Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/approve');
-    final response = await _client.put(uri, headers: _headers(), body: json.encode({'application_revision': applicationRevision})).timeout(const Duration(seconds: 15));
+    final uri =
+        Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/approve');
+    final response = await _client
+        .put(uri,
+            headers: _headers(),
+            body: json.encode({'application_revision': applicationRevision}))
+        .timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
-      throw Exception('Failed to approve farmer. Status code ${response.statusCode}');
+      throw Exception(
+          'Failed to approve farmer. Status code ${response.statusCode}');
     }
   }
 
   /// Reject farmer account
-  Future<void> rejectFarmer(String userId, String reason, {int applicationRevision = 0}) async {
-    if (SessionManager().isDemoMode) return;
+  Future<void> rejectFarmer(String userId, String reason,
+      {int applicationRevision = 0}) async {
+    if (!kReleaseMode && SessionManager().isDemoMode) return;
 
-    final uri = Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/reject');
-    final response = await _client.put(uri, headers: _headers(), body: json.encode({'reason': reason, 'application_revision': applicationRevision})).timeout(const Duration(seconds: 15));
+    final uri =
+        Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/reject');
+    final response = await _client
+        .put(uri,
+            headers: _headers(),
+            body: json.encode({
+              'reason': reason,
+              'application_revision': applicationRevision
+            }))
+        .timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
-      throw Exception('Failed to reject farmer. Status code ${response.statusCode}');
+      throw Exception(
+          'Failed to reject farmer. Status code ${response.statusCode}');
     }
   }
 
   Future<List<Map<String, dynamic>>> fetchPendingFarmers() =>
       _fetchItems('/api/v1/admin/farmers?status=PENDING&limit=50');
 
-  Future<List<Map<String, dynamic>>> fetchRecentOrders({String? period}) =>
-      _fetchItems('/api/v1/reports/orders?limit=10${period == null ? '' : '&period=$period'}');
+  Future<
+      List<
+          Map<String,
+              dynamic>>> fetchRecentOrders({String? period}) => _fetchItems(
+      '/api/v1/reports/orders?limit=10${period == null ? '' : '&period=$period'}');
 
   Future<List<Map<String, dynamic>>> _fetchItems(String path) async {
-    if (SessionManager().isDemoMode) return [];
-    final response = await _client.get(Uri.parse('${ApiConfig.baseUrl}$path'), headers: _headers())
+    if (!kReleaseMode && SessionManager().isDemoMode) return [];
+    final response = await _client
+        .get(Uri.parse('${ApiConfig.baseUrl}$path'), headers: _headers())
         .timeout(const Duration(seconds: 12));
-    if (response.statusCode != 200) throw Exception('Unable to load administrator data. Please retry.');
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load administrator data. Please retry.');
+    }
     final decoded = jsonDecode(response.body);
-    if (decoded is! Map || decoded['success'] != true || decoded['data'] is! Map || decoded['data']['items'] is! List) {
+    if (decoded is! Map ||
+        decoded['success'] != true ||
+        decoded['data'] is! Map ||
+        decoded['data']['items'] is! List) {
       throw Exception('Invalid administrator response. Please retry.');
     }
-    return (decoded['data']['items'] as List).map((item) => Map<String, dynamic>.from(item as Map)).toList();
+    return (decoded['data']['items'] as List)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
   }
 
   void dispose() {

@@ -9,6 +9,21 @@ from datetime import datetime, date
 
 class AdminDashboardResponse(BaseModel):
     """Admin dashboard metrics."""
+    total_farmers: int = 0
+    total_buyers: int = 0
+    approved_farmers: int = 0
+    rejected_farmers: int = 0
+    active_products: int = 0
+    pending_orders: int = 0
+    completed_orders: int = 0
+    cancelled_orders: int = 0
+    gross_order_value_paise: int = 0
+    captured_payments_paise: int = 0
+    paid_payouts_paise: int = 0
+    pending_payouts_paise: int = 0
+    period: str = "all"
+    timezone: str = "UTC"
+    financial_definition: str = ""
     total_orders: int = 0
     total_sales_paise: int = 0
     total_sales_display: str = "₹0.00"

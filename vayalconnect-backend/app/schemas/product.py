@@ -17,6 +17,7 @@ class CreateProductRequest(BaseModel):
     """Farmer selects payout per unit; buyer totals and commission stay server-owned."""
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     selling_price_per_unit_paise: int = Field(..., gt=0, le=100_000_000, strict=True)
+    description: str = Field("", max_length=2000)
     product_name: str = Field(..., min_length=2, max_length=200)
     category: str = Field(..., min_length=2, max_length=100)
     quantity: int = Field(..., gt=0, le=1_000_000)
@@ -29,7 +30,11 @@ class CreateProductRequest(BaseModel):
 
 
 class UpdateProductRequest(BaseModel):
-    """Farmer product update — limited fields."""
+    """Farmer edits own listing; sold order snapshots never change."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    description: Optional[str] = Field(None, max_length=2000)
+    selling_price_per_unit_paise: Optional[int] = Field(None, gt=0, le=100_000_000, strict=True)
+    stock_adjustment: Optional[int] = Field(None, ge=-1_000_000, le=1_000_000, strict=True)
     quantity: Optional[int] = Field(None, gt=0, le=1_000_000)
     quality_grade: Optional[QualityGrade] = None
     harvest_date: Optional[date] = None
@@ -43,6 +48,7 @@ class UpdateProductRequest(BaseModel):
 
 class FarmerProductResponse(BaseModel):
     """Product view for the owning farmer. Shows ONLY farmer payout."""
+    description: str = ""
     product_id: str
     product_name: str
     category: str
@@ -67,6 +73,7 @@ class FarmerProductResponse(BaseModel):
 
 class BuyerProductResponse(BaseModel):
     """Product view for buyers. Shows ONLY buyer price."""
+    description: str = ""
     product_id: str
     product_name: str
     category: str
@@ -78,6 +85,11 @@ class BuyerProductResponse(BaseModel):
     farmer_name: Optional[str] = None
     pickup_address: Optional[str] = None
     delivery_available: bool = False
+    farmer_base_price_paise: int = 0
+    commission_per_unit_paise: int = 0
+    commission_percentage_bps: int = 0
+    market_reference: Optional[dict] = None
+    farm_coordinates: Optional[dict] = None
     buyer_price_per_unit_paise: int
     buyer_price_per_unit_display: str
     harvest_date: Optional[date] = None
@@ -89,6 +101,7 @@ class BuyerProductResponse(BaseModel):
 
 class AdminProductResponse(BaseModel):
     """Product view for admin. Shows ALL financial details."""
+    description: str = ""
     product_id: str
     product_name: str
     category: str

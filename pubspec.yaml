@@ -1,7 +1,7 @@
 name: vayalconnect_flutter
 description: "VayalConnect - Agricultural Marketplace connecting Farmers and Buyers with Government Mandi Pricing."
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -10,8 +10,13 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  intl: ^0.19.0
+  intl: ^0.20.3
   geolocator: ^14.1.1
+  razorpay_flutter: ^1.4.7
+  shared_preferences: ^2.5.6
+  image_picker: ^1.2.4
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:

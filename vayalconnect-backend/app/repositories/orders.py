@@ -2,6 +2,7 @@
 VayalConnect Backend — Order Repository
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class OrderRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["orders"]
+        self.collection = collection(db, "orders")
 
     async def create(self, order_data: Dict[str, Any]) -> str:
         order_data["created_at"] = datetime.now(timezone.utc)
@@ -22,6 +23,8 @@ class OrderRepository:
         for field in ["buyer_id", "farmer_id", "product_id", "pricing_snapshot_id"]:
             if field in order_data and isinstance(order_data[field], str):
                 order_data[field] = ObjectId(order_data[field])
+        if order_data.get("idempotency_key") is None:
+            order_data.pop("idempotency_key", None)
         result = await self.collection.insert_one(order_data)
         return str(result.inserted_id)
 
@@ -40,18 +43,18 @@ class OrderRepository:
         return self._serialize(doc)
 
     async def list_by_buyer(
-        self, buyer_id: str, page: int = 1, limit: int = 50
+        self, buyer_id: str, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        query = {"buyer_id": ObjectId(buyer_id)}
+        query = {**(filters or {}), "buyer_id": ObjectId(buyer_id)}
         total = await self.collection.count_documents(query)
         cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
         docs = [self._serialize(doc) async for doc in cursor]
         return docs, total
 
     async def list_by_farmer(
-        self, farmer_id: str, page: int = 1, limit: int = 50
+        self, farmer_id: str, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        query = {"farmer_id": ObjectId(farmer_id)}
+        query = {**(filters or {}), "farmer_id": ObjectId(farmer_id)}
         total = await self.collection.count_documents(query)
         cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
         docs = [self._serialize(doc) async for doc in cursor]
@@ -62,8 +65,9 @@ class OrderRepository:
         status: Optional[str] = None,
         page: int = 1,
         limit: int = 50,
+        filters=None,
     ) -> tuple[List[Dict[str, Any]], int]:
-        query: Dict[str, Any] = {}
+        query: Dict[str, Any] = dict(filters or {})
         if status:
             query["order_status"] = status
         total = await self.collection.count_documents(query)
@@ -151,11 +155,13 @@ class OrderRepository:
         """Generate a unique order number: VC-YYYYMMDD-NNN."""
         today = datetime.now(timezone.utc).strftime("%Y%m%d")
         prefix = f"VC-{today}-"
-        # Count today's orders
-        count = await self.collection.count_documents({
-            "order_number": {"$regex": f"^{prefix}"}
-        })
-        return f"{prefix}{count + 1:04d}"
+        import uuid
+        return f"{prefix}{uuid.uuid4().hex[:12].upper()}"
+
+    async def transition(self, order_id, previous, new_status, **fields):
+        result = await self.collection.update_one({"_id": ObjectId(order_id), "order_status": previous},
+            {"$set": {"order_status": new_status, "updated_at": datetime.now(timezone.utc), **fields}})
+        return result.modified_count == 1
 
     def _serialize(self, doc: Optional[Dict]) -> Optional[Dict[str, Any]]:
         if doc is None:

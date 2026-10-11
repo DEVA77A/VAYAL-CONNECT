@@ -21,7 +21,9 @@ from app.core.config import settings
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt directly."""
-    pwd_bytes = password.encode("utf-8")[:72]
+    pwd_bytes = password.encode("utf-8")
+    if len(pwd_bytes) > 72:
+        raise ValueError("Password exceeds bcrypt input limit")
     salt = bcrypt.gensalt(rounds=12)
     return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 

@@ -22,7 +22,8 @@ class MockHttpClient extends http.BaseClient {
 }
 
 void main() {
-  testWidgets('MarketPricesScreen renders mandi prices from backend', (WidgetTester tester) async {
+  testWidgets('MarketPricesScreen renders mandi prices from backend',
+      (WidgetTester tester) async {
     final mockClient = MockHttpClient((request) async {
       if (request.url.path.contains('filter-options')) {
         return http.Response(
@@ -89,8 +90,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     // Verify produce item appears from mock backend response
+    await tester.ensureVisible(find.text('Paddy'));
     expect(find.text('Paddy'), findsOneWidget);
-    expect(find.text('₹24.00 / kg'), findsOneWidget);
-    expect(find.text('data.gov.in AGMARKNET'), findsWidgets);
+    await tester.ensureVisible(find.text('Modal: ₹2400.00 / Quintal'));
+    expect(find.text('Modal: ₹2400.00 / Quintal'), findsOneWidget);
+    expect(find.text('Source: data.gov.in AGMARKNET'), findsWidgets);
   });
 }

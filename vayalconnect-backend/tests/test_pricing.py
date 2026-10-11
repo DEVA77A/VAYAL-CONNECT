@@ -24,6 +24,8 @@ async def test_pricing_engine_calculation_success(mock_db):
     mock_market_price = {
         "commodity": "Paddy",
         "market": "Madurai",
+        "modal_price_verified": True,
+        "min_price_paise": 290000, "max_price_paise": 310000,
         "modal_price_paise": 300000,  # 3000 per quintal (100 kg) -> 3000 paise/kg = ₹30/kg
         "unit": "Quintal",
         "arrival_date": "2026-10-09",
@@ -103,9 +105,13 @@ async def test_pricing_engine_rejects_negative_commission(mock_db):
     mock_market_price = {
         "commodity": "Paddy",
         "market": "Madurai",
+        "modal_price_verified": True,
+        "min_price_paise": 290000, "max_price_paise": 310000,
         "modal_price_paise": 300000,
         "unit": "Quintal",
         "arrival_date": "2026-10-09",
+        "source": "data.gov.in AGMARKNET",
+        "retrieved_at": "2026-10-09T00:00:00Z",
     }
 
     with patch("app.services.pricing_service.market_price_provider.get_market_price",

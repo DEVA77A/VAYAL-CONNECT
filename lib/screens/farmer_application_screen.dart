@@ -1,5 +1,10 @@
+import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import '../services/farmer_service.dart';
+import '../services/location_service.dart';
+import '../utils/commerce_strings.dart';
+import '../widgets/vayal_app_bar.dart';
+import 'farmer_bank_screen.dart';
 
 class FarmerApplicationScreen extends StatefulWidget {
   final FarmerService? service;
@@ -9,19 +14,24 @@ class FarmerApplicationScreen extends StatefulWidget {
       _FarmerApplicationScreenState();
 }
 
-class _FarmerApplicationScreenState extends State<FarmerApplicationScreen> {
-  late final FarmerService _service = widget.service ?? FarmerService();
+class _FarmerApplicationScreenState extends State<FarmerApplicationScreen>
+    with LanguageRebuild<FarmerApplicationScreen> {
+  late final _service = widget.service ?? FarmerService();
   final _form = GlobalKey<FormState>();
   final _fields = {
-    'farm_name': TextEditingController(),
-    'farm_address': TextEditingController(),
-    'pickup_address': TextEditingController(),
-    'crops': TextEditingController(),
+    for (final k in [
+      'farm_name',
+      'farm_address',
+      'pickup_address',
+      'crops',
+      'farm_details'
+    ])
+      k: TextEditingController()
   };
   Map<String, dynamic>? _profile;
+  Map<String, dynamic>? _coordinates;
+  bool _busy = false, _delivery = false;
   String? _error;
-  bool _busy = false;
-  bool _delivery = false;
   @override
   void initState() {
     super.initState();
@@ -45,13 +55,16 @@ class _FarmerApplicationScreenState extends State<FarmerApplicationScreen> {
     try {
       final profile = await _service.fetchProfile();
       if (!mounted) return;
-      final application = profile['application'] as Map? ?? {};
-      for (final field in _fields.entries) {
-        field.value.text = application[field.key] as String? ?? '';
+      final a = profile['application'] as Map? ?? {};
+      for (final e in _fields.entries) {
+        e.value.text = a[e.key] as String? ?? '';
       }
       setState(() {
         _profile = profile;
-        _delivery = application['delivery_available'] == true;
+        _delivery = a['delivery_available'] == true;
+        _coordinates = a['coordinates'] == null
+            ? null
+            : Map<String, dynamic>.from(a['coordinates']);
       });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -60,8 +73,46 @@ class _FarmerApplicationScreenState extends State<FarmerApplicationScreen> {
     }
   }
 
+  Future<void> _locate() async {
+    final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+                content:
+                    Text(S.t('Use this only while physically at your farm.')),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text(S.t('Cancel'))),
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(S.t('Save current farm coordinates')))
+                ]));
+    if (confirm != true) return;
+    final location = await LocationService().request();
+    if (!mounted) return;
+    if (location.state == LocationState.available) {
+      setState(() => _coordinates = {
+            'latitude': location.latitude,
+            'longitude': location.longitude
+          });
+    } else {
+      setState(
+          () => _error = S.t('Unable to obtain coordinates. Please retry.'));
+      if (location.state == LocationState.disabled ||
+          location.state == LocationState.permanentlyDenied) {
+        await LocationService.openSettings(
+            services: location.state == LocationState.disabled);
+      }
+    }
+  }
+
   Future<void> _submit() async {
-    if (_busy || !_form.currentState!.validate()) return;
+    if (!_form.currentState!.validate() || _busy) return;
+    if (_coordinates == null) {
+      setState(
+          () => _error = S.t('Unable to obtain coordinates. Please retry.'));
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -69,12 +120,10 @@ class _FarmerApplicationScreenState extends State<FarmerApplicationScreen> {
     try {
       await _service.submitApplication({
         for (final e in _fields.entries) e.key: e.value.text.trim(),
+        'coordinates': _coordinates,
         'delivery_available': _delivery,
-        'application_revision': _profile?['application_revision'] ?? 0,
+        'application_revision': _profile?['application_revision'] ?? 0
       });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Application submitted for administrator review.')));
       await _load();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -85,76 +134,87 @@ class _FarmerApplicationScreenState extends State<FarmerApplicationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final approved = _profile?['approval_status'] == 'APPROVED';
     const labels = {
-      'farm_name': 'Farm name / பண்ணை பெயர்',
-      'farm_address': 'Farm address / பண்ணை முகவரி',
-      'pickup_address': 'Buyer pickup address / பெறும் முகவரி',
-      'crops': 'Crops grown / பயிர்கள்'
+      'farm_name': 'Farm name',
+      'farm_address': 'Farm address',
+      'pickup_address': 'Pickup address',
+      'crops': 'Crops grown',
+      'farm_details': 'Farm details'
     };
     return Scaffold(
-      appBar:
-          AppBar(title: const Text('Farmer application / விவசாயி விண்ணப்பம்')),
-      body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-              key: _form,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_busy) const LinearProgressIndicator(),
-                  if (_error != null) ...[
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
-                    TextButton(
-                        onPressed: _busy ? null : _load,
-                        child: const Text('Reload'))
-                  ],
-                  if (_profile != null) ...[
-                    Text(
-                        'Approval: ' + _profile!['approval_status'].toString()),
-                    Text(_profile!['submitted_at'] == null
-                        ? 'Complete and submit your farm details for review.'
-                        : 'Submitted: ' + _profile!['submitted_at'].toString()),
-                    if (_profile!['rejection_reason'] != null)
-                      Text('Review reason: ' +
-                          _profile!['rejection_reason'].toString()),
-                    const Text(
-                        'Approval permits selling. Bank payout details are managed separately and are not bank verification.'),
-                    for (final field in _fields.entries)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: TextFormField(
-                            controller: field.value,
-                            enabled: !_busy && !approved,
-                            maxLength: field.key == 'farm_name' ? 200 : 500,
-                            decoration:
-                                InputDecoration(labelText: labels[field.key]),
-                            validator: (v) => (v?.trim().length ?? 0) <
-                                    (field.key.contains('address') ? 10 : 2)
-                                ? 'Please enter complete details.'
-                                : null,
-                          )),
-                    SwitchListTile(
-                        title: const Text('Offer delivery / விநியோகம்'),
-                        subtitle: const Text(
-                            'Delivery is included in the selling price. No separate delivery fee or estimated arrival is promised.'),
-                        value: _delivery,
-                        onChanged: _busy || approved
-                            ? null
-                            : (value) => setState(() => _delivery = value)),
-                    if (!approved)
-                      ElevatedButton(
-                          onPressed: _busy ? null : _submit,
-                          child: const Text('Submit for review / சமர்ப்பி')),
-                    if (approved)
-                      const Text(
-                          'Your application is approved. You can publish harvest listings.'),
-                    TextButton(
-                        onPressed: _busy ? null : _load,
-                        child: const Text('Refresh approval status')),
-                  ],
-                ],
-              ))),
-    );
+        appBar: VayalAppBar(title: S.t('Farmer application'), showBack: true),
+        body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+                key: _form,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_busy) const LinearProgressIndicator(),
+                      if (_error != null)
+                        Text(_error!,
+                            style: const TextStyle(color: Colors.red)),
+                      if (_profile != null) ...[
+                        Text(
+                            S.status(_profile!['approval_status'] ?? 'PENDING'),
+                            style: Theme.of(context).textTheme.headlineSmall),
+                        if (_profile!['rejection_reason'] != null)
+                          Text(
+                              '${S.t('Review reason')}: ${_profile!['rejection_reason']}'),
+                        if (_profile!['can_publish'] != true)
+                          Text(S.t(
+                              'Complete onboarding and obtain administrator approval.')),
+                        for (final e in _fields.entries)
+                          Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: TextFormField(
+                                  controller: e.value,
+                                  enabled: !_busy,
+                                  decoration: InputDecoration(
+                                      labelText: S.t(labels[e.key]!)),
+                                  maxLength: e.key == 'farm_name' ? 200 : 500,
+                                  validator: (v) => e.key == 'farm_details'
+                                      ? null
+                                      : (v?.trim().length ?? 0) <
+                                              (e.key.contains('address')
+                                                  ? 10
+                                                  : 2)
+                                          ? S.t('Enter valid details.')
+                                          : null)),
+                        OutlinedButton.icon(
+                            onPressed: _busy ? null : _locate,
+                            icon: const Icon(Icons.my_location),
+                            label: Text(S.t('Save current farm coordinates'))),
+                        if (_coordinates != null)
+                          Text(
+                              '${_coordinates!['latitude']}, ${_coordinates!['longitude']}'),
+                        SwitchListTile(
+                            title: Text(S.t('Offer delivery')),
+                            subtitle: Text(S.t('Delivery included')),
+                            value: _delivery,
+                            onChanged: _busy
+                                ? null
+                                : (v) => setState(() => _delivery = v)),
+                        OutlinedButton.icon(
+                            onPressed: _busy
+                                ? null
+                                : () async {
+                                    await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (_) =>
+                                                const FarmerBankScreen()));
+                                    if (mounted) _load();
+                                  },
+                            icon: const Icon(Icons.account_balance),
+                            label: Text(S.t('Bank payout details'))),
+                        ElevatedButton(
+                            onPressed: _busy ? null : _submit,
+                            child: Text(S.t('Submit for review'))),
+                      ],
+                      TextButton(
+                          onPressed: _busy ? null : _load,
+                          child: Text(S.t('Refresh'))),
+                    ]))));
   }
 }

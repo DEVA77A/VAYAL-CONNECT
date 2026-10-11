@@ -4,6 +4,7 @@ VayalConnect Backend — Product Repository
 Product data access with atomic inventory operations.
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class ProductRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["products"]
+        self.collection = collection(db, "products")
 
     async def create(self, product_data: Dict[str, Any]) -> str:
         product_data = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in product_data.items()}
@@ -70,15 +71,23 @@ class ProductRepository:
         location: Optional[str] = None,
         page: int = 1,
         limit: int = 50,
+        image_url: Optional[str] = None,
+        search: Optional[str] = None,
+        sort: str = "newest",
     ) -> tuple[List[Dict[str, Any]], int]:
         filters: Dict[str, Any] = {}
         if category:
             filters["category"] = {"$regex": re.escape(category), "$options": "i"}
         if location:
             filters["location"] = {"$regex": re.escape(location), "$options": "i"}
+        if image_url:
+            filters["image_url"] = image_url
+        if search:
+            filters["product_name"] = {"$regex": re.escape(search), "$options": "i"}
+        sorting = {"price_asc": {"farmer_payout_per_unit_paise": 1, "_id": 1}, "price_desc": {"farmer_payout_per_unit_paise": -1, "_id": 1}}.get(sort, {"created_at": -1, "_id": -1})
         result = await self.collection.aggregate(self._visible_pipeline(filters) + [
             {"$facet": {
-                "items": [{"$sort": {"created_at": -1, "_id": -1}}, {"$skip": (page - 1) * limit}, {"$limit": limit}],
+                "items": [{"$sort": sorting}, {"$skip": (page - 1) * limit}, {"$limit": limit}],
                 "total": [{"$count": "count"}],
             }}
         ]).to_list(1)
@@ -133,16 +142,10 @@ class ProductRepository:
 
     async def restore_quantity(self, product_id: str, quantity: int) -> bool:
         """Restore quantity on order cancellation/failure."""
-        result = await self.collection.update_one(
-            {"_id": ObjectId(product_id)},
-            {
-                "$inc": {"quantity_available": quantity},
-                "$set": {
-                    "status": "ACTIVE",
-                    "updated_at": datetime.now(timezone.utc),
-                },
-            }
-        )
+        result = await self.collection.update_one({"_id": ObjectId(product_id)}, [
+            {"$set": {"quantity_available": {"$add": ["$quantity_available", quantity]},
+                "status": {"$cond": [{"$and": [{"$eq": ["$status", "OUT_OF_STOCK"]}, {"$eq": ["$is_active", True]}]}, "ACTIVE", "$status"]},
+                "updated_at": datetime.now(timezone.utc)}}])
         return result.modified_count > 0
 
     async def count_by_farmer(self, farmer_id: str, active_only: bool = False) -> int:

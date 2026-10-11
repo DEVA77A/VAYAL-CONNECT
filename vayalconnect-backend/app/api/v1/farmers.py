@@ -38,6 +38,8 @@ async def get_farmer_profile(
     """Get farmer profile."""
     farmer_repo = FarmerRepository(db)
     profile = await farmer_repo.find_by_user_id(current_user["id"])
+    from app.services.profile_completeness import missing_farmer_fields
+    missing = missing_farmer_fields(profile or {})
     has_bank = bool(
         profile and profile.get("bank_account_number")
     ) if profile else False
@@ -55,6 +57,8 @@ async def get_farmer_profile(
             age=current_user.get("age", 0),
             approval_status=profile.get("approval_status", "PENDING") if profile else "PENDING",
             bank_details_present=has_bank,
+            profile_complete=not missing, missing_fields=missing,
+            can_publish=bool(profile and profile.get("approval_status") == "APPROVED" and not missing),
             **application_view(profile or {}),
             created_at=current_user.get("created_at"),
         ).model_dump(),
@@ -266,3 +270,20 @@ async def list_farmer_transactions(
         data={"items": items, "total": total, "page": page, "limit": limit},
         request_id=get_request_id(request),
     )
+
+
+@router.get("/me/sales", response_model=APIResponse)
+async def farmer_sales(request: Request, period: str = Query(None, pattern="^(today|month|year)$"), current_user=Depends(get_current_farmer), db=Depends(get_database)):
+    from bson import ObjectId
+    from app.services.report_service import ReportService
+    match = {"farmer_id": ObjectId(current_user["id"]), "order_status": "COMPLETED", "payment_status": "CAPTURED"}
+    window = ReportService(db)._build_date_filter(period, None, None)
+    if window: match["created_at"] = window
+    rows = await db.orders.aggregate([{"$match": match}, {"$group": {"_id": {"crop": "$product_name", "unit": "$quantity_unit"},
+        "orders": {"$sum": 1}, "quantity": {"$sum": "$quantity"}, "farmer_amount_paise": {"$sum": "$farmer_total_payout_paise"},
+        "commission_paise": {"$sum": "$commission_total_paise"}, "buyer_amount_paise": {"$sum": "$buyer_total_paise"}}}]).to_list(500)
+    stock = await db.products.aggregate([{"$match": {"farmer_id": ObjectId(current_user["id"]), "is_active": True}},
+        {"$group": {"_id": "$quantity_unit", "quantity": {"$sum": "$quantity_available"}}}]).to_list(10)
+    return APIResponse(data={"items": rows, "stock": stock, "period": period or "all", "timezone": "UTC",
+        "farmer_earnings_paise": sum(r["farmer_amount_paise"] for r in rows), "commission_paise": sum(r["commission_paise"] for r in rows),
+        "formula": "Farmer receives their full selected base price. Commission is added to the buyer price, not deducted from the selected farmer price. Delivery is included."}, request_id=get_request_id(request))

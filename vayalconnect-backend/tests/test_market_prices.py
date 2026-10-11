@@ -205,9 +205,10 @@ def test_api_endpoint_market_prices_empty_state(test_client):
         with patch("app.repositories.pricing.PricingRepository.list_market_prices",
                    new=AsyncMock(return_value=[])):
             response = client.get("/api/v1/market-prices?commodity=UnknownCrop")
-            assert response.status_code == 200
+            assert response.status_code == 503
             data = response.json()
-            assert data["success"] is True
+            assert data["success"] is False
+            assert data["error"]["code"] == "MARKET_SOURCE_UNAVAILABLE"
             assert data["data"]["live"] is False
             assert data["data"]["count"] == 0
             assert data["data"]["records"] == []

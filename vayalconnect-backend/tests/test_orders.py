@@ -1,3 +1,4 @@
+from tests.conftest import complete_farmer
 """
 Unit tests for Order Service:
 Inventory reservation, pricing integrity, state machine transitions, and idempotency.
@@ -17,7 +18,8 @@ from app.schemas.common import OrderStatus
 
 
 @pytest.fixture
-def mock_db():
+def mock_db(monkeypatch):
+    monkeypatch.setattr("app.repositories.pricing.PricingRepository.get_active_commission", AsyncMock(return_value=None))
     return AsyncMock()
 
 
@@ -42,7 +44,7 @@ async def test_create_order_pricing_calculated_from_product(mock_db):
     with patch.object(service.order_repo, "find_by_idempotency_key", new=AsyncMock(return_value=None)):
         with patch.object(service.product_repo, "find_active_by_id", new=AsyncMock(return_value=product)):
             with patch("app.repositories.farmers.FarmerRepository.find_by_user_id",
-                       new=AsyncMock(return_value={"approval_status": "APPROVED"})):
+                       new=AsyncMock(return_value=complete_farmer())):
                 with patch.object(service.product_repo, "atomic_reserve_quantity", new=AsyncMock(return_value=True)):
                     with patch.object(service.order_repo, "generate_order_number", new=AsyncMock(return_value="ORD-2026-0001")):
                         with patch.object(service.order_repo, "create", new=AsyncMock(return_value="order_999")):
@@ -55,11 +57,11 @@ async def test_create_order_pricing_calculated_from_product(mock_db):
                                 )
 
                                 # Buyer pays 10 * 4500 = 45000 paise (₹450.00)
-                                assert order["buyer_total_paise"] == 45000
+                                assert order["buyer_total_paise"] == 42000
                                 # Farmer receives 10 * 3500 = 35000 paise (₹350.00)
                                 assert order["farmer_total_payout_paise"] == 35000
                                 # Commission = 10 * 1000 = 10000 paise (₹100.00)
-                                assert order["commission_total_paise"] == 10000
+                                assert order["commission_total_paise"] == 7000
                                 assert order["order_status"] == OrderStatus.PENDING_PAYMENT.value
 
 
@@ -76,7 +78,7 @@ async def test_create_order_out_of_stock_rejected(mock_db):
     with patch.object(service.order_repo, "find_by_idempotency_key", new=AsyncMock(return_value=None)):
         with patch.object(service.product_repo, "find_active_by_id", new=AsyncMock(return_value=product)):
             with patch("app.repositories.farmers.FarmerRepository.find_by_user_id",
-                       new=AsyncMock(return_value={"approval_status": "APPROVED"})):
+                       new=AsyncMock(return_value=complete_farmer())):
                 with pytest.raises(ProductOutOfStockError):
                     # Requesting 10 when only 5 available
                     await service.create_order(

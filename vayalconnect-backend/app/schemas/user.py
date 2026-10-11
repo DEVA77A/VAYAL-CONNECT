@@ -5,7 +5,7 @@ Profile management request/response models.
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from app.schemas.common import Gender, Language
 
@@ -28,6 +28,8 @@ class UserProfileResponse(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     """Profile update — only permitted fields."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    phone: Optional[str] = Field(None, pattern=r"^(\+91)?[6-9][0-9]{9}$")
     name: Optional[str] = Field(None, min_length=2, max_length=100)
     address: Optional[str] = Field(None, min_length=5, max_length=500)
     area_location: Optional[str] = Field(None, min_length=2, max_length=200)

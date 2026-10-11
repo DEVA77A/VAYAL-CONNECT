@@ -41,4 +41,6 @@ crash_symbol_dump
 *.jks
 key.properties
 local.properties
+.local-verification/
+releases/
 

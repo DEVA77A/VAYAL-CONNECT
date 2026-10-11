@@ -1,3 +1,4 @@
+from tests.conftest import complete_farmer
 """Focused contracts and provenance checks. Provider responses are synthetic fixtures."""
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,7 +16,7 @@ from app.integrations.government_market import GovernmentMarketPriceProvider
 def reference(**changes):
     return {"commodity": "Paddy", "market": "Madurai", "modal_price_paise": 300000,
             "modal_price_verified": True, "unit": "Quintal", "arrival_date": datetime.now(timezone.utc).date().isoformat(),
-            "source": "data.gov.in AGMARKNET", **changes}
+            "source": "data.gov.in AGMARKNET", "retrieved_at": datetime.now(timezone.utc), **changes}
 
 
 @pytest.mark.asyncio
@@ -66,7 +67,7 @@ def test_price_validation_rejects_coercion_and_limits(price):
 def test_application_is_complete_and_cannot_self_approve():
     application = dict(farm_name="Test farm", farm_address="10 Test farm road", pickup_address="10 Pickup farm road", crops="Paddy")
     assert FarmerApplicationRequest(**application).application_revision == 0
-    for invalid in ({"farm_name": "  "}, {"approval_status": "APPROVED"}, {"delivery_available": "true"}):
+    for invalid in ({"farm_name": "  "}, complete_farmer(), {"delivery_available": "true"}):
         with pytest.raises(SchemaError): FarmerApplicationRequest(**(application | invalid))
 
 
@@ -87,12 +88,13 @@ async def test_approval_requires_submitted_verified_application_and_current_revi
     service.farmers.decide_application = AsyncMock(return_value=False)
     with pytest.raises(ValidationError): await service.decide("farmer", 0, "admin", True)
     service.farmers.decide_application.assert_not_awaited()
-    service.farmers.find_by_user_id = AsyncMock(return_value={"submitted_at": datetime.now(timezone.utc), "application": {"farm_name": "Test farm", "farm_address": "10 Test farm road", "pickup_address": "10 Pickup farm road", "crops": "Paddy"}})
+    service.farmers.find_by_user_id = AsyncMock(return_value=complete_farmer(submitted_at=datetime.now(timezone.utc)))
     with pytest.raises(ConflictError): await service.decide("farmer", 1, "admin", True)
 
 
 @pytest.mark.asyncio
-async def test_post_insert_audit_failure_never_restores_reserved_inventory():
+async def test_post_insert_audit_failure_never_restores_reserved_inventory(monkeypatch):
+    monkeypatch.setattr("app.repositories.pricing.PricingRepository.get_active_commission", AsyncMock(return_value=None))
     from app.services.order_service import OrderService
     service = OrderService(MagicMock())
     product = {"farmer_id": "farmer", "product_name": "Paddy", "quantity_available": 3, "location": "Madurai", "buyer_price_per_unit_paise": 120, "farmer_payout_per_unit_paise": 100, "commission_per_unit_paise": 20, "commission_percentage": 2000}
@@ -103,7 +105,7 @@ async def test_post_insert_audit_failure_never_restores_reserved_inventory():
     service.order_repo.generate_order_number = AsyncMock(return_value="TEST-1")
     service.order_repo.create = AsyncMock(return_value="order")
     service.audit_service.log = AsyncMock(side_effect=RuntimeError("synthetic audit failure"))
-    with patch("app.repositories.farmers.FarmerRepository.find_by_user_id", AsyncMock(return_value={"approval_status": "APPROVED"})):
+    with patch("app.repositories.farmers.FarmerRepository.find_by_user_id", AsyncMock(return_value=complete_farmer())):
         with pytest.raises(RuntimeError): await service.create_order("buyer", "product", 1)
     service.order_repo.create.assert_awaited_once()
     service.product_repo.restore_quantity.assert_not_awaited()

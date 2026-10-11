@@ -4,6 +4,7 @@ VayalConnect Backend — Pricing Repository
 Pricing policies, commission configs, and immutable pricing snapshots.
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -13,10 +14,10 @@ import re
 
 class PricingRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.policies = db["pricing_policies"]
-        self.commission_configs = db["commission_configs"]
-        self.snapshots = db["pricing_snapshots"]
-        self.market_prices = db["market_prices"]
+        self.policies = collection(db, "pricing_policies")
+        self.commission_configs = collection(db, "commission_configs")
+        self.snapshots = collection(db, "pricing_snapshots")
+        self.market_prices = collection(db, "market_prices")
 
     # ============================================================
     # Pricing Policies
@@ -69,7 +70,7 @@ class PricingRepository:
 
     async def supersede_active_commission(self) -> bool:
         """Mark the current active commission as SUPERSEDED."""
-        result = await self.commission_configs.update_one(
+        result = await self.commission_configs.update_many(
             {"status": "ACTIVE"},
             {"$set": {
                 "status": "SUPERSEDED",
@@ -126,6 +127,8 @@ class PricingRepository:
 
             # Unique key by commodity, market, and arrival_date
             query: Dict[str, Any] = {
+                "state": p_copy.get("state", ""), "district": p_copy.get("district", ""),
+                "variety": p_copy.get("variety", ""), "grade": p_copy.get("grade", ""),
                 "commodity": {"$regex": f"^{re.escape(p_copy.get('commodity', ''))}$", "$options": "i"},
                 "market": {"$regex": f"^{re.escape(p_copy.get('market', ''))}$", "$options": "i"},
             }
@@ -178,13 +181,13 @@ class PricingRepository:
     ) -> List[Dict[str, Any]]:
         query: Dict[str, Any] = {}
         if commodity:
-            query["commodity"] = {"$regex": re.escape(commodity), "$options": "i"}
+            query["commodity"] = {"$regex": f"^{re.escape(commodity)}$", "$options": "i"}
         if market:
-            query["market"] = {"$regex": re.escape(market), "$options": "i"}
+            query["market"] = {"$regex": f"^{re.escape(market)}$", "$options": "i"}
         if state:
-            query["state"] = {"$regex": re.escape(state), "$options": "i"}
+            query["state"] = {"$regex": f"^{re.escape(state)} $".replace(" $", "$"), "$options": "i"}
         if district:
-            query["district"] = {"$regex": re.escape(district), "$options": "i"}
+            query["district"] = {"$regex": f"^{re.escape(district)} $".replace(" $", "$"), "$options": "i"}
         cursor = (
             self.market_prices.find(query)
             .sort([("arrival_date", -1), ("retrieved_at", -1)])

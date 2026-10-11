@@ -53,7 +53,12 @@ async def update_profile(
     user_repo = UserRepository(db)
     update_fields = {k: v for k, v in data.model_dump(exclude_none=True).items()}
     if update_fields:
-        await user_repo.update(current_user["id"], update_fields)
+        from pymongo.errors import DuplicateKeyError
+        from app.core.exceptions import ConflictError
+        try:
+            await user_repo.update(current_user["id"], update_fields)
+        except DuplicateKeyError:
+            raise ConflictError("PHONE_ALREADY_EXISTS", "This phone is already associated with another account.") from None
     return APIResponse(
         success=True,
         data={"message": "Profile updated successfully."},
@@ -95,3 +100,12 @@ async def change_language(
         data={"message": "Language preference updated."},
         request_id=get_request_id(request),
     )
+
+
+from app.schemas.location import Coordinates
+from datetime import datetime, timezone
+
+@router.put("/me/location", response_model=APIResponse)
+async def save_location(data: Coordinates, request: Request, current_user: dict = Depends(get_current_user), db=Depends(get_database)):
+    await UserRepository(db).update(current_user["id"], {**data.model_dump(), "location_updated_at": datetime.now(timezone.utc)})
+    return APIResponse(success=True, data={"saved": True}, request_id=get_request_id(request))

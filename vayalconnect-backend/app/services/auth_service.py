@@ -211,6 +211,7 @@ class AuthService:
                 "email": user["email"],
                 "role": user.get("role"),
                 "preferred_language": user.get("preferred_language", "en"),
+                "phone": user.get("phone", ""), "address": user.get("address", ""), "area_location": user.get("area_location", ""),
             },
         }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Base configuration for local development over HTTP without TLS/SSL certificate -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Explicitly declare local development domains and IP addresses -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Computer Wi-Fi LAN IP for physical device testing -->
+        <domain includeSubdomains="true">10.20.18.110</domain>
+        <domain includeSubdomains="true">10.241.69.227</domain>
+        <domain includeSubdomains="true">10.196.30.227</domain>
+        <domain includeSubdomains="true">100.86.121.15</domain>
+    </domain-config>
+</network-security-config>

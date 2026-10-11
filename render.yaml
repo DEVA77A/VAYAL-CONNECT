@@ -2,7 +2,6 @@ services:
   - type: web
     name: vayalconnect-backend
     runtime: docker
-    rootDir: vayalconnect-backend
     dockerfilePath: vayalconnect-backend/Dockerfile
     dockerContext: vayalconnect-backend
     envVars:

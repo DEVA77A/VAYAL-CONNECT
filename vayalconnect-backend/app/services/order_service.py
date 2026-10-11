@@ -6,10 +6,11 @@ financial snapshot embedding, and state machine transitions.
 """
 
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
+from app.core.transactions import transactional
 from app.repositories.orders import OrderRepository
 from app.repositories.products import ProductRepository
 from app.repositories.users import UserRepository
@@ -37,6 +38,7 @@ class OrderService:
         self.pricing_repo = PricingRepository(db)
         self.audit_service = AuditService(db)
 
+    @transactional
     async def create_order(
         self,
         buyer_id: str,
@@ -83,6 +85,9 @@ class OrderService:
         if not farmer_profile or farmer_profile.get("approval_status") != "APPROVED":
             raise FarmerNotApprovedError()
 
+        from app.services.profile_completeness import missing_farmer_fields
+        if missing_farmer_fields(farmer_profile):
+            raise FarmerNotApprovedError()
         application = farmer_profile.get("application") or {}
         if fulfillment_method == "DELIVERY" and not application.get("delivery_available", False):
             raise ValidationError("This farmer does not offer delivery.")
@@ -104,6 +109,8 @@ class OrderService:
 
         order_persisted = False
         try:
+            from app.services.delivery_service import estimate_delivery
+            delivery_estimate = estimate_delivery(application.get("coordinates"), delivery_address.get("coordinates") if delivery_address else None, product.get("harvest_date"), fulfillment_method)
             # Use the reserved document so a simultaneous listing edit cannot change this checkout.
             if isinstance(reserved, dict):
                 product = reserved
@@ -133,12 +140,16 @@ class OrderService:
             buyer_name = buyer["name"] if buyer else "Unknown"
 
             # Create order document with complete financial snapshot
+            from app.core.config import settings
             order_doc = {
+                "reservation_expires_at": datetime.now(timezone.utc) + timedelta(minutes=settings.ORDER_RESERVATION_MINUTES),
                 "order_number": order_number,
                 "fulfillment_method": fulfillment_method,
                 "delivery_address": delivery_address,
                 "pickup_address": pickup_address if fulfillment_method == "PICKUP" else None,
                 "delivery_fee_paise": 0,
+                "delivery_estimate": delivery_estimate,
+                "farmer_base_total_paise": farmer_total,
                 "commission_config_id": product.get("commission_config_id"),
                 "commission_config_version": product.get("commission_config_version"),
                 "pricing_mode": product.get("pricing_mode"),
@@ -201,20 +212,21 @@ class OrderService:
         return await self.order_repo.find_by_id(order_id)
 
     async def list_buyer_orders(
-        self, buyer_id: str, page: int = 1, limit: int = 50
+        self, buyer_id: str, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        return await self.order_repo.list_by_buyer(buyer_id, page, limit)
+        return await self.order_repo.list_by_buyer(buyer_id, page, limit, filters)
 
     async def list_farmer_orders(
-        self, farmer_id: str, page: int = 1, limit: int = 50
+        self, farmer_id: str, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        return await self.order_repo.list_by_farmer(farmer_id, page, limit)
+        return await self.order_repo.list_by_farmer(farmer_id, page, limit, filters)
 
     async def list_all_orders(
-        self, status: Optional[str] = None, page: int = 1, limit: int = 50
+        self, status: Optional[str] = None, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        return await self.order_repo.list_all(status, page, limit)
+        return await self.order_repo.list_all(status, page, limit, filters)
 
+    @transactional
     async def update_order_status(
         self, order_id: str, new_status: str, actor_id: str, actor_role: str
     ) -> bool:
@@ -223,6 +235,18 @@ class OrderService:
         if not order:
             raise NotFoundError("Order")
 
+        if actor_role not in ("ADMIN", "FARMER") or (actor_role == "FARMER" and order["farmer_id"] != actor_id):
+            raise ForbiddenError("You may only fulfill your own farm orders.")
+        if new_status not in ("CONFIRMED", "PROCESSING", "SHIPPED", "COMPLETED"):
+            raise ForbiddenError("Payment and cancellation transitions use their dedicated operations.")
+        if new_status == "COMPLETED" and order["order_status"] == "PENDING_PAYMENT":
+            raise InvalidStateTransitionError(order["order_status"], new_status)
+        if order.get("payment_status") != "CAPTURED":
+            raise ValidationError("Verified payment is required before fulfillment.")
+        if new_status == "SHIPPED" and order.get("fulfillment_method") != "DELIVERY":
+            raise ValidationError("Pickup orders cannot be shipped.")
+        if new_status == "COMPLETED" and order.get("fulfillment_method") == "DELIVERY" and order["order_status"] != "SHIPPED":
+            raise ValidationError("Delivery orders must be shipped before completion.")
         current_status = order["order_status"]
         valid_transitions = VALID_ORDER_TRANSITIONS.get(
             OrderStatus(current_status), []
@@ -236,7 +260,7 @@ class OrderService:
         if new_status_enum not in valid_transitions:
             raise InvalidStateTransitionError(current_status, new_status)
 
-        success = await self.order_repo.update_status(order_id, new_status)
+        success = await self.order_repo.transition(order_id, current_status, new_status)
 
         if success:
             await self.audit_service.log(
@@ -250,6 +274,7 @@ class OrderService:
 
         return success
 
+    @transactional
     async def cancel_order(
         self, order_id: str, actor_id: str, actor_role: str, reason: Optional[str] = None
     ):
@@ -258,35 +283,20 @@ class OrderService:
         if not order:
             raise NotFoundError("Order")
 
-        # Only PENDING_PAYMENT or CONFIRMED orders can be cancelled
-        if order["order_status"] not in (
-            OrderStatus.PENDING_PAYMENT.value,
-            OrderStatus.CONFIRMED.value,
-        ):
-            raise InvalidStateTransitionError(
-                order["order_status"], OrderStatus.CANCELLED.value
-            )
-
-        # Ownership check for buyer
-        if actor_role == "BUYER" and order["buyer_id"] != actor_id:
-            raise ForbiddenError("You can only cancel your own orders.")
-
-        if actor_role not in ("BUYER", "ADMIN"):
-            raise ForbiddenError("Only the owning buyer or an administrator may cancel an order.")
-
-        # Restore quantity
-        await self.product_repo.restore_quantity(
-            order["product_id"], order["quantity"]
-        )
-
-        # Update status
-        await self.order_repo.update_status(
-            order_id,
-            OrderStatus.CANCELLED.value,
-            cancellation_reason=reason,
-            cancelled_at=datetime.now(timezone.utc),
-            cancelled_by=actor_id,
-        )
+        if actor_role not in ("BUYER", "FARMER", "ADMIN"):
+            raise ForbiddenError("Cancellation is unavailable for this role.")
+        owner = order.get("buyer_id") if actor_role == "BUYER" else order.get("farmer_id")
+        if actor_role != "ADMIN" and owner != actor_id:
+            raise ForbiddenError("You may only cancel your own orders.")
+        if order["order_status"] == "CANCELLED":
+            return
+        if order["order_status"] != "PENDING_PAYMENT" or order.get("payment_status") == "CAPTURED":
+            raise ValidationError("Only unpaid orders can be cancelled. Paid orders require a verified gateway refund before releasing stock.")
+        changed = await self.order_repo.transition(order_id, "PENDING_PAYMENT", "CANCELLED",
+            cancellation_reason=reason, cancelled_at=datetime.now(timezone.utc), cancelled_by=actor_id)
+        if not changed:
+            raise InvalidStateTransitionError(order["order_status"], "CANCELLED")
+        await self.product_repo.restore_quantity(order["product_id"], order["quantity"])
 
         await self.audit_service.log(
             actor_id=actor_id,
@@ -296,3 +306,14 @@ class OrderService:
             entity_id=order_id,
             details={"reason": reason},
         )
+
+
+    async def expire_reservations(self):
+        """Bounded worker; cancellation transaction guarantees one stock release."""
+        candidates = await self.db.orders.find({"order_status": "PENDING_PAYMENT", "reservation_expires_at": {"$lte": datetime.now(timezone.utc)}}).limit(50).to_list(50)
+        for order in candidates:
+            try:
+                await self.cancel_order(str(order["_id"]), "reservation-sweeper", "ADMIN", "Unpaid stock reservation expired.")
+            except (ValidationError, InvalidStateTransitionError):
+                # A capture or another cancellation won the race; do not release twice.
+                continue

@@ -1,3 +1,4 @@
+from tests.conftest import complete_farmer
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from app.api.deps import get_approved_farmer
@@ -17,7 +18,7 @@ async def test_unapproved_farmer_cannot_publish(state):
 @pytest.mark.asyncio
 async def test_approved_farmer_can_publish():
     user = {"id": "test", "role": "FARMER", "is_active": True, "email_verified": True}
-    with patch("app.repositories.farmers.FarmerRepository.find_by_user_id", AsyncMock(return_value={"approval_status": "APPROVED"})):
+    with patch("app.repositories.farmers.FarmerRepository.find_by_user_id", AsyncMock(return_value=complete_farmer())):
         assert await get_approved_farmer(user, MagicMock()) == user
 
 
@@ -49,7 +50,9 @@ async def test_signature_alone_cannot_mark_order_paid(change):
 @pytest.mark.asyncio
 async def test_provisioning_never_promotes_existing_buyer():
     from scripts.seed_admin import seed_admin
-    with patch("scripts.seed_admin.connect_db", AsyncMock()), patch("scripts.seed_admin.close_db", AsyncMock()), patch("scripts.seed_admin.get_database", return_value=MagicMock()), patch("scripts.seed_admin.UserRepository") as repo:
+    with patch("scripts.seed_admin.connect_db", AsyncMock()), patch("scripts.seed_admin.close_db", AsyncMock()), patch("scripts.seed_admin.get_database", return_value=AsyncMock()) as database, patch("scripts.seed_admin.collection") as locks, patch("scripts.seed_admin.UserRepository") as repo:
+        locks.return_value.update_one = AsyncMock()
+        database.return_value.__getitem__.return_value.update_one = AsyncMock()
         repo.return_value.find_by_email = AsyncMock(return_value={"role": "BUYER"})
         repo.return_value.create = AsyncMock()
         with pytest.raises(ValidationError):
@@ -90,3 +93,40 @@ def test_live_gateway_keys_are_disabled():
     from app.integrations.razorpay import RazorpayPaymentProvider
     with patch("app.integrations.razorpay.settings.RAZORPAY_KEY_ID", "rzp_live_synthetic"), patch("app.integrations.razorpay.settings.RAZORPAY_KEY_SECRET", "unit-test-only"):
         assert RazorpayPaymentProvider()._configured is False
+
+
+def test_new_passwords_reject_bcrypt_truncation_and_weak_reset():
+    from app.schemas.auth import ResetPasswordRequest
+    from app.core.security import hash_password
+    from pydantic import ValidationError as SchemaValidationError
+    with pytest.raises(ValueError): hash_password('A1'+'x'*71)
+    with pytest.raises(SchemaValidationError): ResetPasswordRequest(email='test@example.invalid',otp='123456',new_password='weakpassword')
+    with pytest.raises(SchemaValidationError): ResetPasswordRequest(email='test@example.invalid',otp='123456',new_password='A1'+'x'*71)
+
+
+def test_production_settings_require_private_strong_jwt_without_echoing_inputs():
+    from app.core.config import Settings
+    from cryptography.fernet import Fernet
+    from pydantic import ValidationError as SchemaValidationError
+    with pytest.raises(SchemaValidationError) as error:
+        Settings(APP_ENV='production',JWT_SECRET='unsafe-short-fixture',ENCRYPTION_KEY=Fernet.generate_key().decode())
+    assert 'unsafe-short-fixture' not in str(error.value)
+    with pytest.raises(SchemaValidationError):
+        Settings(APP_ENV='production',JWT_SECRET='your-super-secret-jwt-key-change-this-in-production',ENCRYPTION_KEY=Fernet.generate_key().decode())
+    with pytest.raises(SchemaValidationError):
+        Settings(APP_ENV='production',JWT_SECRET='PrivateFixture123!'*4,ENCRYPTION_KEY='invalid-fixture-key')
+
+
+@pytest.mark.asyncio
+async def test_validation_responses_never_echo_submitted_password():
+    import httpx
+    from app.main import create_app
+    from app.core.database import get_database
+    app=create_app();app.dependency_overrides[get_database]=lambda:AsyncMock()
+    from tests.test_registration_contract import registration_payload
+    payload=registration_payload();payload['password']='private-invalid-password-marker'
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://isolated-test') as client:
+        response=await client.post('/api/v1/auth/register',json=payload)
+    assert response.status_code==422
+    assert payload['password'] not in response.text
+    assert response.json()['error']['code']=='VALIDATION_ERROR'

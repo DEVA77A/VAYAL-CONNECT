@@ -10,12 +10,22 @@ from typing import Literal
 from datetime import datetime
 
 
+from app.schemas.location import Coordinates
+
+
 class DeliveryAddress(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     recipient_name: str = Field(..., min_length=2, max_length=200)
     phone: str = Field(..., pattern=r"^[6-9][0-9]{9}$")
     address: str = Field(..., min_length=10, max_length=500)
     postal_code: str = Field(..., pattern=r"^[1-9][0-9]{5}$")
+    building: Optional[str] = Field(None, max_length=100)
+    street: Optional[str] = Field(None, max_length=200)
+    locality: Optional[str] = Field(None, max_length=200)
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    instructions: str = Field("", max_length=500)
+    coordinates: Optional[Coordinates] = None
 
 
 class CreateOrderRequest(BaseModel):
@@ -35,18 +45,25 @@ class CreateOrderRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_fulfillment(self):
-        if self.fulfillment_method == "DELIVERY" and self.delivery_address is None:
-            raise ValueError("A delivery address is required.")
+        if self.fulfillment_method == "DELIVERY" and (self.delivery_address is None or self.delivery_address.coordinates is None):
+            raise ValueError("A delivery address with actual destination coordinates is required.")
         if self.fulfillment_method == "PICKUP" and self.delivery_address is not None:
             raise ValueError("Pickup must not include a delivery address.")
         return self
 
 
 class FulfillmentResponse(BaseModel):
+    reservation_expires_at: Optional[datetime] = None
     fulfillment_method: Optional[str] = None
     delivery_address: Optional[DeliveryAddress] = None
     pickup_address: Optional[str] = None
     delivery_fee_paise: Optional[int] = None
+    delivery_estimate: Optional[dict] = None
+    farmer_base_total_paise: Optional[int] = None
+    commission_total_paise: Optional[int] = None
+    commission_percentage_bps: Optional[int] = None
+    cancellation_reason: Optional[str] = None
+    payment_status: str = "PENDING"
 
 
 class BuyerOrderResponse(FulfillmentResponse):

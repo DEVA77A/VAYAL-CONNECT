@@ -5,6 +5,7 @@ Immutable audit logging for security-critical actions.
 NEVER logs passwords, OTPs, API keys, full bank account numbers, or secrets.
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class AuditService:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["audit_logs"]
+        self.collection = collection(db, "audit_logs")
 
     async def log(
         self,
@@ -47,7 +48,7 @@ class AuditService:
             })
         except Exception as e:
             # Audit logging failure should never crash the application
-            logger.error(f"Audit log failure: {e}")
+            logger.error("Audit log failure category=%s", type(e).__name__)
 
     def _sanitize(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Remove sensitive fields from audit details."""

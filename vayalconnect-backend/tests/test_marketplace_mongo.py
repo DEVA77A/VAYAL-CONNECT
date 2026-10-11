@@ -18,7 +18,7 @@ from app.core.security import create_refresh_token
 @pytest.mark.skipif(os.environ.get("VAYALCONNECT_RUN_MONGO_TESTS") != "1", reason="Opt-in local isolated MongoDB")
 @pytest.mark.asyncio
 async def test_visibility_finance_inventory_and_revocation_with_real_mongo():
-    client = AsyncIOMotorClient("mongodb://127.0.0.1:27017", tz_aware=True, serverSelectionTimeoutMS=5000)
+    client = AsyncIOMotorClient(os.environ.get("VAYALCONNECT_TEST_MONGO_URI", "mongodb://127.0.0.1:27019/?replicaSet=vayal_verification"), tz_aware=True, serverSelectionTimeoutMS=5000)
     name = "vayalconnect_milestone_checks_" + uuid.uuid4().hex
     db = client[name]
     now = datetime.now(timezone.utc)

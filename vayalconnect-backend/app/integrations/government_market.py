@@ -1,3 +1,4 @@
+import asyncio
 """
 VayalConnect Backend — Government Market Price Integration
 
@@ -15,6 +16,8 @@ IMPORTANT:
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from urllib.parse import urlparse
 import httpx
 import logging
 
@@ -117,7 +120,7 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
         if not records:
             return None
 
-        return records[0]
+        return max(records, key=lambda r: r["arrival_date"])
 
     async def search_prices(
         self,
@@ -141,6 +144,9 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
                 "message": "Government Market API key not configured in environment.",
             }
 
+        if urlparse(self.base_url).hostname != "api.data.gov.in" or urlparse(self.base_url).scheme != "https":
+            return {"records": [], "count": 0, "total": 0, "live": False, "message": "Official HTTPS market endpoint is required."}
+
         params: Dict[str, Any] = {
             "api-key": self.api_key,
             "format": "json",
@@ -161,6 +167,10 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
             # Connect with a reasonable timeout; never log or expose self.api_key
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(self.base_url, params=params)
+                if response.status_code == 429 or response.status_code in (502, 503, 504):
+                    # One bounded retry; never retry indefinitely or expose the key URL.
+                    await asyncio.sleep(1)
+                    response = await client.get(self.base_url, params=params)
                 response.raise_for_status()
                 data = response.json()
 
@@ -175,7 +185,9 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
                     "message": "Government Market API returned an unexpected response format.",
                 }
 
-            raw_records = data.get("records", [])
+            if not isinstance(data.get("records"), list) or str(data.get("status", "ok")).lower() not in ("ok", "success"):
+                return {"records": [], "count": 0, "total": 0, "live": False, "message": "Government API returned an invalid or rejected response."}
+            raw_records = data["records"]
             total = int(data.get("total", len(raw_records)))
 
             normalized_records = [
@@ -183,7 +195,7 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
             ]
             # Filter out records where commodity or prices are completely absent
             valid_records = [
-                r for r in normalized_records if r["commodity"] and r["modal_price_paise"] > 0
+                r for r in normalized_records if self.matches(r, commodity, market, state, district)
             ]
 
             return {
@@ -191,7 +203,7 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
                 "count": len(valid_records),
                 "total": total,
                 "live": True,
-                "message": "Live government mandi rates retrieved successfully.",
+                "message": "Official records retrieved; check their reported dates." if valid_records else "No matching official market price found.",
             }
 
         except httpx.ConnectError:
@@ -295,20 +307,24 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
         # A missing modal price is unavailable; never estimate an official rate.
 
         # Unit in AGMARKNET is always Quintal (1 Quintal = 100 kg)
-        unit = "Quintal"
+        unit = str(self._get_val(record, "unit", "price_unit") or "Quintal").strip()
         min_price_paise = rupees_to_paise(min_price) if min_price > 0 else 0
         max_price_paise = rupees_to_paise(max_price) if max_price > 0 else 0
         modal_price_paise = rupees_to_paise(modal_price) if modal_price > 0 else 0
 
         # Calculate per-kilogram rate
-        price_per_kg_rupees = round(modal_price / 100.0, 2) if modal_price > 0 else 0.0
-        price_per_kg_paise = round(modal_price_paise / 100) if modal_price_paise > 0 else 0
+        factors = {"quintal": 100, "qtl": 100, "kg": 1, "kilogram": 1, "ton": 1000, "tonne": 1000}
+        factor = factors.get(unit.lower())
+        price_per_kg_paise = int((Decimal(modal_price_paise) / factor).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) if factor else 0
+        price_per_kg_rupees = Decimal(price_per_kg_paise) / 100
 
         # Unique deterministic price ID for tracking
         date_str = arrival_date.isoformat() if arrival_date else "unknown"
         safe_comm = commodity.lower().replace(" ", "_").replace("(", "").replace(")", "")
         safe_mkt = market.lower().replace(" ", "_")
-        price_id = f"mp_{safe_comm}_{safe_mkt}_{date_str}"
+        import hashlib
+        identity = "|".join((commodity, state, district, market, variety, grade, date_str))
+        price_id = "mp_" + hashlib.sha256(identity.casefold().encode()).hexdigest()[:32]
 
         return {
             "price_id": price_id,
@@ -321,7 +337,9 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
             "min_price_paise": min_price_paise,
             "max_price_paise": max_price_paise,
             "modal_price_paise": modal_price_paise,
-            "modal_price_verified": modal_price_paise > 0,
+            "modal_price_verified": modal_price_paise > 0 and 0 < min_price_paise <= modal_price_paise <= max_price_paise,
+            "source_url": self.base_url,
+            "stale": arrival_date is None or (datetime.now(timezone.utc).date() - arrival_date).days > 1,
             "min_price_display": f"₹{min_price:,.2f}",
             "max_price_display": f"₹{max_price:,.2f}",
             "modal_price_display": f"₹{modal_price:,.2f}",
@@ -332,6 +350,24 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
             "source": "data.gov.in AGMARKNET",
             "retrieved_at": datetime.now(timezone.utc),
         }
+
+    @staticmethod
+    def matches(record, commodity=None, market=None, state=None, district=None):
+        if not isinstance(record, dict) or record.get("modal_price_verified") is not True:
+            return False
+        if record.get("source") != "data.gov.in AGMARKNET" or not record.get("commodity") or not record.get("market"):
+            return False
+        minimum, modal, maximum = (record.get(k) for k in ("min_price_paise", "modal_price_paise", "max_price_paise"))
+        if not all(type(v) is int and v > 0 for v in (minimum, modal, maximum)) or not minimum <= modal <= maximum:
+            return False
+        for field, expected in (("commodity", commodity), ("market", market), ("state", state), ("district", district)):
+            if expected and str(record.get(field, "")).strip().casefold() != expected.strip().casefold():
+                return False
+        try:
+            arrival = datetime.fromisoformat(str(record["arrival_date"])[:10]).date()
+            return arrival <= datetime.now(timezone.utc).date() and str(record.get("unit", "")).lower() in ("quintal", "qtl", "kg", "kilogram", "ton", "tonne")
+        except (KeyError, ValueError, TypeError):
+            return False
 
     def _get_val(self, record: Dict[str, Any], *candidate_keys: str) -> Any:
         """Helper to find key by exact name or normalized name."""
@@ -361,15 +397,16 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
                 continue
         return None
 
-    def _parse_price(self, value: Any) -> float:
+    def _parse_price(self, value: Any) -> Decimal:
         """Safely parse a price value to float."""
         if value is None:
             return 0.0
         try:
             cleaned = str(value).replace(",", "").replace("₹", "").strip()
-            return max(0.0, float(cleaned))
-        except (ValueError, TypeError):
-            return 0.0
+            value = Decimal(cleaned)
+            return value if value.is_finite() and value > 0 else Decimal(0)
+        except (ValueError, TypeError, InvalidOperation):
+            return Decimal(0)
 
 
 # Singleton provider

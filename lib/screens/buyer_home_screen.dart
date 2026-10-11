@@ -1,403 +1,180 @@
+import '../utils/language_rebuild.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/product_models.dart';
-import '../services/product_service.dart';
+import '../services/api_client.dart';
 import '../services/session_manager.dart';
-import '../theme/app_theme.dart';
-import '../widgets/bottom_nav_bar.dart';
-import '../widgets/demo_banner.dart';
-import '../widgets/produce_card.dart';
+import '../utils/commerce_strings.dart';
+import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
+import 'addresses_screen.dart';
 import 'market_prices_screen.dart';
 import 'orders_screen.dart';
 import 'product_details_screen.dart';
 import 'profile_screen.dart';
 
-/// Buyer Marketplace & Product Discovery Screen
-///
-/// Implements Stitch Screen d3d8ba1466884db38886934787122590
 class BuyerHomeScreen extends StatefulWidget {
-  const BuyerHomeScreen({Key? key}) : super(key: key);
-
+  final ApiClient? api;
+  const BuyerHomeScreen({super.key, this.api});
   @override
   State<BuyerHomeScreen> createState() => _BuyerHomeScreenState();
 }
 
-class _BuyerHomeScreenState extends State<BuyerHomeScreen> {
-  final _productService = ProductService();
-  final _searchController = TextEditingController();
-
-  int _currentNavIndex = 0;
-  bool _isLoading = true;
-  String? _errorMessage;
-  String _selectedCategory = 'அனைத்தும்';
-  List<BuyerProduct> _allProducts = [];
-  List<BuyerProduct> _filteredProducts = [];
-
-  final List<String> _categories = [
-    'அனைத்தும்',
-    'தானியங்கள்',
-    'காய்கறிகள்',
-    'பழங்கள்',
-    'மசாலா',
-  ];
-
+class _BuyerHomeScreenState extends State<BuyerHomeScreen>
+    with LanguageRebuild<BuyerHomeScreen> {
+  late final _api = widget.api ?? ApiClient();
+  final _search = TextEditingController();
+  Timer? _debounce;
+  int _generation = 0, _page = 1, _total = 0;
+  bool _busy = true;
+  String? _error;
+  String _category = '', _sort = 'newest';
+  final _items = <BuyerProduct>[];
   @override
   void initState() {
     super.initState();
-    _loadProduce();
+    _load();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
-    _productService.dispose();
+    _debounce?.cancel();
+    _search.dispose();
+    if (widget.api == null) _api.dispose();
     super.dispose();
   }
 
-  Future<void> _loadProduce() async {
+  Future<void> _load({bool more = false}) async {
+    final generation = ++_generation;
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _busy = true;
+      _error = null;
     });
     try {
-      final items = await _productService.fetchBuyerProducts();
-      if (mounted) {
-        setState(() {
-          _allProducts = items;
-          _applyFilters();
-          _isLoading = false;
-        });
-      }
+      final page = more ? _page + 1 : 1;
+      final query = Uri(queryParameters: {
+        'page': '$page',
+        'limit': '20',
+        'sort': _sort,
+        if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+        if (_category.isNotEmpty) 'category': _category
+      }).query;
+      final data = await _api.request('/api/v1/products/?$query');
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        if (!more) _items.clear();
+        _items.addAll((data['items'] as List)
+            .map((p) => BuyerProduct.fromJson(Map<String, dynamic>.from(p))));
+        _page = page;
+        _total = data['total'] as int;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-          _isLoading = false;
-        });
+      if (mounted && generation == _generation) {
+        setState(() => _error = e.toString());
       }
+    } finally {
+      if (mounted && generation == _generation) setState(() => _busy = false);
     }
   }
 
-  void _applyFilters() {
-    final query = _searchController.text.trim().toLowerCase();
-    setState(() {
-      _filteredProducts = _allProducts.where((p) {
-        final matchesQuery = query.isEmpty ||
-            p.productName.toLowerCase().contains(query) ||
-            p.location.toLowerCase().contains(query) ||
-            (p.farmerName != null && p.farmerName!.toLowerCase().contains(query));
-
-        final matchesCategory = _selectedCategory == 'அனைத்தும்' ||
-            p.category.toLowerCase().contains(_selectedCategory.toLowerCase());
-
-        return matchesQuery && matchesCategory;
-      }).toList();
-    });
-  }
-
-  void _onBottomNavTapped(int index) {
-    if (index == _currentNavIndex) return;
-
-    switch (index) {
-      case 0:
-        // Already on Marketplace
-        break;
-      case 1:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const MarketPricesScreen()),
-        );
-        break;
-      case 2:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const OrdersScreen()),
-        );
-        break;
-      case 3:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        );
-        break;
-    }
-  }
-
+  void _open(Widget screen) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   @override
-  Widget build(BuildContext context) {
-    final session = SessionManager();
-
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundWarm,
-      appBar: VayalAppBar(
-        title: session.isTamil ? 'விளைபொருட்கள் சந்தை' : 'Farm Marketplace',
-        subtitle: session.isTamil ? 'நேரடி உழவர் கொள்முதல்' : 'Direct Farmer Sourcing',
-      ),
+  Widget build(BuildContext context) => Scaffold(
+      appBar: VayalAppBar(title: S.t('Marketplace')),
       body: RefreshIndicator(
-        color: AppTheme.primaryGreen,
-        onRefresh: _loadProduce,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Demo Banner
-              if (session.isDemoMode) const DemoModeBanner(),
-
-              // Delivery Location Banner
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 16, color: AppTheme.primaryGreen),
-                        const SizedBox(width: 4),
-                        Text(
-                          session.isTamil ? 'விநியோகம்: மதுரை (Madurai, TN)' : 'Deliver to: Madurai, TN',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                        ),
-                      ],
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppTheme.softGreen,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        session.isTamil ? '24 மணி நேர டெலிவரி' : '24h Delivery',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // Search Bar
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (_) => _applyFilters(),
-                  decoration: InputDecoration(
-                    hintText: session.isTamil ? 'பயிர் அல்லது விவசாயி தேடுக...' : 'Search crop or farmer...',
-                    prefixIcon: const Icon(Icons.search, color: AppTheme.textSecondary),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              _applyFilters();
-                            },
-                          )
-                        : const Icon(Icons.mic, color: AppTheme.primaryGreen),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Horizontal Category Filter Pills
-              SizedBox(
-                height: 38,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final cat = _categories[index];
-                    final isSelected = _selectedCategory == cat;
-                    return InkWell(
-                      onTap: () {
-                        setState(() {
-                          _selectedCategory = cat;
-                          _applyFilters();
-                        });
-                      },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppTheme.primaryGreen : Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: isSelected ? AppTheme.primaryGreen : AppTheme.cardBorder,
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          cat,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isSelected ? Colors.white : AppTheme.textPrimary,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Direct Farmer Sourcing Trust Banner
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceCream,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.accentGold.withOpacity(0.35)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.verified_user_outlined, size: 22, color: AppTheme.accentGold),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            session.isTamil
-                                ? 'நேரடி உழவர் கொள்முதல் • 0% கமிஷன்'
-                                : 'Direct Farm Sourcing • 0% Middleman',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                          Text(
-                            session.isTamil
-                                ? 'எடைச் சீட்டு சரிபார்க்கப்பட்டு பாதுகாப்பான பணம்'
-                                : 'Digital weighbridge slips with escrow protection',
-                            style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              // Produce Listing Count
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      session.isTamil ? 'கிடைக்கும் புதிய அறுவடைகள்' : 'Available Farm Harvests',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                    ),
-                    Text(
-                      '${_filteredProducts.length} பயிர்கள்',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              if (_isLoading)
-                const Center(
+          onRefresh: _load,
+          child: ListView(padding: const EdgeInsets.all(16), children: [
+            Text(
+                '${S.t('Welcome')}, ${SessionManager().currentUser?.name ?? ''}',
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, children: [
+              ActionChip(
+                  label: Text(S.t('Orders')),
+                  avatar: const Icon(Icons.receipt_long),
+                  onPressed: () => _open(const OrdersScreen())),
+              ActionChip(
+                  label: Text(S.t('Addresses')),
+                  avatar: const Icon(Icons.location_on_outlined),
+                  onPressed: () => _open(const AddressesScreen())),
+              ActionChip(
+                  label: Text(S.t('Market prices')),
+                  onPressed: () => _open(const MarketPricesScreen())),
+              ActionChip(
+                  label: Text(S.t('Profile')),
+                  onPressed: () => _open(const ProfileScreen())),
+            ]),
+            const SizedBox(height: 16),
+            TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                    labelText: S.t('Search crops'),
+                    prefixIcon: const Icon(Icons.search)),
+                onChanged: (_) {
+                  _debounce?.cancel();
+                  _debounce =
+                      Timer(const Duration(milliseconds: 400), () => _load());
+                }),
+            const SizedBox(height: 12),
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              DropdownButton<String>(
+                  isExpanded: true,
+                  value: _category,
+                  items: ['', 'Grains', 'Vegetables', 'Fruits', 'Spices']
+                      .map((v) => DropdownMenuItem(
+                          value: v,
+                          child: Text(S.t(v.isEmpty ? 'All crops' : v))))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() => _category = v!);
+                    _load();
+                  }),
+              DropdownButton<String>(
+                  isExpanded: true,
+                  value: _sort,
+                  items: {
+                    'newest': 'Newest',
+                    'price_asc': 'Price: low to high',
+                    'price_desc': 'Price: high to low'
+                  }
+                      .entries
+                      .map((e) => DropdownMenuItem(
+                          value: e.key,
+                          child: Text(S.t(e.value),
+                              maxLines: 1, overflow: TextOverflow.ellipsis)))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() => _sort = v!);
+                    _load();
+                  }),
+            ]),
+            if (_busy) const LinearProgressIndicator(),
+            if (_error != null) ErrorPanel(_error!, () => _load()),
+            if (!_busy && _error == null && _items.isEmpty)
+              Card(
                   child: Padding(
-                    padding: EdgeInsets.all(28),
-                    child: CircularProgressIndicator(color: AppTheme.primaryGreen),
-                  ),
-                )
-              else if (_errorMessage != null)
-                Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.wifi_off_rounded, color: AppTheme.errorRed, size: 36),
-                      const SizedBox(height: 8),
-                      Text(
-                        session.isTamil ? 'இணைப்புப் பிழை ஏற்பட்டது' : 'Connection Error',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton.icon(
-                        onPressed: _loadProduce,
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: Text(session.isTamil ? 'மீண்டும் முயற்சிக்கவும்' : 'Retry'),
-                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-                      ),
-                    ],
-                  ),
-                )
-              else if (_filteredProducts.isEmpty)
-                Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.cardBorder),
-                  ),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        const Icon(Icons.search_off, size: 40, color: AppTheme.textSecondary),
-                        const SizedBox(height: 8),
-                        Text(
-                          session.isTamil ? 'பயிர்கள் எதுவும் கிடைக்கவில்லை' : 'No harvests found',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                ..._filteredProducts.map(
-                  (product) => ProduceCard.buyer(
-                    buyerItem: product,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ProductDetailsScreen(product: product),
-                        ),
-                      );
-                    },
-                    onAction: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ProductDetailsScreen(product: product),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: VayalBottomNavBar(
-        currentIndex: _currentNavIndex,
-        onTap: _onBottomNavTapped,
-      ),
-    );
-  }
+                      padding: const EdgeInsets.all(32),
+                      child: Column(children: [
+                        const Icon(Icons.eco_outlined, size: 48),
+                        const SizedBox(height: 12),
+                        Text(S.t('No available crops match your search.'))
+                      ]))),
+            for (final product in _items)
+              Card(
+                  child: ListTile(
+                      contentPadding: const EdgeInsets.all(16),
+                      leading: const Icon(Icons.eco),
+                      title: Text(product.productName),
+                      subtitle: Text(
+                          '${product.farmerName ?? ''}\n${product.location}\n${product.quantityAvailable} ${product.quantityUnit} · ${S.money(product.buyerPricePerUnitPaise)} / ${product.quantityUnit}'),
+                      isThreeLine: true,
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () =>
+                          _open(ProductDetailsScreen(product: product)))),
+            if (_items.length < _total)
+              OutlinedButton(
+                  onPressed: _busy ? null : () => _load(more: true),
+                  child: Text(S.t('Load more'))),
+          ])));
 }

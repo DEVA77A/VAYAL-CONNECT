@@ -3,6 +3,7 @@ import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
 import 'vayal_logo.dart';
 import '../models/auth_models.dart';
+import '../utils/commerce_strings.dart';
 
 /// Reusable Top App Bar matching Stitch Design System
 ///
@@ -19,13 +20,13 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
 
   const VayalAppBar({
-    Key? key,
+    super.key,
     this.title,
     this.subtitle,
     this.showBack = false,
     this.showRoleBadge = true,
     this.actions,
-  }) : super(key: key);
+  });
 
   @override
   Size get preferredSize => const Size.fromHeight(64);
@@ -69,7 +70,8 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
             children: [
               const VayalLogo(width: 36, height: 36),
               const SizedBox(width: 6),
-              Text(
+              Expanded(
+                  child: Text(
                 title ?? (session.isTamil ? 'வயல் Connect' : 'VayalConnect'),
                 style: const TextStyle(
                   fontSize: 18,
@@ -77,25 +79,32 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
                   color: Colors.white,
                   letterSpacing: 0.2,
                 ),
-              ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              )),
               if (showRoleBadge) ...[
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                Flexible(
+                    child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: roleBadgeColor.withOpacity(0.6), width: 1),
+                    border: Border.all(
+                        color: roleBadgeColor.withOpacity(0.6), width: 1),
                   ),
                   child: Text(
                     roleName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       color: roleBadgeColor,
                     ),
                   ),
-                ),
+                )),
               ],
             ],
           ),
@@ -115,15 +124,22 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         // Language Toggle Pill
         TextButton(
-          onPressed: session.savingLanguage ? null : () async {
-            try { await session.toggleLanguagePersisted(); }
-            catch (_) {
-              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save language preference. Please retry.')));
-            }
-          },
+          onPressed: session.savingLanguage
+              ? null
+              : () async {
+                  try {
+                    await session.toggleLanguagePersisted();
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(S.t(
+                              'Unable to save language preference. Please retry.'))));
+                    }
+                  }
+                },
           style: TextButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            minimumSize: Size.zero,
+            minimumSize: const Size(48, 48),
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           child: Container(

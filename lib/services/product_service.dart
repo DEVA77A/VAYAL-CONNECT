@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -34,10 +35,16 @@ class ProductService {
     int limit = 20,
   }) async {
     // Isolated Demo Preview Mode
-    if (SessionManager().isDemoMode) {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
       final samples = DemoFixtures.sampleBuyerProducts();
-      if (category != null && category.isNotEmpty && category != 'All' && category != 'அனைத்தும்') {
-        return samples.where((p) => p.category.toLowerCase().contains(category.toLowerCase())).toList();
+      if (category != null &&
+          category.isNotEmpty &&
+          category != 'All' &&
+          category != 'அனைத்தும்') {
+        return samples
+            .where((p) =>
+                p.category.toLowerCase().contains(category.toLowerCase()))
+            .toList();
       }
       return samples;
     }
@@ -46,29 +53,39 @@ class ProductService {
       'page': page.toString(),
       'limit': limit.toString(),
     };
-    if (category != null && category.isNotEmpty && category != 'All' && category != 'அனைத்தும்') {
+    if (category != null &&
+        category.isNotEmpty &&
+        category != 'All' &&
+        category != 'அனைத்தும்') {
       queryParams['category'] = category;
     }
     if (location != null && location.isNotEmpty) {
       queryParams['location'] = location;
     }
 
-    final uri = Uri.parse(ApiConfig.productsUrl).replace(queryParameters: queryParams);
+    final uri =
+        Uri.parse(ApiConfig.productsUrl).replace(queryParameters: queryParams);
 
     try {
-      final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 12));
+      final response = await _client
+          .get(uri, headers: _headers())
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body) as Map<String, dynamic>;
         if (decoded['success'] == true && decoded['data'] != null) {
           final items = decoded['data']['items'] as List<dynamic>? ?? [];
-          return items.map((i) => BuyerProduct.fromJson(i as Map<String, dynamic>)).toList();
+          return items
+              .map((i) => BuyerProduct.fromJson(i as Map<String, dynamic>))
+              .toList();
         } else {
-          final msg = decoded['error']?['message'] ?? 'Unable to retrieve marketplace products.';
+          final msg = decoded['error']?['message'] ??
+              'Unable to retrieve marketplace products.';
           throw Exception(msg);
         }
       } else {
-        throw Exception('Server returned status ${response.statusCode} while fetching products.');
+        throw Exception(
+            'Server returned status ${response.statusCode} while fetching products.');
       }
     } on SocketException catch (_) {
       throw Exception(
@@ -76,7 +93,8 @@ class ProductService {
         'Please ensure the FastAPI backend is running.',
       );
     } on TimeoutException catch (_) {
-      throw Exception('Request timed out while connecting to VayalConnect server.');
+      throw Exception(
+          'Request timed out while connecting to VayalConnect server.');
     } catch (e) {
       if (e is Exception) rethrow;
       throw Exception('Product service error: $e');
@@ -89,7 +107,7 @@ class ProductService {
     int limit = 20,
   }) async {
     // Isolated Demo Preview Mode
-    if (SessionManager().isDemoMode) {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
       return DemoFixtures.sampleFarmerProducts();
     }
 
@@ -99,19 +117,25 @@ class ProductService {
     });
 
     try {
-      final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 12));
+      final response = await _client
+          .get(uri, headers: _headers())
+          .timeout(const Duration(seconds: 12));
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body) as Map<String, dynamic>;
         if (decoded['success'] == true && decoded['data'] != null) {
           final items = decoded['data']['items'] as List<dynamic>? ?? [];
-          return items.map((i) => FarmerProduct.fromJson(i as Map<String, dynamic>)).toList();
+          return items
+              .map((i) => FarmerProduct.fromJson(i as Map<String, dynamic>))
+              .toList();
         } else {
-          final msg = decoded['error']?['message'] ?? 'Failed to retrieve your listings.';
+          final msg = decoded['error']?['message'] ??
+              'Failed to retrieve your listings.';
           throw Exception(msg);
         }
       } else if (response.statusCode == 401) {
-        throw Exception('Session expired or unauthorized. Please log in again.');
+        throw Exception(
+            'Session expired or unauthorized. Please log in again.');
       } else {
         throw Exception('Server returned status ${response.statusCode}');
       }
@@ -129,7 +153,7 @@ class ProductService {
 
   /// Create a new crop listing as farmer
   Future<FarmerProduct> createProduct(CreateProductPayload payload) async {
-    if (SessionManager().isDemoMode) {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
       // In isolated demo mode, return simulated response based on user input
       return FarmerProduct(
         productId: 'demo-created-${DateTime.now().millisecondsSinceEpoch}',
@@ -142,7 +166,8 @@ class ProductService {
         market: payload.market,
         harvestDate: payload.harvestDate,
         farmerPayoutPerUnitPaise: payload.sellingPricePerUnitPaise,
-        farmerPayoutPerUnitDisplay: '₹' + (payload.sellingPricePerUnitPaise / 100).toStringAsFixed(2) + ' / ' + payload.quantityUnit,
+        farmerPayoutPerUnitDisplay:
+            '₹${(payload.sellingPricePerUnitPaise / 100).toStringAsFixed(2)} / ${payload.quantityUnit}',
         status: 'ACTIVE',
       );
     }
@@ -150,33 +175,56 @@ class ProductService {
     final uri = Uri.parse(ApiConfig.productsUrl);
 
     try {
-      final response = await _client.post(
-        uri,
-        headers: _headers(),
-        body: json.encode(payload.toJson()),
-      ).timeout(const Duration(seconds: 15));
+      final response = await _client
+          .post(
+            uri,
+            headers: _headers(),
+            body: json.encode(payload.toJson()),
+          )
+          .timeout(const Duration(seconds: 15));
 
       final decoded = json.decode(response.body) as Map<String, dynamic>;
-      if (response.statusCode == 201 && decoded['success'] == true && decoded['data'] != null) {
+      if (response.statusCode == 201 &&
+          decoded['success'] == true &&
+          decoded['data'] != null) {
         return FarmerProduct.fromJson(decoded['data'] as Map<String, dynamic>);
       } else {
-        throw Exception(decoded['error']?['message'] ?? 'Failed to list product on server.');
+        throw Exception(decoded['error']?['message'] ??
+            'Failed to list product on server.');
       }
     } on SocketException catch (_) {
-      throw Exception('Cannot connect to backend server at ${ApiConfig.baseUrl}.');
+      throw Exception(
+          'Cannot connect to backend server at ${ApiConfig.baseUrl}.');
     } catch (e) {
       if (e is Exception) rethrow;
       throw Exception('Create crop failed: $e');
     }
   }
 
-  Future<Map<String, dynamic>> fetchPriceReference({required String commodity, required String market, required String unit}) async {
-    if (SessionManager().isDemoMode) throw Exception('Sign in to look up a verified reference.');
-    final uri = Uri.parse(ApiConfig.productsUrl + 'price-reference').replace(queryParameters: {'commodity': commodity, 'market': market, 'unit': unit});
-    final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 15));
+  Future<Map<String, dynamic>> fetchPriceReference(
+      {required String commodity,
+      required String market,
+      required String unit}) async {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
+      throw Exception('Sign in to look up a verified reference.');
+    }
+    final uri = Uri.parse('${ApiConfig.productsUrl}price-reference').replace(
+        queryParameters: {
+          'commodity': commodity,
+          'market': market,
+          'unit': unit
+        });
+    final response = await _client
+        .get(uri, headers: _headers())
+        .timeout(const Duration(seconds: 15));
     final decoded = jsonDecode(response.body);
-    if (response.statusCode != 200 || decoded is! Map || decoded['success'] != true || decoded['data'] is! Map) {
-      throw Exception(decoded is Map ? (decoded['error']?['message'] ?? 'Reference unavailable.') : 'Reference unavailable.');
+    if (response.statusCode != 200 ||
+        decoded is! Map ||
+        decoded['success'] != true ||
+        decoded['data'] is! Map) {
+      throw Exception(decoded is Map
+          ? (decoded['error']?['message'] ?? 'Reference unavailable.')
+          : 'Reference unavailable.');
     }
     return Map<String, dynamic>.from(decoded['data']);
   }

@@ -18,7 +18,13 @@ from app.core.exceptions import ForbiddenError, NotFoundError
 from app.utils.money import format_rupees, percentage_bps_to_display
 
 def fulfillment_view(order):
-    return {k: order.get(k) for k in ("fulfillment_method", "delivery_address", "pickup_address", "delivery_fee_paise")}
+    return {k: order.get(k) for k in ("fulfillment_method", "delivery_address", "pickup_address", "delivery_fee_paise", "delivery_estimate", "cancellation_reason", "reservation_expires_at")}
+
+
+def pricing_view(order):
+    return {"farmer_base_total_paise": order.get("farmer_total_payout_paise"),
+        "commission_total_paise": order.get("commission_total_paise"),
+        "commission_percentage_bps": order.get("commission_percentage_bps")}
 
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -48,12 +54,10 @@ async def create_order(
         delivery_address=data.delivery_address.model_dump() if data.delivery_address else None,
     )
 
-    # Auto-create Razorpay payment
-    payment = await payment_service.create_payment(order["id"], current_user["id"])
-
     return APIResponse(
         success=True,
         data=BuyerOrderResponse(
+            **pricing_view(order),
             order_id=order["id"],
             **fulfillment_view(order),
             order_number=order.get("order_number", ""),
@@ -66,7 +70,7 @@ async def create_order(
             buyer_total_display=format_rupees(order.get("buyer_total_paise", 0)),
             order_status=order.get("order_status", ""),
             payment_status=order.get("payment_status", ""),
-            razorpay_order_id=payment.get("razorpay_order_id"),
+            razorpay_order_id=None,
         ).model_dump(),
         request_id=get_request_id(request),
     )
@@ -77,20 +81,25 @@ async def list_orders(
     request: Request,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    status: str = Query(None),
+    status: str = Query(None, pattern="^(PENDING_PAYMENT|PAID|CONFIRMED|PROCESSING|SHIPPED|COMPLETED|CANCELLED|REFUNDED)$"),
+    period: str = Query(None, pattern="^(today|month|year)$"),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """List orders — scoped by role."""
     order_service = OrderService(db)
     role = current_user.get("role", "")
+    from app.services.report_service import ReportService
+    filters = {"order_status": status} if status else {}
+    dates = ReportService(db)._build_date_filter(period, None, None)
+    if dates: filters["created_at"] = dates
 
     if role == "BUYER":
-        orders, total = await order_service.list_buyer_orders(current_user["id"], page, limit)
+        orders, total = await order_service.list_buyer_orders(current_user["id"], page, limit, filters)
     elif role == "FARMER":
-        orders, total = await order_service.list_farmer_orders(current_user["id"], page, limit)
+        orders, total = await order_service.list_farmer_orders(current_user["id"], page, limit, filters)
     elif role == "ADMIN":
-        orders, total = await order_service.list_all_orders(status, page, limit)
+        orders, total = await order_service.list_all_orders(status, page, limit, filters)
     else:
         orders, total = [], 0
 
@@ -98,6 +107,7 @@ async def list_orders(
     for o in orders:
         if role == "BUYER":
             items.append(BuyerOrderResponse(
+                **pricing_view(o),
                 order_id=o["id"],
                 **fulfillment_view(o),
                 order_number=o.get("order_number", ""),
@@ -115,6 +125,8 @@ async def list_orders(
             ).model_dump())
         elif role == "FARMER":
             items.append(FarmerOrderResponse(
+                **pricing_view(o),
+                payment_status=o.get("payment_status", "PENDING"),
                 order_id=o["id"],
                 **fulfillment_view(o),
                 order_number=o.get("order_number", ""),
@@ -167,6 +179,29 @@ async def list_orders(
     )
 
 
+from pydantic import BaseModel, ConfigDict
+from typing import Optional, Literal
+from app.schemas.location import Coordinates
+
+class EstimateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    product_id: str
+    fulfillment_method: Literal["PICKUP", "DELIVERY"]
+    destination: Optional[Coordinates] = None
+
+@router.post("/estimate", response_model=APIResponse)
+async def estimate_order(data: EstimateRequest, request: Request, current_user=Depends(get_current_buyer), db=Depends(get_database)):
+    from app.repositories.products import ProductRepository
+    from app.repositories.farmers import FarmerRepository
+    from app.services.delivery_service import estimate_delivery
+    product = await ProductRepository(db).find_active_by_id(data.product_id)
+    if not product: raise NotFoundError("Product")
+    farm = await FarmerRepository(db).find_by_user_id(product["farmer_id"])
+    result = estimate_delivery((farm.get("application") or {}).get("coordinates"), data.destination.model_dump() if data.destination else None,
+        product.get("harvest_date"), data.fulfillment_method)
+    return APIResponse(data=result, request_id=get_request_id(request))
+
+
 @router.get("/{order_id}", response_model=APIResponse)
 async def get_order(
     order_id: str,
@@ -189,6 +224,7 @@ async def get_order(
 
     if role == "BUYER":
         data = BuyerOrderResponse(
+            **pricing_view(order),
             order_id=order["id"],
             **fulfillment_view(order),
             order_number=order.get("order_number", ""),
@@ -206,6 +242,8 @@ async def get_order(
         ).model_dump()
     elif role == "FARMER":
         data = FarmerOrderResponse(
+            **pricing_view(order),
+            payment_status=order.get("payment_status", "PENDING"),
             order_id=order["id"],
             **fulfillment_view(order),
             order_number=order.get("order_number", ""),
@@ -244,3 +282,11 @@ async def cancel_order(
         data={"message": "Order cancelled."},
         request_id=get_request_id(request),
     )
+
+
+from app.schemas.order import OrderStatusUpdateRequest
+@router.put("/{order_id}/status", response_model=APIResponse)
+async def fulfill_order(order_id: str, data: OrderStatusUpdateRequest, request: Request,
+                        current_user=Depends(get_current_user), db=Depends(get_database)):
+    await OrderService(db).update_order_status(order_id, data.order_status, current_user["id"], current_user.get("role"))
+    return APIResponse(data={"updated": True}, request_id=get_request_id(request))

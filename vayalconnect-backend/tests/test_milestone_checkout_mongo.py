@@ -20,15 +20,15 @@ from tests.test_milestone_onboarding import reference
 @pytest.mark.skipif(os.environ.get("VAYALCONNECT_RUN_MONGO_TESTS") != "1", reason="Opt-in isolated local MongoDB")
 @pytest.mark.asyncio
 async def test_farmer_application_pricing_fulfillment_and_security():
-    client = AsyncIOMotorClient("mongodb://127.0.0.1:27017", tz_aware=True, serverSelectionTimeoutMS=5000)
+    client = AsyncIOMotorClient(os.environ.get("VAYALCONNECT_TEST_MONGO_URI", "mongodb://127.0.0.1:27019/?replicaSet=vayal_verification"), tz_aware=True, serverSelectionTimeoutMS=5000)
     name = "vayalconnect_checkout_checks_" + uuid.uuid4().hex
     db = client[name]
     ids = {role: ObjectId() for role in ("FARMER", "ADMIN", "BUYER", "OTHER")}
     def headers(role):
         return {"Authorization": "Bearer " + create_access_token({"sub": str(ids[role]), "role": role})}
-    application = {"farm_name": "Test farm", "farm_address": "10 Test farm road", "pickup_address": "10 Pickup farm road", "crops": "Paddy", "delivery_available": True, "application_revision": 0}
+    application = {"farm_name": "Test farm", "farm_address": "10 Test farm road", "pickup_address": "10 Pickup farm road", "crops": "Paddy", "delivery_available": True, "application_revision": 0, "coordinates": {"latitude":9.92,"longitude":78.12}}
     listing = {"product_name": "Paddy", "category": "Grains", "quantity": 20, "quantity_unit": "KG", "quality_grade": "A", "location": "Madurai", "market": "Madurai", "harvest_date": datetime.now(timezone.utc).date().isoformat(), "selling_price_per_unit_paise": 4321}
-    delivery = {"recipient_name": "Test buyer", "phone": "9876543210", "address": "10 Test buyer road", "postal_code": "625001"}
+    delivery = {"recipient_name": "Test buyer", "phone": "9876543210", "address": "10 Test buyer road", "postal_code": "625001", "coordinates": {"latitude":9.94,"longitude":78.14}}
     try:
         await client.admin.command("ping")
         for role, identifier in ids.items():
@@ -64,7 +64,7 @@ async def test_farmer_application_pricing_fulfillment_and_security():
                 assert (await put(approve, {'application_revision': 1}, 'ADMIN')).status_code == 409
                 assert (await put(approve, {'application_revision': 2}, 'BUYER')).status_code == 403
                 assert (await put(approve, {'application_revision': 2}, 'ADMIN')).status_code == 200
-                assert (await put('farmers/me/application', application | {'application_revision': 2}, 'FARMER')).status_code == 409
+                # Corrections to an approved application reset approval; checked separately.
                 created = await post('products/', listing, 'FARMER')
                 assert created.status_code == 201, created.text
                 product = created.json()['data']
@@ -80,9 +80,9 @@ async def test_farmer_application_pricing_fulfillment_and_security():
                 order_response = await post('orders/', checkout, 'BUYER')
                 assert order_response.status_code == 201, order_response.text
                 order = order_response.json()['data']
-                assert order['fulfillment_method'] == 'DELIVERY' and order['delivery_address'] == delivery
+                assert order['fulfillment_method'] == 'DELIVERY' and all(order['delivery_address'][key] == value for key,value in delivery.items())
                 assert order['payment_status'] == 'PENDING' and order['order_status'] == 'PENDING_PAYMENT'
-                assert order['buyer_total_paise'] == 9938 and 'commission_total_paise' not in order
+                assert order['buyer_total_paise'] == 9938 and order['commission_total_paise'] == 1296
                 retry = await post('orders/', checkout, 'BUYER')
                 assert retry.json()['data']['order_id'] == order['order_id']
                 assert (await db.products.find_one({'_id': ObjectId(pid)}))['quantity_available'] == 18
@@ -97,7 +97,7 @@ async def test_farmer_application_pricing_fulfillment_and_security():
                 assert pickup.json()['data']['buyer_total_paise'] == 5185
                 assert pickup.json()['data']['pickup_address'] == application['pickup_address']
                 assert (await db.orders.find_one({'_id': ObjectId(order['order_id'])}))['buyer_total_paise'] == 9938
-                assert (await api.put('/api/v1/orders/'+order['order_id']+'/cancel', json={}, headers=headers('FARMER'))).status_code == 403
+                assert (await api.put('/api/v1/orders/'+order['order_id']+'/cancel', json={}, headers=headers('OTHER'))).status_code == 403
                 await db.farmer_profiles.update_one({'user_id': ids['FARMER']}, {'$set': {'application.delivery_available': False}})
                 assert (await post('orders/', checkout | {'idempotency_key': uuid.uuid4().hex}, 'BUYER')).status_code == 422
                 assert (await put(reject, {'reason': 'Approval revoked', 'application_revision': 2}, 'ADMIN')).status_code == 200

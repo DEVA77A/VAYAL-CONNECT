@@ -52,5 +52,5 @@ async def razorpay_webhook(
         return {"status": "ok"}
 
     except Exception as e:
-        logger.error(f"Webhook processing error: {e}")
+        logger.error("Webhook processing failed category=%s", type(e).__name__)
         return {"status": "error"}

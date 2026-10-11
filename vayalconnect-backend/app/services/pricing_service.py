@@ -15,10 +15,11 @@ CRITICAL RULES:
 
 from typing import Optional, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
+from app.core.transactions import locked_transactional
 from app.repositories.pricing import PricingRepository
 from app.integrations.government_market import market_price_provider
 from app.core.exceptions import (
@@ -57,6 +58,8 @@ class PricingEngine:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.pricing_repo = PricingRepository(db)
+        self._commission_loaded = False
+        self._commission = None
 
     async def calculate_pricing(
         self,
@@ -77,7 +80,11 @@ class PricingEngine:
         This is the ONLY place where prices are calculated.
         """
         if selling_price_per_unit_paise is not None:
-            reference = await self.get_verified_reference(product_name, market, unit)
+            try:
+                reference = await self.get_verified_reference(product_name, market, unit)
+            except (MarketPriceUnavailableError, ValidationError):
+                reference = {"government_reference_price_paise": 0, "reference_price_available": False,
+                    "reference_price_message": "No compatible verified official reference available. Selling price is farmer-selected."}
             amounts = await self.selling_amounts(selling_price_per_unit_paise)
             return {**reference, **amounts, "farmer_id": farmer_id, "pricing_mode": "FARMER_SELECTED",
                     "pricing_policy_id": None, "pricing_policy_version": 0,
@@ -86,33 +93,13 @@ class PricingEngine:
                     "buyer_total_paise": safe_multiply(amounts["buyer_price_per_unit_paise"], quantity),
                     "commission_total_paise": safe_multiply(amounts["commission_per_unit_paise"], quantity),
                     "calculated_at": datetime.now(timezone.utc)}
-        # Legacy pricing remains available internally for historical compatibility.
-        # Step 1: Fetch Government reference price
-        market_price = await market_price_provider.get_market_price(
-            commodity=product_name,
-            market=market,
-            state=None,
-        )
-
-        if not market_price or market_price.get("modal_price_paise", 0) == 0:
-            # Also check cached market prices in our DB
-            cached = await self.pricing_repo.get_latest_market_price(
-                commodity=product_name, market=market
-            )
-            if cached and cached.get("modal_price_paise", 0) > 0:
-                market_price = cached
-                logger.info(f"Using cached market price for {product_name}")
-            else:
-                raise MarketPriceUnavailableError()
-
-        gov_ref_price_paise = market_price["modal_price_paise"]
-        price_unit = market_price.get("unit", "Quintal")
-        price_date = market_price.get("arrival_date")
-        price_source = market_price.get("source", "data.gov.in AGMARKNET")
-
-        # Store the market price record if from API
-        if market_price.get("retrieved_at"):
-            await self.pricing_repo.store_market_price(market_price)
+        # Historical-policy helpers still require the same verified, bounded reference.
+        # New public listing creation always supplies a farmer-selected base price.
+        reference = await self.get_verified_reference(product_name, market, unit)
+        gov_ref_price_paise = reference["government_reference_price_paise"]
+        price_unit = reference["reference_price_unit"]
+        price_date = reference["reference_price_date"]
+        price_source = reference["reference_price_source"]
 
         # Step 2: Get active pricing policy
         policy = await self.pricing_repo.get_active_policy()
@@ -142,7 +129,7 @@ class PricingEngine:
         # Step 4: Calculate prices using Decimal for precision
         # Government price is per Quintal from data.gov.in
         # We need per-unit (KG) price
-        gov_per_kg_paise = self._convert_to_per_kg(gov_ref_price_paise, price_unit)
+        gov_per_kg_paise = reference["reference_price_per_listing_unit_paise"]
 
         farmer_payout_per_unit = calculate_percentage(gov_per_kg_paise, farmer_payout_bps)
         buyer_price_per_unit = calculate_percentage(gov_per_kg_paise, buyer_price_bps)
@@ -199,7 +186,10 @@ class PricingEngine:
     async def selling_amounts(self, selling_price: int) -> Dict[str, Any]:
         if type(selling_price) is not int or not 0 < selling_price <= 100_000_000:
             raise ValidationError("Selling price must be positive integer paise, at most ₹1,000,000 per unit.")
-        config = await self.pricing_repo.get_active_commission()
+        if not self._commission_loaded:
+            self._commission = await self.pricing_repo.get_active_commission()
+            self._commission_loaded = True
+        config = self._commission
         bps = config["commission_percentage_bps"] if config else DEFAULT_COMMISSION_BPS
         if type(bps) is not int or not 0 <= bps <= 10000:
             raise FinancialInconsistencyError("Invalid commission configuration.")
@@ -210,8 +200,8 @@ class PricingEngine:
                 "commission_config_version": config.get("version", 0) if config else 0}
 
     async def buyer_pricing(self, product: dict) -> dict:
-        if product.get("pricing_mode") != "FARMER_SELECTED":
-            return product
+        if not product.get("farmer_payout_per_unit_paise"):
+            raise ValidationError("Listing has no valid farmer base price.")
         amounts = await self.selling_amounts(product["farmer_payout_per_unit_paise"])
         return {**product, **amounts, "commission_percentage": amounts["commission_percentage_bps"]}
 
@@ -222,6 +212,16 @@ class PricingEngine:
             record = await self.pricing_repo.get_latest_market_price(commodity=commodity, market=market)
             cached = True
         if not self._valid_reference(record, commodity, market):
+            raise MarketPriceUnavailableError()
+        retrieved = record.get("retrieved_at")
+        if isinstance(retrieved, str):
+            try: retrieved = datetime.fromisoformat(retrieved.replace("Z", "+00:00"))
+            except ValueError: retrieved = None
+        if not isinstance(retrieved, datetime):
+            raise MarketPriceUnavailableError()
+        retrieved = retrieved.replace(tzinfo=timezone.utc) if retrieved.tzinfo is None else retrieved
+        age = datetime.now(timezone.utc) - retrieved
+        if age < timedelta(0) or age > timedelta(days=7):
             raise MarketPriceUnavailableError()
         arrival = date.fromisoformat(str(record["arrival_date"])[:10])
         raw_unit = record["unit"].upper().strip()
@@ -237,12 +237,14 @@ class PricingEngine:
             raise ValidationError("Market reference unit cannot be compared with this listing unit.")
         if not cached:
             await self.pricing_repo.store_market_price(record)
-        return {"government_reference_price_paise": raw_price, "reference_price_per_listing_unit_paise": converted,
+        return {"reference_price_available": True, "government_reference_price_paise": raw_price, "reference_price_per_listing_unit_paise": converted,
                 "reference_price_unit": record["unit"], "reference_listing_unit": unit,
                 "reference_price_date": arrival.isoformat(), "reference_price_source": record["source"],
                 "reference_price_cached": cached, "reference_price_stale": (datetime.now(timezone.utc).date() - arrival).days > 1,
                 "reference_price_retrieved_at": record.get("retrieved_at"),
-                "reference_commodity": record["commodity"], "reference_market": record["market"]}
+                "reference_commodity": record["commodity"], "reference_market": record["market"],
+                "reference_min_paise": record.get("min_price_paise"), "reference_max_paise": record.get("max_price_paise"),
+                "reference_state": record.get("state"), "reference_source_url": record.get("source_url")}
 
     @staticmethod
     def _valid_reference(record, commodity, market):
@@ -257,6 +259,10 @@ class PricingEngine:
         price = record.get("modal_price_paise")
         if type(price) is not int or price <= 0:
             return False
+        minimum, maximum = record.get("min_price_paise"), record.get("max_price_paise")
+        if minimum is not None or maximum is not None:
+            if not all(type(v) is int and v > 0 for v in (minimum, maximum)) or not minimum <= price <= maximum:
+                return False
         try:
             arrival = date.fromisoformat(str(record.get("arrival_date"))[:10])
             return arrival <= datetime.now(timezone.utc).date()
@@ -284,16 +290,16 @@ class PricingEngine:
             # 1 Ton = 1000 KG
             return price_paise // 1000
         elif unit_lower in ("piece", "pieces", "dozen"):
-            return price_paise  # No conversion
+            raise ValidationError("A count unit cannot be converted to a weight unit.")
         else:
-            # Default: assume Quintal (most common in AGMARKNET)
-            return price_paise // 100
+            raise ValidationError("Unknown official market-price unit.")
 
 
 class CommissionService:
     """Manage commission configuration."""
 
     def __init__(self, db: AsyncIOMotorDatabase):
+        self.db = db
         self.pricing_repo = PricingRepository(db)
 
     async def get_active_commission(self) -> Optional[Dict[str, Any]]:
@@ -304,6 +310,7 @@ class CommissionService:
             )
         return config
 
+    @locked_transactional("configuration_locks", "global-commission")
     async def update_commission(
         self, new_percentage_bps: int, admin_id: str
     ) -> Dict[str, Any]:
@@ -312,9 +319,10 @@ class CommissionService:
         The old config is superseded; new one takes effect immediately.
         Historical transactions retain their original commission.
         """
-        # Get current
+        if type(new_percentage_bps) is not int or not 0 <= new_percentage_bps <= 10000:
+            raise ValidationError("Commission must be between 0% and 100%.")
         current = await self.pricing_repo.get_active_commission()
-        previous_bps = current["commission_percentage_bps"] if current else 0
+        previous_bps = current["commission_percentage_bps"] if current else DEFAULT_COMMISSION_BPS
 
         # Supersede current
         if current:

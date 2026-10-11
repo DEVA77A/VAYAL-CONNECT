@@ -58,6 +58,7 @@ class OrderStatus(str, Enum):
     PAID = "PAID"
     CONFIRMED = "CONFIRMED"
     PROCESSING = "PROCESSING"
+    SHIPPED = "SHIPPED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
     REFUNDED = "REFUNDED"
@@ -106,7 +107,8 @@ VALID_ORDER_TRANSITIONS = {
     OrderStatus.PENDING_PAYMENT: [OrderStatus.PAID, OrderStatus.CANCELLED],
     OrderStatus.PAID: [OrderStatus.CONFIRMED, OrderStatus.REFUNDED],
     OrderStatus.CONFIRMED: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
-    OrderStatus.PROCESSING: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+    OrderStatus.PROCESSING: [OrderStatus.SHIPPED, OrderStatus.COMPLETED],
+    OrderStatus.SHIPPED: [OrderStatus.COMPLETED],
     OrderStatus.COMPLETED: [],  # Terminal state
     OrderStatus.CANCELLED: [],  # Terminal state
     OrderStatus.REFUNDED: [],  # Terminal state

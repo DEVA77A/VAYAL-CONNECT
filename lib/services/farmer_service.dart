@@ -1,3 +1,5 @@
+import 'api_client.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -25,20 +27,24 @@ class FarmerService {
 
   /// Fetch Farmer Dashboard Metrics
   Future<FarmerDashboardMetrics> fetchDashboardMetrics() async {
-    if (SessionManager().isDemoMode) {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
       return DemoFixtures.sampleFarmerMetrics();
     }
 
     final uri = Uri.parse(ApiConfig.farmerDashboardUrl);
 
     try {
-      final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 12));
+      final response = await _client
+          .get(uri, headers: _headers())
+          .timeout(const Duration(seconds: 12));
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body) as Map<String, dynamic>;
         if (decoded['success'] == true && decoded['data'] != null) {
-          return FarmerDashboardMetrics.fromJson(decoded['data'] as Map<String, dynamic>);
+          return FarmerDashboardMetrics.fromJson(
+              decoded['data'] as Map<String, dynamic>);
         } else {
-          throw Exception(decoded['error']?['message'] ?? 'Failed to load farmer metrics.');
+          throw Exception(
+              decoded['error']?['message'] ?? 'Failed to load farmer metrics.');
         }
       } else {
         throw Exception('Server returned status ${response.statusCode}');
@@ -52,28 +58,35 @@ class FarmerService {
   }
 
   Future<Map<String, dynamic>> fetchBankDetails() async {
-    final response = await _client.get(Uri.parse('${ApiConfig.baseUrl}/api/v1/farmers/me/bank'), headers: _headers())
-      .timeout(const Duration(seconds: 12));
-    if (response.statusCode != 200) throw Exception('Unable to load bank details.');
+    final response = await _client
+        .get(Uri.parse('${ApiConfig.baseUrl}/api/v1/farmers/me/bank'),
+            headers: _headers())
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load bank details.');
+    }
     final data = jsonDecode(response.body);
-    if (data is! Map || data['success'] != true || data['data'] is! Map) throw Exception('Invalid bank response.');
+    if (data is! Map || data['success'] != true || data['data'] is! Map) {
+      throw Exception('Invalid bank response.');
+    }
     return Map<String, dynamic>.from(data['data']);
   }
 
   Future<Map<String, dynamic>> fetchProfile() => _request('GET', 'profile');
-  Future<Map<String, dynamic>> submitApplication(Map<String, dynamic> application) => _request('PUT', 'application', application);
-  Future<Map<String, dynamic>> saveBankDetails(Map<String, dynamic> bank) => _request('PUT', 'bank', bank);
+  Future<Map<String, dynamic>> submitApplication(
+          Map<String, dynamic> application) =>
+      _request('PUT', 'application', application);
+  Future<Map<String, dynamic>> saveBankDetails(Map<String, dynamic> bank) =>
+      _request('PUT', 'bank', bank);
 
-  Future<Map<String, dynamic>> _request(String method, String resource, [Map<String, dynamic>? payload]) async {
-    if (SessionManager().isDemoMode) throw Exception('Sign in to submit a real farmer application.');
-    final uri = Uri.parse(ApiConfig.baseUrl + '/api/v1/farmers/me/' + resource);
-    final response = await (method == 'GET' ? _client.get(uri, headers: _headers()) :
-        _client.put(uri, headers: _headers(), body: jsonEncode(payload))).timeout(const Duration(seconds: 15));
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode != 200 || decoded is! Map || decoded['success'] != true || decoded['data'] is! Map) {
-      throw Exception(decoded is Map ? (decoded['error']?['message'] ?? 'Unable to save or load farmer details. Check the fields and retry.') : 'Invalid response.');
+  Future<Map<String, dynamic>> _request(String method, String resource,
+      [Map<String, dynamic>? payload]) async {
+    if (!kReleaseMode && SessionManager().isDemoMode) {
+      throw Exception('Sign in to submit a real farmer application.');
     }
-    return Map<String, dynamic>.from(decoded['data']);
+    final data = await ApiClient(client: _client)
+        .request('/api/v1/farmers/me/$resource', method: method, body: payload);
+    return Map<String, dynamic>.from(data);
   }
 
   void dispose() {

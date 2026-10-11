@@ -30,6 +30,8 @@ class MarketPriceItem(BaseModel):
     arrival_date: Optional[date] = None
     source: str = "data.gov.in AGMARKNET"
     retrieved_at: Optional[datetime] = None
+    source_url: Optional[str] = None
+    stale: bool = False
 
 
 class MarketPriceListResponse(BaseModel):

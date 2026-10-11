@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// VayalConnect Flutter — Centralized API Configuration
 ///
 /// Centralized API endpoint configuration pointing to the FastAPI backend.
@@ -21,13 +23,18 @@ class ApiConfig {
 
   /// Centralized setter for physical device IP or dynamic runtime configuration
   static void setBaseUrl(String url) {
+    if (kReleaseMode) {
+      throw StateError("Release backend configuration is fixed at build time.");
+    }
     baseUrl = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
   }
 
   // Market prices endpoints on the FastAPI backend
   static String get marketPricesUrl => '$baseUrl/api/v1/market-prices';
-  static String get latestMarketPriceUrl => '$baseUrl/api/v1/market-prices/latest';
-  static String get filterOptionsUrl => '$baseUrl/api/v1/market-prices/filter-options';
+  static String get latestMarketPriceUrl =>
+      '$baseUrl/api/v1/market-prices/latest';
+  static String get filterOptionsUrl =>
+      '$baseUrl/api/v1/market-prices/filter-options';
 
   // Authentication endpoints
   static String get registerUrl => '$baseUrl/api/v1/auth/register';
@@ -49,7 +56,8 @@ class ApiConfig {
 
   // Farmer endpoints
   static String get farmerProfileUrl => '$baseUrl/api/v1/farmers/me/profile';
-  static String get farmerDashboardUrl => '$baseUrl/api/v1/farmers/me/dashboard';
+  static String get farmerDashboardUrl =>
+      '$baseUrl/api/v1/farmers/me/dashboard';
 
   // Admin endpoints
   static String get adminDashboardUrl => '$baseUrl/api/v1/admin/dashboard';

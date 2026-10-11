@@ -59,3 +59,24 @@ async def update_buyer_profile(
         data={"message": "Profile updated successfully."},
         request_id=get_request_id(request),
     )
+
+
+from app.schemas.address import SavedAddress
+from app.services.address_service import AddressService
+
+@router.get("/me/addresses", response_model=APIResponse)
+async def list_addresses(request: Request, current_user=Depends(get_current_buyer), db=Depends(get_database)):
+    return APIResponse(data={"items": await AddressService(db).list(current_user["id"])}, request_id=get_request_id(request))
+
+@router.post("/me/addresses", response_model=APIResponse, status_code=201)
+async def add_address(data: SavedAddress, request: Request, current_user=Depends(get_current_buyer), db=Depends(get_database)):
+    return APIResponse(data=await AddressService(db).save(current_user["id"], data), request_id=get_request_id(request))
+
+@router.put("/me/addresses/{address_id}", response_model=APIResponse)
+async def edit_address(address_id: str, data: SavedAddress, request: Request, current_user=Depends(get_current_buyer), db=Depends(get_database)):
+    return APIResponse(data=await AddressService(db).save(current_user["id"], data, address_id), request_id=get_request_id(request))
+
+@router.delete("/me/addresses/{address_id}", response_model=APIResponse)
+async def remove_address(address_id: str, request: Request, current_user=Depends(get_current_buyer), db=Depends(get_database)):
+    await AddressService(db).delete(current_user["id"], address_id)
+    return APIResponse(data={"deleted": True}, request_id=get_request_id(request))

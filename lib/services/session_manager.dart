@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
@@ -27,7 +28,8 @@ class SessionManager extends ChangeNotifier {
   AppRole get activeRole => _activeRole;
   bool get isTamil => _isTamil;
   bool get isDemoMode => _isDemoMode;
-  bool get isAuthenticated => (_accessToken != null && _accessToken!.isNotEmpty) || _isDemoMode;
+  bool get isAuthenticated =>
+      (_accessToken != null && _accessToken!.isNotEmpty) || _isDemoMode;
 
   /// Establish an authentic session from backend API response
   void setSession({
@@ -43,6 +45,12 @@ class SessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  void refreshProfile(UserProfile user) {
+    if (user.id != _currentUser?.id || user.role != _activeRole) return;
+    _currentUser = user;
+    notifyListeners();
+  }
+
   void switchRole(AppRole newRole) {
     _activeRole = newRole;
     notifyListeners();
@@ -50,7 +58,10 @@ class SessionManager extends ChangeNotifier {
 
   Future<void> toggleLanguagePersisted({http.Client? client}) async {
     if (_savingLanguage) return;
-    if (_accessToken == null || _isDemoMode) { toggleLanguage(); return; }
+    if (_accessToken == null || _isDemoMode) {
+      toggleLanguage();
+      return;
+    }
     final nextTamil = !_isTamil;
     final accountId = _currentUser?.id;
     final authToken = _accessToken;
@@ -58,14 +69,21 @@ class SessionManager extends ChangeNotifier {
     _savingLanguage = true;
     notifyListeners();
     try {
-      final response = await api.put(Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/language'),
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $authToken'},
-        body: jsonEncode({'preferred_language': nextTamil ? 'ta' : 'en'}))
-        .timeout(const Duration(seconds: 12));
-      if (response.statusCode != 200 || (jsonDecode(response.body) as Map)['success'] != true) {
+      final response = await api
+          .put(Uri.parse('${ApiConfig.baseUrl}/api/v1/users/me/language'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer $authToken'
+              },
+              body: jsonEncode({'preferred_language': nextTamil ? 'ta' : 'en'}))
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200 ||
+          (jsonDecode(response.body) as Map)['success'] != true) {
         throw Exception('Unable to save language preference. Please retry.');
       }
-      if (_currentUser?.id == accountId && _accessToken == authToken) setLanguage(nextTamil);
+      if (_currentUser?.id == accountId && _accessToken == authToken) {
+        setLanguage(nextTamil);
+      }
     } finally {
       if (client == null) api.close();
       _savingLanguage = false;
@@ -74,13 +92,20 @@ class SessionManager extends ChangeNotifier {
   }
 
   void toggleLanguage() {
-    _isTamil = !_isTamil;
-    VayalStrings.setLanguage(_isTamil);
-    notifyListeners();
+    setLanguage(!_isTamil);
   }
 
   void setLanguage(bool tamil) {
     _isTamil = tamil;
+    VayalStrings.setLanguage(_isTamil);
+    SharedPreferences.getInstance()
+        .then((p) => p.setBool('vayal_language_tamil', tamil));
+    notifyListeners();
+  }
+
+  Future<void> restoreLanguage() async {
+    final p = await SharedPreferences.getInstance();
+    _isTamil = p.getBool('vayal_language_tamil') ?? false;
     VayalStrings.setLanguage(_isTamil);
     notifyListeners();
   }
@@ -95,6 +120,9 @@ class SessionManager extends ChangeNotifier {
   /// Explicitly enter offline DEMO / PREVIEW mode.
   /// Clearly flagged so the UI always communicates demo status honestly.
   void enterDemoMode(AppRole role) {
+    if (kReleaseMode) {
+      throw StateError("Preview accounts are disabled in release builds.");
+    }
     _isDemoMode = true;
     _activeRole = role;
     switch (role) {

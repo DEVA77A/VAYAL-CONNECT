@@ -122,4 +122,7 @@ async def get_approved_farmer(
     profile = await FarmerRepository(db).find_by_user_id(current_user["id"])
     if not profile or profile.get("approval_status") != "APPROVED":
         raise ForbiddenError("Your farmer application must be approved before publishing products.")
+    from app.services.profile_completeness import missing_farmer_fields
+    if missing_farmer_fields(profile):
+        raise ForbiddenError("Complete farm coordinates and bank payout details before publishing.")
     return current_user

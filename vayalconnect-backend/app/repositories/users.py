@@ -4,6 +4,7 @@ VayalConnect Backend — User Repository
 Data access for the users collection.
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class UserRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["users"]
+        self.collection = collection(db, "users")
 
     async def create(self, user_data: Dict[str, Any]) -> str:
         user_data["created_at"] = datetime.now(timezone.utc)

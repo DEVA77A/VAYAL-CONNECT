@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
 import '../services/auth_service.dart';
@@ -7,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../utils/localization.dart';
 import '../widgets/vayal_logo.dart';
 import '../utils/registration_validation.dart';
+import 'location_gate_screen.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
 import 'admin_dashboard_screen.dart';
@@ -70,9 +72,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       if (!mounted) return;
       if (!res.user.hasAssignedRole) {
         final role = await _chooseRegistrationRole();
-        if (role == null) { SessionManager().logout(); return; }
+        if (role == null) {
+          SessionManager().logout();
+          return;
+        }
         await _authService.selectRole(role);
-        final confirmed = await _authService.login(_emailPhoneController.text, _passwordController.text);
+        final confirmed = await _authService.login(
+            _emailPhoneController.text, _passwordController.text);
         if (!mounted) return;
         _navigateToRoleHome(confirmed.user.role);
       } else {
@@ -91,15 +97,19 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
   }
 
   Future<AppRole?> _chooseRegistrationRole() => showDialog<AppRole>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Choose your account role'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, AppRole.farmer), child: const Text('Farmer')),
-        TextButton(onPressed: () => Navigator.pop(ctx, AppRole.buyer), child: const Text('Buyer')),
-      ],
-    ),
-  );
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Choose your account role'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, AppRole.farmer),
+                child: const Text('Farmer')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, AppRole.buyer),
+                child: const Text('Buyer')),
+          ],
+        ),
+      );
 
   Future<void> _resumeVerification() async {
     if (_isLoading) return;
@@ -109,9 +119,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     try {
       await _authService.requestOtp(_emailPhoneController.text);
       if (!mounted) return;
-      _showOtpVerificationDialog(_emailPhoneController.text.trim(), role, _passwordController.text);
+      _showOtpVerificationDialog(
+          _emailPhoneController.text.trim(), role, _passwordController.text);
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        setState(
+            () => _errorMessage = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -132,7 +146,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     }
 
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => home),
+      MaterialPageRoute(
+          builder: (_) =>
+              role == AppRole.admin ? home : LocationGateScreen(home: home)),
     );
   }
 
@@ -151,7 +167,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
           children: [
             Icon(Icons.dns_rounded, color: AppTheme.primaryGreen),
             SizedBox(width: 8),
-            Text('Server IP / URL', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            Text('Server IP / URL',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
@@ -167,7 +184,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
               controller: urlController,
               decoration: InputDecoration(
                 hintText: 'https://vayal-connect.onrender.com',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                 prefixIcon: const Icon(Icons.link, size: 20),
               ),
             ),
@@ -182,7 +200,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () {
               ApiConfig.setBaseUrl(urlController.text.trim());
@@ -203,7 +222,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
   }
 
   void _showForgotPasswordSheet() {
-    final emailController = TextEditingController(text: _emailPhoneController.text.trim());
+    final emailController =
+        TextEditingController(text: _emailPhoneController.text.trim());
     final otpController = TextEditingController();
     final newPasswordController = TextEditingController();
     bool otpSent = false;
@@ -236,11 +256,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.lock_reset, color: AppTheme.primaryGreen),
+                          const Icon(Icons.lock_reset,
+                              color: AppTheme.primaryGreen),
                           const SizedBox(width: 8),
                           Text(
                             VayalStrings.resetPasswordTitle,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -253,7 +275,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                   const SizedBox(height: 6),
                   Text(
                     VayalStrings.resetPasswordSubtitle,
-                    style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                    style: const TextStyle(
+                        fontSize: 13, color: AppTheme.textSecondary),
                   ),
                   const SizedBox(height: 16),
                   if (dialogError != null)
@@ -266,7 +289,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       ),
                       child: Text(
                         dialogError!,
-                        style: const TextStyle(color: AppTheme.errorRed, fontSize: 12),
+                        style: const TextStyle(
+                            color: AppTheme.errorRed, fontSize: 12),
                       ),
                     ),
                   TextField(
@@ -307,7 +331,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                         : () async {
                             final email = emailController.text.trim();
                             if (email.isEmpty) {
-                              setSheetState(() => dialogError = VayalStrings.emailRequired);
+                              setSheetState(() =>
+                                  dialogError = VayalStrings.emailRequired);
                               return;
                             }
 
@@ -325,7 +350,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 });
                               } catch (e) {
                                 setSheetState(() {
-                                  dialogError = e.toString().replaceFirst('Exception: ', '');
+                                  dialogError = e
+                                      .toString()
+                                      .replaceFirst('Exception: ', '');
                                   isSubmitting = false;
                                 });
                               }
@@ -333,7 +360,11 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               final otp = otpController.text.trim();
                               final newPass = newPasswordController.text;
                               if (otp.length < 6 || newPass.length < 8) {
-                                setSheetState(() { isSubmitting = false; dialogError = 'Please enter a valid 6-digit OTP and 8+ char password.'; });
+                                setSheetState(() {
+                                  isSubmitting = false;
+                                  dialogError =
+                                      'Please enter a valid 6-digit OTP and 8+ char password.';
+                                });
                                 return;
                               }
 
@@ -347,13 +378,16 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 Navigator.pop(ctx);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Password reset successfully! Please login.'),
+                                    content: Text(
+                                        'Password reset successfully! Please login.'),
                                     backgroundColor: AppTheme.successGreen,
                                   ),
                                 );
                               } catch (e) {
                                 setSheetState(() {
-                                  dialogError = e.toString().replaceFirst('Exception: ', '');
+                                  dialogError = e
+                                      .toString()
+                                      .replaceFirst('Exception: ', '');
                                   isSubmitting = false;
                                 });
                               }
@@ -363,11 +397,18 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       backgroundColor: AppTheme.primaryGreen,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                     child: isSubmitting
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text(otpSent ? VayalStrings.resetPasswordBtn : VayalStrings.sendOtp),
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : Text(otpSent
+                            ? VayalStrings.resetPasswordBtn
+                            : VayalStrings.sendOtp),
                   ),
                 ],
               ),
@@ -420,11 +461,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.person_add_rounded, color: AppTheme.primaryGreen),
+                          const Icon(Icons.person_add_rounded,
+                              color: AppTheme.primaryGreen),
                           const SizedBox(width: 8),
                           Text(
                             VayalStrings.register,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -452,16 +495,20 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 ),
                                 child: Text(
                                   regError!,
-                                  style: const TextStyle(color: AppTheme.errorRed, fontSize: 12),
+                                  style: const TextStyle(
+                                      color: AppTheme.errorRed, fontSize: 12),
                                 ),
                               ),
                             TextFormField(
                               enabled: !accountCreated && !isSubmitting,
                               controller: nameController,
-                              validator: (v) => v == null || v.trim().length < 2 ? 'Enter valid name' : null,
+                              validator: (v) => v == null || v.trim().length < 2
+                                  ? 'Enter valid name'
+                                  : null,
                               decoration: const InputDecoration(
                                 labelText: 'Full Name',
-                                prefixIcon: Icon(Icons.badge_outlined, size: 20),
+                                prefixIcon:
+                                    Icon(Icons.badge_outlined, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -470,13 +517,17 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 Expanded(
                                   flex: 3,
                                   child: TextFormField(
-                              enabled: !accountCreated && !isSubmitting,
+                                    enabled: !accountCreated && !isSubmitting,
                                     controller: emailController,
                                     keyboardType: TextInputType.emailAddress,
-                                    validator: (v) => v == null || !v.contains('@') ? 'Valid email required' : null,
+                                    validator: (v) =>
+                                        v == null || !v.contains('@')
+                                            ? 'Valid email required'
+                                            : null,
                                     decoration: const InputDecoration(
                                       labelText: 'Email Address',
-                                      prefixIcon: Icon(Icons.email_outlined, size: 20),
+                                      prefixIcon:
+                                          Icon(Icons.email_outlined, size: 20),
                                     ),
                                   ),
                                 ),
@@ -484,13 +535,19 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 Expanded(
                                   flex: 2,
                                   child: TextFormField(
-                              enabled: !accountCreated && !isSubmitting,
+                                    enabled: !accountCreated && !isSubmitting,
                                     controller: ageController,
                                     keyboardType: TextInputType.number,
-                                    validator: (v) => (int.tryParse(v ?? '') ?? 0) < 18 || (int.tryParse(v ?? '') ?? 0) > 120 ? '18-120' : null,
+                                    validator: (v) =>
+                                        (int.tryParse(v ?? '') ?? 0) < 18 ||
+                                                (int.tryParse(v ?? '') ?? 0) >
+                                                    120
+                                            ? '18-120'
+                                            : null,
                                     decoration: const InputDecoration(
                                       labelText: 'Age',
-                                      prefixIcon: Icon(Icons.cake_outlined, size: 20),
+                                      prefixIcon:
+                                          Icon(Icons.cake_outlined, size: 20),
                                     ),
                                   ),
                                 ),
@@ -504,8 +561,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               validator: validateRegistrationPhone,
                               decoration: const InputDecoration(
                                 labelText: 'Phone Number',
-                                helperText: '10 digits or +91 followed by 10 digits',
-                                prefixIcon: Icon(Icons.phone_outlined, size: 20),
+                                helperText:
+                                    '10 digits or +91 followed by 10 digits',
+                                prefixIcon:
+                                    Icon(Icons.phone_outlined, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -513,42 +572,71 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               enabled: !accountCreated && !isSubmitting,
                               controller: passwordController,
                               obscureText: true,
-                              validator: (v) => v == null || v.length < 8 || !RegExp(r'[A-Z]').hasMatch(v) || !RegExp(r'[0-9]').hasMatch(v) ? '8+ chars, uppercase letter and number' : null,
+                              validator: (v) => v == null ||
+                                      v.length < 8 ||
+                                      !RegExp(r'[A-Z]').hasMatch(v) ||
+                                      !RegExp(r'[0-9]').hasMatch(v)
+                                  ? '8+ chars, uppercase letter and number'
+                                  : null,
                               decoration: const InputDecoration(
                                 labelText: 'Password',
                                 prefixIcon: Icon(Icons.lock_outline, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
-                            Text(VayalStrings.locationExplanation, style: const TextStyle(fontSize: 12)),
+                            Text(VayalStrings.locationExplanation,
+                                style: const TextStyle(fontSize: 12)),
                             TextButton.icon(
-                              icon: const Icon(Icons.my_location), label: Text(VayalStrings.useLocation),
-                              onPressed: locating || isSubmitting || accountCreated ? null : () async {
-                                setSheetState(() => locating = true);
-                                final result = await LocationService().request();
-                                if (!ctx.mounted) return;
-                                setSheetState(() {
-                                  locating = false;
-                                  registrationLocation = result;
-                                  locationMessage = switch (result.state) {
-                                    LocationState.available => VayalStrings.locationSaved,
-                                    LocationState.denied => VayalStrings.locationDenied,
-                                    LocationState.permanentlyDenied => VayalStrings.locationPermanent,
-                                    LocationState.disabled => VayalStrings.locationDisabled,
-                                    LocationState.unavailable => VayalStrings.locationUnavailable,
-                                  };
-                                });
-                              },
+                              icon: const Icon(Icons.my_location),
+                              label: Text(VayalStrings.useLocation),
+                              onPressed: locating ||
+                                      isSubmitting ||
+                                      accountCreated
+                                  ? null
+                                  : () async {
+                                      setSheetState(() => locating = true);
+                                      final result =
+                                          await LocationService().request();
+                                      if (!ctx.mounted) return;
+                                      setSheetState(() {
+                                        locating = false;
+                                        registrationLocation = result;
+                                        locationMessage =
+                                            switch (result.state) {
+                                          LocationState.available =>
+                                            VayalStrings.locationSaved,
+                                          LocationState.denied =>
+                                            VayalStrings.locationDenied,
+                                          LocationState.permanentlyDenied =>
+                                            VayalStrings.locationPermanent,
+                                          LocationState.disabled =>
+                                            VayalStrings.locationDisabled,
+                                          LocationState.unavailable =>
+                                            VayalStrings.locationUnavailable,
+                                        };
+                                      });
+                                    },
                             ),
-                            if (locationMessage != null) Text(locationMessage!, style: const TextStyle(fontSize: 12)),
-                            if (registrationLocation?.state == LocationState.permanentlyDenied || registrationLocation?.state == LocationState.disabled)
-                              TextButton(onPressed: () async {
-                                await LocationService.openSettings(services: registrationLocation?.state == LocationState.disabled);
-                              }, child: Text(VayalStrings.openSettings)),
+                            if (locationMessage != null)
+                              Text(locationMessage!,
+                                  style: const TextStyle(fontSize: 12)),
+                            if (registrationLocation?.state ==
+                                    LocationState.permanentlyDenied ||
+                                registrationLocation?.state ==
+                                    LocationState.disabled)
+                              TextButton(
+                                  onPressed: () async {
+                                    await LocationService.openSettings(
+                                        services: registrationLocation?.state ==
+                                            LocationState.disabled);
+                                  },
+                                  child: Text(VayalStrings.openSettings)),
                             TextFormField(
                               enabled: !accountCreated && !isSubmitting,
                               controller: addressController,
-                              validator: (v) => v == null || v.trim().length < 5 ? 'Address required' : null,
+                              validator: (v) => v == null || v.trim().length < 5
+                                  ? 'Address required'
+                                  : null,
                               decoration: const InputDecoration(
                                 labelText: 'Address',
                                 prefixIcon: Icon(Icons.home_outlined, size: 20),
@@ -558,16 +646,22 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                             TextFormField(
                               enabled: !accountCreated && !isSubmitting,
                               controller: locationController,
-                              validator: (v) => v == null || v.trim().length < 2 ? 'District required' : null,
+                              validator: (v) => v == null || v.trim().length < 2
+                                  ? 'District required'
+                                  : null,
                               decoration: const InputDecoration(
                                 labelText: 'District / Area',
-                                prefixIcon: Icon(Icons.location_on_outlined, size: 20),
+                                prefixIcon:
+                                    Icon(Icons.location_on_outlined, size: 20),
                               ),
                             ),
                             const SizedBox(height: 12),
                             const Text(
                               'Select Account Role:',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textSecondary),
                             ),
                             const SizedBox(height: 6),
                             Row(
@@ -576,7 +670,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   child: ChoiceChip(
                                     label: const Text('🌾 Farmer'),
                                     selected: selectedRole == AppRole.farmer,
-                                    onSelected: (_) => setSheetState(() => selectedRole = AppRole.farmer),
+                                    onSelected: (_) => setSheetState(
+                                        () => selectedRole = AppRole.farmer),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -584,7 +679,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   child: ChoiceChip(
                                     label: const Text('🛒 Buyer'),
                                     selected: selectedRole == AppRole.buyer,
-                                    onSelected: (_) => setSheetState(() => selectedRole = AppRole.buyer),
+                                    onSelected: (_) => setSheetState(
+                                        () => selectedRole = AppRole.buyer),
                                   ),
                                 ),
                               ],
@@ -594,38 +690,56 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               onPressed: isSubmitting
                                   ? null
                                   : () async {
-                                      if (!regFormKey.currentState!.validate()) return;
+                                      if (!regFormKey.currentState!
+                                          .validate()) {
+                                        return;
+                                      }
                                       setSheetState(() {
                                         isSubmitting = true;
                                         regError = null;
                                       });
 
                                       try {
-                                        final email = emailController.text.trim();
+                                        final email =
+                                            emailController.text.trim();
                                         if (!accountCreated) {
-                                        await _authService.register(
-                                          name: nameController.text.trim(),
-                                          email: email,
-                                          phone: phoneController.text.trim(),
-                                          password: passwordController.text,
-                                          address: addressController.text.trim(),
-                                          areaLocation: locationController.text.trim(),
-                                          gender: 'other',
-                                          age: int.tryParse(ageController.text) ?? 25,
-                                          preferredLanguage: SessionManager().isTamil ? 'ta' : 'en',
-                                          latitude: registrationLocation?.latitude,
-                                          longitude: registrationLocation?.longitude,
-                                        );
+                                          await _authService.register(
+                                            name: nameController.text.trim(),
+                                            email: email,
+                                            phone: phoneController.text.trim(),
+                                            password: passwordController.text,
+                                            address:
+                                                addressController.text.trim(),
+                                            areaLocation:
+                                                locationController.text.trim(),
+                                            gender: 'other',
+                                            age: int.tryParse(
+                                                    ageController.text) ??
+                                                25,
+                                            preferredLanguage:
+                                                SessionManager().isTamil
+                                                    ? 'ta'
+                                                    : 'en',
+                                            latitude:
+                                                registrationLocation?.latitude,
+                                            longitude:
+                                                registrationLocation?.longitude,
+                                          );
 
-                                        accountCreated = true;
+                                          accountCreated = true;
                                         }
                                         await _authService.requestOtp(email);
                                         if (!context.mounted) return;
                                         Navigator.pop(ctx);
-                                        _showOtpVerificationDialog(email, selectedRole, passwordController.text);
+                                        _showOtpVerificationDialog(
+                                            email,
+                                            selectedRole,
+                                            passwordController.text);
                                       } catch (e) {
                                         setSheetState(() {
-                                          regError = e.toString().replaceFirst('Exception: ', '');
+                                          regError = e
+                                              .toString()
+                                              .replaceFirst('Exception: ', '');
                                           isSubmitting = false;
                                         });
                                       }
@@ -633,11 +747,17 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryGreen,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
                               ),
                               child: isSubmitting
-                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.white))
                                   : Text(VayalStrings.register),
                             ),
                           ],
@@ -662,63 +782,110 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     String? error;
     DateTime resendAfter = DateTime.now().add(const Duration(seconds: 60));
     showDialog(
-      context: context, barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, update) => AlertDialog(
-        title: const Text('Email OTP Verification'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Email provider accepted the OTP email for $email. Check your inbox and spam folder. Delivery may take a few minutes.'),
-          if (error != null) Text(error!, style: const TextStyle(color: AppTheme.errorRed)),
-          TextField(controller: otpController, enabled: !busy && !verified,
-            keyboardType: TextInputType.number, maxLength: 6,
-            decoration: const InputDecoration(hintText: 'Enter 6-digit OTP')),
-        ]),
-        actions: [
-          TextButton(onPressed: busy ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: busy || verified ? null : () async {
-            if (DateTime.now().isBefore(resendAfter)) {
-              update(() => error = 'Please wait 60 seconds between OTP requests.');
-              return;
-            }
-            update(() { busy = true; error = null; });
-            try {
-              await _authService.requestOtp(email);
-              resendAfter = DateTime.now().add(const Duration(seconds: 60));
-            } catch (e) {
-              if (ctx.mounted) update(() => error = e.toString().replaceFirst('Exception: ', ''));
-            } finally {
-              if (ctx.mounted) update(() => busy = false);
-            }
-          }, child: const Text('Resend OTP')),
-          ElevatedButton(onPressed: busy ? null : () async {
-            if (!verified && !RegExp(r'^\d{6}$').hasMatch(otpController.text.trim())) {
-              update(() => error = 'Enter a valid 6-digit OTP.');
-              return;
-            }
-            update(() { busy = true; error = null; });
-            try {
-              if (!verified) {
-                if (!await _authService.verifyOtp(email, otpController.text.trim())) {
-                  throw Exception('Email verification was not confirmed.');
-                }
-                verified = true;
-              }
-              final initial = await _authService.login(email, password);
-              if (!roleAssigned && !initial.user.hasAssignedRole) {
-                await _authService.selectRole(role);
-                roleAssigned = true;
-              }
-              final session = await _authService.login(email, password);
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx);
-              _navigateToRoleHome(session.user.role);
-            } catch (e) {
-              if (ctx.mounted) update(() => error = e.toString().replaceFirst('Exception: ', ''));
-            } finally {
-              if (ctx.mounted) update(() => busy = false);
-            }
-          }, child: Text(busy ? 'Please wait...' : verified ? 'Continue' : 'Verify')),
-        ],
-      )),
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+          builder: (ctx, update) => AlertDialog(
+                title: const Text('Email OTP Verification'),
+                content: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(
+                      'Email provider accepted the OTP email for $email. Check your inbox and spam folder. Delivery may take a few minutes.'),
+                  if (error != null)
+                    Text(error!,
+                        style: const TextStyle(color: AppTheme.errorRed)),
+                  TextField(
+                      controller: otpController,
+                      enabled: !busy && !verified,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration:
+                          const InputDecoration(hintText: 'Enter 6-digit OTP')),
+                ]),
+                actions: [
+                  TextButton(
+                      onPressed: busy ? null : () => Navigator.pop(ctx),
+                      child: const Text('Cancel')),
+                  TextButton(
+                      onPressed: busy || verified
+                          ? null
+                          : () async {
+                              if (DateTime.now().isBefore(resendAfter)) {
+                                update(() => error =
+                                    'Please wait 60 seconds between OTP requests.');
+                                return;
+                              }
+                              update(() {
+                                busy = true;
+                                error = null;
+                              });
+                              try {
+                                await _authService.requestOtp(email);
+                                resendAfter = DateTime.now()
+                                    .add(const Duration(seconds: 60));
+                              } catch (e) {
+                                if (ctx.mounted) {
+                                  update(() => error = e
+                                      .toString()
+                                      .replaceFirst('Exception: ', ''));
+                                }
+                              } finally {
+                                if (ctx.mounted) update(() => busy = false);
+                              }
+                            },
+                      child: const Text('Resend OTP')),
+                  ElevatedButton(
+                      onPressed: busy
+                          ? null
+                          : () async {
+                              if (!verified &&
+                                  !RegExp(r'^\d{6}$')
+                                      .hasMatch(otpController.text.trim())) {
+                                update(
+                                    () => error = 'Enter a valid 6-digit OTP.');
+                                return;
+                              }
+                              update(() {
+                                busy = true;
+                                error = null;
+                              });
+                              try {
+                                if (!verified) {
+                                  if (!await _authService.verifyOtp(
+                                      email, otpController.text.trim())) {
+                                    throw Exception(
+                                        'Email verification was not confirmed.');
+                                  }
+                                  verified = true;
+                                }
+                                final initial =
+                                    await _authService.login(email, password);
+                                if (!roleAssigned &&
+                                    !initial.user.hasAssignedRole) {
+                                  await _authService.selectRole(role);
+                                  roleAssigned = true;
+                                }
+                                final session =
+                                    await _authService.login(email, password);
+                                if (!ctx.mounted) return;
+                                Navigator.pop(ctx);
+                                _navigateToRoleHome(session.user.role);
+                              } catch (e) {
+                                if (ctx.mounted) {
+                                  update(() => error = e
+                                      .toString()
+                                      .replaceFirst('Exception: ', ''));
+                                }
+                              } finally {
+                                if (ctx.mounted) update(() => busy = false);
+                              }
+                            },
+                      child: Text(busy
+                          ? 'Please wait...'
+                          : verified
+                              ? 'Continue'
+                              : 'Verify')),
+                ],
+              )),
     );
   }
 
@@ -741,11 +908,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.preview_rounded, color: AppTheme.accentGold),
+                      const Icon(Icons.preview_rounded,
+                          color: AppTheme.accentGold),
                       const SizedBox(width: 8),
                       Text(
                         VayalStrings.offlineDemoPreview,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -758,7 +927,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
               const SizedBox(height: 4),
               Text(
                 VayalStrings.offlineDemoSubtitle,
-                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                style: const TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 18),
               Row(
@@ -772,14 +942,17 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         side: const BorderSide(color: AppTheme.primaryGreen),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: const Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text('🌾', style: TextStyle(fontSize: 20)),
                           SizedBox(height: 4),
-                          Text('Farmer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text('Farmer',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -794,14 +967,17 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         side: const BorderSide(color: AppTheme.primaryGreen),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: const Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text('🛒', style: TextStyle(fontSize: 20)),
                           SizedBox(height: 4),
-                          Text('Buyer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text('Buyer',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -816,14 +992,17 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         side: const BorderSide(color: AppTheme.primaryGreen),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: const Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text('🛡️', style: TextStyle(fontSize: 20)),
                           SizedBox(height: 4),
-                          Text('Admin', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text('Admin',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -850,7 +1029,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
             return SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 24),
+                constraints:
+                    BoxConstraints(minHeight: constraints.maxHeight - 24),
                 child: IntrinsicHeight(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -861,14 +1041,16 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                         children: [
                           // Left Network Badge
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
                               color: AppTheme.softGreen,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.eco, color: AppTheme.primaryGreen, size: 16),
+                                const Icon(Icons.eco,
+                                    color: AppTheme.primaryGreen, size: 16),
                                 const SizedBox(width: 6),
                                 Text(
                                   VayalStrings.governmentAttribution,
@@ -884,33 +1066,38 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                           // Right Controls: Server IP & Language Toggle
                           Row(
                             children: [
-                              // Server IP Config Button
-                              InkWell(
-                                onTap: _showServerConfigDialog,
-                                borderRadius: BorderRadius.circular(16),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: AppTheme.cardBorder),
-                                  ),
-                                  child: const Row(
-                                    children: [
-                                      Icon(Icons.dns_rounded, size: 13, color: AppTheme.primaryGreen),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'IP',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.primaryGreen,
+                              // Server configuration is limited to development builds.
+                              if (!kReleaseMode)
+                                InkWell(
+                                  onTap: _showServerConfigDialog,
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                          color: AppTheme.cardBorder),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.dns_rounded,
+                                            size: 13,
+                                            color: AppTheme.primaryGreen),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'IP',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppTheme.primaryGreen,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
                               const SizedBox(width: 6),
                               // Language Selector
                               InkWell(
@@ -921,15 +1108,19 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 },
                                 borderRadius: BorderRadius.circular(16),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: AppTheme.cardBorder),
+                                    border:
+                                        Border.all(color: AppTheme.cardBorder),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.language, size: 14, color: AppTheme.primaryGreen),
+                                      const Icon(Icons.language,
+                                          size: 14,
+                                          color: AppTheme.primaryGreen),
                                       const SizedBox(width: 4),
                                       Text(
                                         session.isTamil ? 'English' : 'தமிழ்',
@@ -983,20 +1174,24 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
 
                       // Error Banner
                       if (_errorMessage?.contains('Email not verified') == true)
-                        TextButton(onPressed: _isLoading ? null : _resumeVerification,
-                          child: const Text('Verify email / Resend OTP')),
+                        TextButton(
+                            onPressed: _isLoading ? null : _resumeVerification,
+                            child: const Text('Verify email / Resend OTP')),
                       if (_errorMessage != null)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
                           margin: const EdgeInsets.only(bottom: 16),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFEBEE),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.errorRed.withOpacity(0.3)),
+                            border: Border.all(
+                                color: AppTheme.errorRed.withOpacity(0.3)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.error_outline, size: 20, color: AppTheme.errorRed),
+                              const Icon(Icons.error_outline,
+                                  size: 20, color: AppTheme.errorRed),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
@@ -1054,7 +1249,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   return null;
                                 },
                                 decoration: InputDecoration(
-                                  prefixIcon: const Icon(Icons.mail_outline_rounded, size: 20, color: AppTheme.textSecondary),
+                                  prefixIcon: const Icon(
+                                      Icons.mail_outline_rounded,
+                                      size: 20,
+                                      color: AppTheme.textSecondary),
                                   hintText: VayalStrings.phoneOrEmailHint,
                                 ),
                               ),
@@ -1083,16 +1281,23 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   return null;
                                 },
                                 decoration: InputDecoration(
-                                  prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20, color: AppTheme.textSecondary),
+                                  prefixIcon: const Icon(
+                                      Icons.lock_outline_rounded,
+                                      size: 20,
+                                      color: AppTheme.textSecondary),
                                   hintText: VayalStrings.passwordHint,
                                   suffixIcon: IconButton(
-                                    key: const Key('password_visibility_toggle'),
+                                    key:
+                                        const Key('password_visibility_toggle'),
                                     icon: Icon(
-                                      _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                      _obscurePassword
+                                          ? Icons.visibility_off_outlined
+                                          : Icons.visibility_outlined,
                                       size: 20,
                                       color: AppTheme.textSecondary,
                                     ),
-                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                    onPressed: () => setState(() =>
+                                        _obscurePassword = !_obscurePassword),
                                   ),
                                 ),
                               ),
@@ -1101,7 +1306,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
 
                               // Remember Me & Forgot Password Row
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Row(
                                     children: [
@@ -1111,14 +1317,19 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                         child: Checkbox(
                                           value: _rememberMe,
                                           activeColor: AppTheme.primaryGreen,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                          onChanged: (val) => setState(() => _rememberMe = val ?? true),
+                                          shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(4)),
+                                          onChanged: (val) => setState(
+                                              () => _rememberMe = val ?? true),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
                                         VayalStrings.rememberMe,
-                                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            color: AppTheme.textSecondary),
                                       ),
                                     ],
                                   ),
@@ -1127,7 +1338,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                     style: TextButton.styleFrom(
                                       padding: EdgeInsets.zero,
                                       minimumSize: Size.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
                                       VayalStrings.forgotPassword,
@@ -1149,9 +1361,12 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryGreen,
                                   foregroundColor: Colors.white,
-                                  disabledBackgroundColor: AppTheme.primaryGreen.withOpacity(0.6),
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  disabledBackgroundColor:
+                                      AppTheme.primaryGreen.withOpacity(0.6),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12)),
                                   elevation: 0,
                                 ),
                                 child: _isLoading
@@ -1160,11 +1375,14 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                         height: 22,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2.2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                  Colors.white),
                                         ),
                                       )
                                     : Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
                                           Text(
                                             VayalStrings.login,
@@ -1175,7 +1393,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                             ),
                                           ),
                                           const SizedBox(width: 8),
-                                          const Icon(Icons.arrow_forward_rounded, size: 18),
+                                          const Icon(
+                                              Icons.arrow_forward_rounded,
+                                              size: 18),
                                         ],
                                       ),
                               ),
@@ -1188,18 +1408,24 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   onTap: _showRegistrationSheet,
                                   borderRadius: BorderRadius.circular(8),
                                   child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
                                     child: RichText(
                                       text: TextSpan(
-                                        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppTheme.textSecondary),
                                         children: [
-                                          TextSpan(text: VayalStrings.dontHaveAccount),
+                                          TextSpan(
+                                              text:
+                                                  VayalStrings.dontHaveAccount),
                                           TextSpan(
                                             text: VayalStrings.registerNow,
                                             style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: AppTheme.primaryGreen,
-                                              decoration: TextDecoration.underline,
+                                              decoration:
+                                                  TextDecoration.underline,
                                             ),
                                           ),
                                         ],
@@ -1217,27 +1443,35 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
 
                       const SizedBox(height: 16),
 
-                      // Offline Demo Entry Point (Clean & Unobtrusive)
-                      OutlinedButton.icon(
-                        onPressed: () => _showDemoPreviewSheet(session),
-                        icon: const Icon(Icons.explore_outlined, size: 16, color: AppTheme.accentGold),
-                        label: Text(
-                          VayalStrings.tryOfflineDemo,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                      // Preview accounts are limited to development builds.
+                      if (!kReleaseMode)
+                        OutlinedButton.icon(
+                          onPressed: () => _showDemoPreviewSheet(session),
+                          icon: const Icon(Icons.explore_outlined,
+                              size: 16, color: AppTheme.accentGold),
+                          label: Text(
+                            VayalStrings.tryOfflineDemo,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: AppTheme.surfaceCream,
+                            side: BorderSide(
+                                color: AppTheme.accentGold.withOpacity(0.35)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
                         ),
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: AppTheme.surfaceCream,
-                          side: BorderSide(color: AppTheme.accentGold.withOpacity(0.35)),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
 
                       const SizedBox(height: 10),
 
                       // Unobtrusive Kisan Support Helpline
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(10),
@@ -1245,12 +1479,15 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.support_agent_rounded, size: 20, color: AppTheme.primaryGreen),
+                            const Icon(Icons.support_agent_rounded,
+                                size: 20, color: AppTheme.primaryGreen),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 VayalStrings.kisanHelplineTitle,
-                                style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textSecondary),
                               ),
                             ),
                             Text(

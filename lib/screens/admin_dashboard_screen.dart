@@ -1,487 +1,594 @@
+import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
-import '../models/dashboard_models.dart';
 import '../services/admin_service.dart';
-import '../services/session_manager.dart';
-import '../utils/localization.dart';
-import '../theme/app_theme.dart';
-import '../widgets/bottom_nav_bar.dart';
-import '../widgets/demo_banner.dart';
-import '../widgets/stats_kpi_card.dart';
+import '../services/api_client.dart';
+import '../utils/commerce_strings.dart';
+import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
 import 'orders_screen.dart';
 import 'profile_screen.dart';
 
-/// Admin Dashboard & Market Portal
-///
-/// Implements Stitch Screen 9960b4207c924cbdbde84f0c82eaec15
 class AdminDashboardScreen extends StatefulWidget {
   final AdminService? adminService;
   const AdminDashboardScreen({super.key, this.adminService});
-
   @override
   State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  late final _adminService = widget.adminService ?? AdminService();
-  int _currentNavIndex = 0;
-  bool _isLoading = true;
-  String? _errorMessage;
-  String _selectedTimeline = 'இன்று (Today)';
-  AdminDashboardMetrics _metrics = AdminDashboardMetrics();
-
-  final List<Map<String, dynamic>> _pendingFarmers = [];
-  final List<Map<String, dynamic>> _recentOrders = [];
-  final Set<String> _decidingFarmers = {};
-  final _farmersKey = GlobalKey();
-  String get _period => _selectedTimeline.contains('Week') ? 'week' : _selectedTimeline.contains('Month') ? 'month' : 'today';
-
+class _AdminDashboardScreenState extends State<AdminDashboardScreen>
+    with LanguageRebuild<AdminDashboardScreen> {
+  late final _service = widget.adminService ?? AdminService();
+  late final _api = _service.api;
+  String _period = 'today';
+  Map<String, dynamic>? _data;
+  bool _busy = true;
+  String? _error;
   @override
   void initState() {
     super.initState();
-    _loadMetrics();
+    _load();
   }
 
   @override
   void dispose() {
-    _adminService.dispose();
+    if (widget.adminService == null) _service.dispose();
     super.dispose();
   }
 
-  Future<void> _loadMetrics() async {
+  Future<void> _load() async {
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _busy = true;
+      _error = null;
     });
     try {
-      final results = await Future.wait<Object>([
-        _adminService.fetchDashboardMetrics(period: _period),
-        _adminService.fetchPendingFarmers(),
-        _adminService.fetchRecentOrders(period: _period),
-      ]);
-      if (mounted) {
-        setState(() {
-          _metrics = results[0] as AdminDashboardMetrics;
-          _pendingFarmers
-            ..clear()
-            ..addAll((results[1] as List<Map<String, dynamic>>).map((f) => {
-              ...f, 'id': f['user_id'], 'location': f['area_location'] ?? '',
-            }));
-          _recentOrders
-            ..clear()
-            ..addAll((results[2] as List<Map<String, dynamic>>).map((o) => {
-              ...o, 'num': o['order_number'] ?? '', 'buyer': o['buyer_name'] ?? '',
-              'farmer': o['farmer_name'] ?? '', 'crop': o['product_name'] ?? '',
-              'amount': o['buyer_total_display'] ?? '', 'status': o['order_status'] ?? '',
-              'color': AppTheme.primaryGreen,
-            }));
-          _isLoading = false;
-        });
-      }
+      final data =
+          await _api.request('/api/v1/admin/dashboard?period=$_period');
+      if (mounted) setState(() => _data = Map<String, dynamic>.from(data));
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _decideFarmer(Map<String, dynamic> farmer, bool approved) async {
-    final id = farmer['id'];
-    if (id is! String || id.isEmpty || _decidingFarmers.contains(id)) return;
-    String? reason;
-    if (!approved) {
-      final controller = TextEditingController();
-      reason = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
-        title: Text(VayalStrings.rejectionReason),
-        content: TextField(controller: controller, maxLength: 500, maxLines: 3),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          TextButton(onPressed: () { if (controller.text.trim().isNotEmpty) Navigator.pop(ctx, controller.text.trim()); }, child: const Text('Reject'))],
-      ));
-      // The dialog route disposes its TextField after its transition.
-      if (reason == null || !mounted) return;
-    }
-    setState(() => _decidingFarmers.add(id));
-    try {
-      if (approved) { await _adminService.approveFarmer(id, applicationRevision: farmer['application_revision'] as int? ?? 0); }
-      else { await _adminService.rejectFarmer(id, reason!, applicationRevision: farmer['application_revision'] as int? ?? 0); }
-      await _loadMetrics();
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save the decision. Please retry.')));
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _decidingFarmers.remove(id));
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _onBottomNavTapped(int index) {
-    if (index == _currentNavIndex) return;
-    switch (index) {
-      case 0:
-        // Overview
-        break;
-      case 1:
-        final target = _farmersKey.currentContext;
-        if (target != null) Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 300));
-        break;
-      case 2:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const OrdersScreen()),
-        );
-        break;
-      case 3:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ProfileScreen()),
-        );
-        break;
+  Future<void> _open(Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: VayalAppBar(title: S.t('Admin dashboard')),
+      body: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(padding: const EdgeInsets.all(16), children: [
+            Text(S.t('Manage VayalConnect'),
+                style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 16),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              ActionChip(
+                  label: Text(S.t('Farmers')),
+                  onPressed: () => _open(AdminFarmersScreen(api: _api))),
+              ActionChip(
+                  label: Text(S.t('Buyers')),
+                  onPressed: () => _open(const AdminBuyersScreen())),
+              ActionChip(
+                  label: Text(S.t('Commission')),
+                  onPressed: () => _open(CommissionScreen(api: _api))),
+              ActionChip(
+                  label: Text(S.t('Payouts')),
+                  onPressed: () => _open(AdminPayoutsScreen(api: _api))),
+              ActionChip(
+                  label: Text(S.t('Orders')),
+                  onPressed: () => _open(const OrdersScreen())),
+              ActionChip(
+                  label: Text(S.t('Profile')),
+                  onPressed: () => _open(const ProfileScreen())),
+            ]),
+            const SizedBox(height: 16),
+            DropdownButton<String>(
+                value: _period,
+                items: {'today': 'Day', 'month': 'Month', 'year': 'Year'}
+                    .entries
+                    .map((e) => DropdownMenuItem(
+                        value: e.key, child: Text(S.t(e.value))))
+                    .toList(),
+                onChanged: _busy
+                    ? null
+                    : (v) {
+                        setState(() => _period = v!);
+                        _load();
+                      }),
+            if (_busy) const LinearProgressIndicator(),
+            if (_error != null) ErrorPanel(_error!, _load),
+            if (_data != null) ...[
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final e in {
+                  'total_farmers': 'Registered farmers',
+                  'approved_farmers': 'Approved farmers',
+                  'pending_farmer_approvals': 'Pending applications',
+                  'rejected_farmers': 'Rejected applications',
+                  'total_buyers': 'Registered buyers',
+                  'active_products': 'Active listings',
+                  'total_orders': 'Total orders',
+                  'pending_orders': 'Pending orders',
+                  'completed_orders': 'Completed orders',
+                  'cancelled_orders': 'Cancelled orders'
+                }.entries)
+                  MetricCard(e.value, '${_data![e.key] ?? 0}'),
+                for (final e in {
+                  'gross_order_value_paise': 'Gross order value',
+                  'total_platform_commission_paise': 'Earned commission',
+                  'captured_payments_paise': 'Captured payments',
+                  'paid_payouts_paise': 'Paid payouts',
+                  'pending_payouts_paise': 'Pending payouts'
+                }.entries)
+                  MetricCard(e.value, S.money(_data![e.key] ?? 0)),
+              ]),
+              const SizedBox(height: 16),
+              Text(S.t(
+                  'Financial periods use UTC order creation dates. Earned commission requires completed and captured orders.')),
+            ],
+          ])));
+}
+
+class AdminFarmersScreen extends StatefulWidget {
+  final ApiClient api;
+  const AdminFarmersScreen({super.key, required this.api});
+  @override
+  State<AdminFarmersScreen> createState() => _AdminFarmersScreenState();
+}
+
+class _AdminFarmersScreenState extends State<AdminFarmersScreen>
+    with LanguageRebuild<AdminFarmersScreen> {
+  String _status = '';
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: VayalAppBar(title: S.t('Farmers'), showBack: true),
+      body: Column(children: [
+        DropdownButton<String>(
+            value: _status,
+            items: ['', 'PENDING', 'APPROVED', 'REJECTED']
+                .map((v) => DropdownMenuItem(
+                    value: v,
+                    child: Text(v.isEmpty ? S.t('All farmers') : S.status(v))))
+                .toList(),
+            onChanged: (v) => setState(() => _status = v!)),
+        Expanded(
+            child: RecordPage(
+                key: ValueKey(_status),
+                title: 'Farmers',
+                embedded: true,
+                api: widget.api,
+                path:
+                    '/api/v1/admin/farmers${_status.isEmpty ? '' : '?status=$_status'}',
+                itemBuilder: (ctx, f, reload) => Card(
+                    child: ListTile(
+                        title: Text(f['name'] ?? ''),
+                        subtitle: Text(
+                            '${S.status(f['approval_status'])}\n${f['area_location'] ?? ''}'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          await Navigator.push(
+                              ctx,
+                              MaterialPageRoute(
+                                  builder: (_) => FarmerReviewScreen(
+                                      farmer: f, api: widget.api)));
+                          reload();
+                        })))),
+      ]));
+}
+
+class FarmerReviewScreen extends StatefulWidget {
+  final Map<String, dynamic> farmer;
+  final ApiClient api;
+  const FarmerReviewScreen(
+      {super.key, required this.farmer, required this.api});
+  @override
+  State<FarmerReviewScreen> createState() => _FarmerReviewScreenState();
+}
+
+class _FarmerReviewScreenState extends State<FarmerReviewScreen>
+    with LanguageRebuild<FarmerReviewScreen> {
+  late Map<String, dynamic> _farmer = widget.farmer;
+  bool _busy = false;
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final f = await widget.api
+          .request("/api/v1/admin/farmers/${widget.farmer['user_id']}");
+      if (mounted) setState(() => _farmer = Map<String, dynamic>.from(f));
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String? _error;
+  Future<void> _decide(bool approve) async {
+    String? reason;
+    if (!approve) {
+      final controller = TextEditingController();
+      reason = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+                  title: Text(S.t('Rejection reason')),
+                  content: TextField(controller: controller, maxLength: 500),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(S.t('Cancel'))),
+                    TextButton(
+                        onPressed: () =>
+                            Navigator.pop(ctx, controller.text.trim()),
+                        child: Text(S.t('Reject')))
+                  ]));
+      controller.dispose();
+      if (reason == null || reason.isEmpty || !mounted) return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.api.request(
+          '/api/v1/admin/farmers/${widget.farmer['user_id']}/${approve ? 'approve' : 'reject'}',
+          method: 'PUT',
+          body: {
+            'application_revision': _farmer['application_revision'] ?? 0,
+            if (!approve) 'reason': reason
+          });
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final session = SessionManager();
-
+    final f = _farmer, a = Map<String, dynamic>.from(f['application'] ?? {});
     return Scaffold(
-      backgroundColor: AppTheme.backgroundWarm,
-      appBar: VayalAppBar(
-        title: session.isTamil ? 'நிர்வாக டாஷ்போர்டு' : 'Admin Portal',
-        subtitle: session.isTamil ? 'சந்தை மேற்பார்வை & ஒப்புதல்கள்' : 'Marketplace Oversight',
-      ),
-      body: RefreshIndicator(
-        color: AppTheme.primaryGreen,
-        onRefresh: _loadMetrics,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Demo Banner
-              if (session.isDemoMode) const DemoModeBanner(),
-
-              // Timeline Selector
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: ['இன்று (Today)', 'இந்த வாரம் (Week)', 'இந்த மாதம் (Month)'].map((period) {
-                    final isSel = _selectedTimeline == period;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(period),
-                        selected: isSel,
-                        selectedColor: AppTheme.primaryGreen,
-                        labelStyle: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isSel ? Colors.white : AppTheme.textPrimary,
-                        ),
-                        onSelected: _isLoading ? null : (_) {
-                          setState(() => _selectedTimeline = period);
-                          _loadMetrics();
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-              if (_isLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: LinearProgressIndicator(color: AppTheme.primaryGreen),
-                ),
-
-              if (_errorMessage != null)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.wifi_off_rounded, color: AppTheme.errorRed, size: 36),
-                      const SizedBox(height: 8),
-                      Text(
-                        session.isTamil ? 'நிர்வாக தகவல்களைப் பெறுவதில் பிழை' : 'Failed to fetch admin metrics',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                      ),
-                      const SizedBox(height: 12),
-                      ElevatedButton.icon(
-                        onPressed: _loadMetrics,
-                        icon: const Icon(Icons.refresh, size: 16),
-                        label: Text(session.isTamil ? 'மீண்டும் முயற்சிக்கவும்' : 'Retry'),
-                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // Top 2x2 Metric Grid
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: StatsKpiCard(
-                            title: session.isTamil ? 'மொத்த ஆர்டர்கள்' : 'Total Orders',
-                            value: '${_metrics.totalOrders}',
-                            subtitle: 'Orders in selected period',
-
-                            icon: Icons.receipt_long,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: StatsKpiCard(
-                            title: session.isTamil ? 'மொத்த விற்பனை (GMV)' : 'Gross Sales',
-                            value: _metrics.totalSalesDisplay,
-                            subtitle: 'Completed, captured orders',
-
-                            icon: Icons.trending_up,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: StatsKpiCard(
-                            title: session.isTamil ? 'விவசாயி பட்டுவாடா' : 'Farmer Payouts',
-                            value: _metrics.totalFarmerPayoutDisplay,
-                            subtitle: 'Order payout totals',
-                            icon: Icons.account_balance_wallet,
-                            iconColor: AppTheme.primaryGreen,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: StatsKpiCard(
-                            title: session.isTamil ? 'தள வருவாய் (Commission)' : 'Platform Commission',
-                            value: _metrics.totalPlatformCommissionDisplay,
-                            subtitle: 'Stored order commissions',
-                            icon: Icons.account_balance,
-                            iconColor: AppTheme.accentGold,
-                            iconBgColor: AppTheme.surfaceCream,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Actionable Section: Pending Farmer Approvals
-              Padding(
-                key: _farmersKey,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          session.isTamil ? 'விவசாயிகள் சரிபார்ப்பு' : 'Farmer Application Review',
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.goldLight,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.accentGold.withOpacity(0.4)),
-                          ),
-                          child: Text(
-                            '${_pendingFarmers.length} காத்திருப்பில்',
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.warningOrange),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              if (!_isLoading && _pendingFarmers.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('No farmers awaiting review.')),
-              ..._pendingFarmers.map((f) {
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                    border: Border.all(color: AppTheme.cardBorder),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              f['name'] as String,
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          Text(
-                            f['location'] as String,
-                            style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Email: ${f['email'] ?? ''}',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                      ),
-                      Text(
-                        'Phone: ${f['phone'] ?? ''}',
-                        style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                      ),
-                      ExpansionTile(title: const Text('Review submitted farm details'), children: [
-                        if (f['application'] is Map) ...[
-                          for (final key in ['farm_name', 'farm_address', 'pickup_address', 'crops', 'delivery_available'])
-                            ListTile(title: Text(key.replaceAll('_', ' ')), subtitle: Text(f['application'][key].toString())),
-                          ListTile(title: Text('Submitted: ' + f['submitted_at'].toString() + ' • Revision: ' + f['application_revision'].toString())),
-                        ] else const ListTile(title: Text('Application not submitted. Approval is unavailable.')),
-                        ListTile(title: Text('Email verified: ' + (f['email_verified'] == true).toString())),
-                      ]),
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          OutlinedButton(
-                            onPressed: _decidingFarmers.contains(f['id']) ? null : () => _decideFarmer(f, false),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppTheme.errorRed,
-                              side: const BorderSide(color: AppTheme.errorRed),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            ),
-                            child: const Text('நிராகரி • Reject', style: TextStyle(fontSize: 11)),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: _decidingFarmers.contains(f['id']) || f['application'] == null ? null : () => _decideFarmer(f, true),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryGreen,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            ),
-                            child: const Text('ஒப்புதல் • Approve', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              }),
-
-              const SizedBox(height: 16),
-
-              // Section: Recent Marketplace Orders
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  session.isTamil ? 'சமீபத்திய ஆர்டர்கள் (Recent Orders)' : 'Recent Orders',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              if (!_isLoading && _recentOrders.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('No orders in this period.')),
-              ..._recentOrders.map((ord) {
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.cardBorder),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppTheme.softGreen,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.receipt, color: AppTheme.primaryGreen, size: 20),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'ஆர்டர் #${ord['num']}',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: (ord['color'] as Color).withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    ord['status'] as String,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: ord['color'] as Color,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Text(
-                              '${ord['buyer']} • ${ord['crop']}',
-                              style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                            ),
-                            Text(
-                              'மொத்தம்: ${ord['amount']}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: VayalBottomNavBar(
-        currentIndex: _currentNavIndex,
-        onTap: _onBottomNavTapped,
-      ),
-    );
+        appBar: VayalAppBar(title: S.t('Farmer application'), showBack: true),
+        body: ListView(padding: const EdgeInsets.all(16), children: [
+          detailLine('Name', f['name']),
+          detailLine('Email', f['email']),
+          detailLine('Contact number', f['phone']),
+          detailLine('Status', S.status(f['approval_status'])),
+          detailLine('Farm name', a['farm_name']),
+          detailLine('Farm address', a['farm_address']),
+          detailLine('Farm details', a['farm_details']),
+          detailLine('Crops', a['crops']),
+          detailLine('Farm coordinates', a['coordinates']),
+          detailLine('Rejection reason', f['rejection_reason']),
+          detailLine('Bank details submitted',
+              S.t(f['bank_details_present'] == true ? 'Yes' : 'No')),
+          OutlinedButton(
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          UserActivityScreen(userId: f['user_id']))),
+              child: Text(S.t('Products and orders'))),
+          if (_busy) const LinearProgressIndicator(),
+          if (_error != null) ErrorPanel(_error!, _reload),
+          if (f['approval_status'] == 'PENDING' &&
+              f['submitted_at'] != null) ...[
+            FilledButton(
+                onPressed: _busy ? null : () => _decide(true),
+                child: Text(S.t('Approve'))),
+            OutlinedButton(
+                onPressed: _busy ? null : () => _decide(false),
+                child: Text(S.t('Reject'))),
+          ],
+        ]));
   }
+}
+
+class AdminBuyersScreen extends StatelessWidget {
+  const AdminBuyersScreen({super.key});
+  @override
+  Widget build(BuildContext context) => RecordPage(
+      title: 'Buyers',
+      path: '/api/v1/admin/users?role=BUYER',
+      itemBuilder: (ctx, u, reload) => Card(
+          child: ListTile(
+              title: Text(u['name'] ?? ''),
+              subtitle: Text(
+                  '${u['email']}\n${u['phone']} · ${S.t(u['is_active'] == true ? 'Active' : 'Inactive')}'),
+              onTap: () => Navigator.push(
+                  ctx,
+                  MaterialPageRoute(
+                      builder: (_) => UserActivityScreen(userId: u['id']))))));
+}
+
+class UserActivityScreen extends StatefulWidget {
+  final String userId;
+  const UserActivityScreen({super.key, required this.userId});
+  @override
+  State<UserActivityScreen> createState() => _UserActivityScreenState();
+}
+
+class _UserActivityScreenState extends State<UserActivityScreen>
+    with LanguageRebuild<UserActivityScreen> {
+  final _api = ApiClient();
+  Map<String, dynamic>? _data;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _api.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final d =
+          await _api.request('/api/v1/admin/users/${widget.userId}/activity');
+      if (mounted) setState(() => _data = Map<String, dynamic>.from(d));
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: VayalAppBar(title: S.t('Products and orders'), showBack: true),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        if (_data == null && _error == null) const LinearProgressIndicator(),
+        if (_error != null) ErrorPanel(_error!, _load),
+        if (_data != null) ...[
+          detailLine('Total orders', _data!['total_orders']),
+          detailLine('Total listings', _data!['total_products']),
+          Text(S.t('Latest 100 records')),
+          for (final p in _data!['products'])
+            Card(
+                child: ListTile(
+                    title: Text(p['product_name'] ?? ''),
+                    subtitle: Text(
+                        '${p['quantity_available']} ${p['quantity_unit']} · ${S.status(p['status'])}'))),
+          for (final o in _data!['orders'])
+            Card(
+                child: ListTile(
+                    title: Text(o['order_number'] ?? ''),
+                    subtitle: Text(S.status(o['order_status'])),
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                OrderDetailScreen(orderId: o['id']))))),
+        ],
+      ]));
+}
+
+class CommissionScreen extends StatefulWidget {
+  final ApiClient api;
+  const CommissionScreen({super.key, required this.api});
+  @override
+  State<CommissionScreen> createState() => _CommissionScreenState();
+}
+
+class _CommissionScreenState extends State<CommissionScreen>
+    with LanguageRebuild<CommissionScreen> {
+  final _rate = TextEditingController();
+  bool _busy = true;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _rate.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final d = await widget.api.request('/api/v1/admin/commission');
+      if (mounted) {
+        _rate.text =
+            ((d['commission_percentage_bps'] ?? 2000) / 100).toString();
+      }
+    } catch (e) {
+      if (mounted) _error = e.toString();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final text = _rate.text.trim();
+    final rate = double.tryParse(text);
+    if (rate == null ||
+        !rate.isFinite ||
+        rate < 0 ||
+        rate > 100 ||
+        !RegExp(r'^\d{1,3}(\.\d{1,2})?$').hasMatch(text)) {
+      setState(() => _error = S.t(
+          'Enter a percentage from 0 to 100, with up to two decimal places.'));
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.api.request('/api/v1/admin/commission',
+          method: 'PUT',
+          body: {'commission_percentage_bps': (rate * 100).round()});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(S.t('Commission saved for new orders.'))));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: VayalAppBar(title: S.t('Commission'), showBack: true),
+      body: ListView(padding: const EdgeInsets.all(24), children: [
+        Text(S.t(
+            'Buyer total = farmer base + platform commission + delivery charge.')),
+        const SizedBox(height: 16),
+        TextField(
+            controller: _rate,
+            enabled: !_busy,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+                labelText: S.t('Global commission percentage'),
+                suffixText: '%')),
+        const SizedBox(height: 12),
+        Text(S.t(
+            'Changes apply to new orders. Historical order prices remain unchanged.')),
+        if (_busy) const LinearProgressIndicator(),
+        if (_error != null) ErrorPanel(_error!, _load),
+        FilledButton(onPressed: _busy ? null : _save, child: Text(S.t('Save'))),
+      ]));
+}
+
+class AdminPayoutsScreen extends StatelessWidget {
+  final ApiClient api;
+  const AdminPayoutsScreen({super.key, required this.api});
+  @override
+  Widget build(BuildContext context) => RecordPage(
+      title: 'Payouts',
+      path: '/api/v1/payouts/',
+      api: api,
+      itemBuilder: (ctx, p, reload) => Card(
+          child: ListTile(
+              title:
+                  Text('${p['payout_number']} · ${S.money(p['amount_paise'])}'),
+              subtitle: Text(S.status(p['status'])),
+              onTap: () async {
+                await Navigator.push(
+                    ctx,
+                    MaterialPageRoute(
+                        builder: (_) =>
+                            PayoutReviewScreen(payout: p, api: api)));
+                reload();
+              })));
+}
+
+class PayoutReviewScreen extends StatefulWidget {
+  final Map<String, dynamic> payout;
+  final ApiClient api;
+  const PayoutReviewScreen(
+      {super.key, required this.payout, required this.api});
+  @override
+  State<PayoutReviewScreen> createState() => _PayoutReviewScreenState();
+}
+
+class _PayoutReviewScreenState extends State<PayoutReviewScreen>
+    with LanguageRebuild<PayoutReviewScreen> {
+  bool _busy = true;
+  Map<String, dynamic>? _order;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final o = await widget.api
+          .request('/api/v1/orders/${widget.payout['order_id']}');
+      if (mounted) setState(() => _order = Map<String, dynamic>.from(o));
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _review(bool approve) async {
+    String? reason;
+    if (!approve) {
+      final c = TextEditingController();
+      reason = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+                  title: Text(S.t('Rejection reason')),
+                  content: TextField(controller: c, maxLength: 500),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(S.t('Cancel'))),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, c.text.trim()),
+                        child: Text(S.t('Reject')))
+                  ]));
+      c.dispose();
+      if (reason == null || reason.isEmpty || !mounted) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.api.request(
+          '/api/v1/payouts/${widget.payout['payout_id']}/${approve ? 'approve' : 'reject'}',
+          method: 'PUT',
+          body: approve ? null : {'rejection_reason': reason});
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+      appBar: VayalAppBar(title: S.t('Payout review'), showBack: true),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        detailLine('Amount', S.money(widget.payout['amount_paise'])),
+        detailLine('Status', S.status(widget.payout['status'])),
+        if (_order != null) ...[
+          detailLine('Orders', _order!['order_number']),
+          detailLine('Status', S.status(_order!['order_status'])),
+          detailLine('Payment', S.status(_order!['payment_status']))
+        ],
+        Text(S.t('Payout review requires completed and captured orders.')),
+        const SizedBox(height: 12),
+        Text(S.t('Bank transfers are disabled in this test demonstration.')),
+        if (_busy) const LinearProgressIndicator(),
+        if (_error != null) ErrorPanel(_error!, _load),
+        if (widget.payout['status'] == 'PENDING_APPROVAL') ...[
+          FilledButton(
+              onPressed: _busy ||
+                      _order?['order_status'] != 'COMPLETED' ||
+                      _order?['payment_status'] != 'CAPTURED'
+                  ? null
+                  : () => _review(true),
+              child: Text(S.t('Approve payout'))),
+          OutlinedButton(
+              onPressed: _busy ? null : () => _review(false),
+              child: Text(S.t('Reject payout'))),
+        ],
+      ]));
 }

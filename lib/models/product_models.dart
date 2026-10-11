@@ -48,14 +48,22 @@ class FarmerProduct {
       location: json['location'] as String? ?? '',
       market: json['market'] as String? ?? '',
       harvestDate: json['harvest_date'] as String?,
-      farmerPayoutPerUnitPaise: (json['farmer_payout_per_unit_paise'] as num?)?.toInt() ?? 0,
-      farmerPayoutPerUnitDisplay: json['farmer_payout_per_unit_display'] as String? ?? '₹0.00',
+      farmerPayoutPerUnitPaise:
+          (json['farmer_payout_per_unit_paise'] as num?)?.toInt() ?? 0,
+      farmerPayoutPerUnitDisplay:
+          json['farmer_payout_per_unit_display'] as String? ?? '₹0.00',
       status: json['status'] as String? ?? 'ACTIVE',
     );
   }
 }
 
 class BuyerProduct {
+  final int farmerBasePricePaise;
+  final int commissionPerUnitPaise;
+  final int commissionPercentageBps;
+  final String description;
+  final Map<String, dynamic>? marketReference;
+  final Map<String, dynamic>? farmCoordinates;
   final String productId;
   final String productName;
   final String category;
@@ -72,6 +80,12 @@ class BuyerProduct {
   final String? harvestDate;
 
   BuyerProduct({
+    this.farmerBasePricePaise = 0,
+    this.commissionPerUnitPaise = 0,
+    this.commissionPercentageBps = 0,
+    this.description = '',
+    this.marketReference,
+    this.farmCoordinates,
     required this.productId,
     required this.productName,
     required this.category,
@@ -90,6 +104,15 @@ class BuyerProduct {
 
   factory BuyerProduct.fromJson(Map<String, dynamic> json) {
     return BuyerProduct(
+      farmerBasePricePaise:
+          (json['farmer_base_price_paise'] as num?)?.toInt() ?? 0,
+      commissionPerUnitPaise:
+          (json['commission_per_unit_paise'] as num?)?.toInt() ?? 0,
+      commissionPercentageBps:
+          (json['commission_percentage_bps'] as num?)?.toInt() ?? 0,
+      description: json['description'] as String? ?? '',
+      marketReference: json['market_reference'] as Map<String, dynamic>?,
+      farmCoordinates: json['farm_coordinates'] as Map<String, dynamic>?,
       productId: json['product_id'] as String? ?? json['id'] as String? ?? '',
       productName: json['product_name'] as String? ?? '',
       category: json['category'] as String? ?? '',
@@ -101,8 +124,10 @@ class BuyerProduct {
       farmerName: json['farmer_name'] as String?,
       pickupAddress: json['pickup_address'] as String?,
       deliveryAvailable: json['delivery_available'] == true,
-      buyerPricePerUnitPaise: (json['buyer_price_per_unit_paise'] as num?)?.toInt() ?? 0,
-      buyerPricePerUnitDisplay: json['buyer_price_per_unit_display'] as String? ?? '₹0.00',
+      buyerPricePerUnitPaise:
+          (json['buyer_price_per_unit_paise'] as num?)?.toInt() ?? 0,
+      buyerPricePerUnitDisplay:
+          json['buyer_price_per_unit_display'] as String? ?? '₹0.00',
       harvestDate: json['harvest_date'] as String?,
     );
   }

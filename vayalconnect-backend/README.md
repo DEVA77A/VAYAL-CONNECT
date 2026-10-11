@@ -10,7 +10,7 @@
 - **Zero-Trust Pricing Engine**: Server-calculated prices integrating Government Market Price API (`data.gov.in AGMARKNET`).
 - **Role-Filtered Response Payloads**: Farmers see guaranteed payouts only; Buyers see retail prices only; Admins see comprehensive margin breakdowns.
 - **Secure Authentication & Brevo OTP**: Cryptographic password hashing (bcrypt), Fernet bank encryption, and rate-limited email OTPs.
-- **Full Razorpay Integration**: Order creation, HMAC-SHA256 signature verification, webhook processing, and admin-approved farmer payouts.
+- **Razorpay TEST checkout**: Server-owned amounts, signature plus gateway capture verification, idempotent payment state, and payout review. Bank transfers are disabled; no simulated transfer is treated as paid.
 - **Bilingual Localization Support**: English (`en`) and Tamil (`ta`).
 - **Audit Logging**: Comprehensive trace logging of all critical financial, authentication, and status transitions.
 
@@ -60,3 +60,7 @@ pytest tests/
 ```bash
 uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
 ```
+
+## Operations and release verification
+
+See [RELEASE_GUIDE.md](../RELEASE_GUIDE.md) for private administrator provisioning, coordinated key rotation, financial definitions, deployment gates and Android signing. Source tests do not establish external payment or government API availability.

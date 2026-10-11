@@ -1,7 +1,17 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val releaseKeyFile = rootProject.file("key.properties")
+val releaseKeys = Properties()
+if (releaseKeyFile.exists()) FileInputStream(releaseKeyFile).use { releaseKeys.load(it) }
+if (gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) } && !releaseKeyFile.exists()) {
+    throw GradleException("Release signing requires private android/key.properties. See RELEASE_GUIDE.md.")
 }
 
 android {
@@ -28,11 +38,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseKeyFile.exists()) {
+                storeFile = file(releaseKeys.getProperty("storeFile"))
+                storePassword = releaseKeys.getProperty("storePassword")
+                keyAlias = releaseKeys.getProperty("keyAlias")
+                keyPassword = releaseKeys.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
@@ -45,4 +64,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Pin the native SDK used by razorpay_flutter for reproducible TEST checkout builds.
+configurations.configureEach {
+    resolutionStrategy.force("com.razorpay:checkout:1.6.41")
 }

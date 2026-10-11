@@ -6,6 +6,7 @@ Manages connection lifecycle and provides collection access.
 """
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 import logging
 
@@ -38,7 +39,7 @@ class Database:
             await self.client.admin.command("ping")
             logger.info("MongoDB connection established successfully.")
         except Exception as e:
-            logger.error(f"MongoDB connection failed: {e}")
+            logger.error("MongoDB connection failed category=%s", type(e).__name__)
             raise
 
     async def disconnect(self):
@@ -94,6 +95,8 @@ class Database:
         await market_prices.create_index(
             [("commodity", 1), ("market", 1), ("arrival_date", -1)]
         )
+        await market_prices.create_index("price_id", sparse=True)
+        await market_prices.create_index("retrieved_at")
         await market_prices.create_index("commodity")
         await market_prices.create_index("arrival_date")
 
@@ -123,19 +126,32 @@ class Database:
         await orders.create_index("payout_status")
         await orders.create_index("idempotency_key", unique=True, sparse=True)
         await orders.create_index("created_at")
+        await orders.create_index([("order_status", 1), ("reservation_expires_at", 1)])
+
+        # Backward-compatible grace period for legacy unpaid reservations.
+        # Existing financial snapshots and order history remain unchanged.
+        now = datetime.now(timezone.utc)
+        await orders.update_many({"order_status": "PENDING_PAYMENT", "payment_status": {"$in": ["PENDING", "FAILED"]},
+            "reservation_expires_at": {"$exists": False}}, {"$set": {
+                "reservation_expires_at": now + timedelta(minutes=settings.ORDER_RESERVATION_MINUTES),
+                "reservation_migrated_at": now}})
 
         # Payments
         payments = self.db["payments"]
-        await payments.create_index("order_id")
+        # Preserve history; unique indexes protect new concurrent operations.
+        await payments.create_index("order_id", unique=True, name="payment_order_unique")
         await payments.create_index("buyer_id")
-        await payments.create_index("razorpay_order_id", unique=True)
-        await payments.create_index("razorpay_payment_id", sparse=True)
+        await payments.create_index("razorpay_order_id", unique=True, name="gateway_order_unique", partialFilterExpression={"razorpay_order_id": {"$type": "string"}})
+        indexes = await payments.index_information()
+        if "razorpay_order_id_1" in indexes and not indexes["razorpay_order_id_1"].get("sparse"):
+            await payments.drop_index("razorpay_order_id_1")
+        await payments.create_index("razorpay_payment_id", unique=True, name="gateway_payment_unique", partialFilterExpression={"razorpay_payment_id": {"$type": "string"}})
         await payments.create_index("payment_status")
         await payments.create_index("idempotency_key", unique=True, sparse=True)
 
         # Payouts
         payouts = self.db["payouts"]
-        await payouts.create_index("order_id")
+        await payouts.create_index("order_id", unique=True, name="payout_order_unique")
         await payouts.create_index("farmer_id")
         await payouts.create_index("status")
         await payouts.create_index("payout_number", unique=True)

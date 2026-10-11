@@ -2,6 +2,7 @@
 VayalConnect Backend — Payment Repository
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 
 class PaymentRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["payments"]
+        self.collection = collection(db, "payments")
 
     async def create(self, payment_data: Dict[str, Any]) -> str:
         payment_data["created_at"] = datetime.now(timezone.utc)
@@ -59,3 +60,28 @@ class PaymentRepository:
             if field in doc and isinstance(doc[field], ObjectId):
                 doc[field] = str(doc[field])
         return doc
+
+
+    async def claim_creation(self, order_id, buyer_id, amount):
+        from datetime import timedelta
+        from pymongo import ReturnDocument
+        from pymongo.errors import DuplicateKeyError
+        import uuid
+        now = datetime.now(timezone.utc)
+        token = uuid.uuid4().hex
+        try:
+            doc = await self.collection.find_one_and_update({"order_id": ObjectId(order_id),
+                "$or": [{"creation_lease_until": {"$lt": now}}, {"creation_lease_until": {"$exists": False}}]},
+                {"$set": {"creation_lease_until": now + timedelta(seconds=60), "creation_owner": token},
+                 "$setOnInsert": {"buyer_id": ObjectId(buyer_id), "amount_paise": amount, "currency": "INR",
+                    "payment_status": "CREATED", "signature_verified": False, "idempotency_key": "pay_" + order_id, "created_at": now}},
+                upsert=True, return_document=ReturnDocument.AFTER)
+        except DuplicateKeyError:
+            return None
+        return self._serialize(doc)
+
+    async def complete_creation(self, payment_id, token, gateway_order_id):
+        result = await self.collection.update_one({"_id": ObjectId(payment_id), "creation_owner": token},
+            {"$set": {"razorpay_order_id": gateway_order_id, "updated_at": datetime.now(timezone.utc)},
+             "$unset": {"creation_owner": "", "creation_lease_until": ""}})
+        return result.modified_count == 1

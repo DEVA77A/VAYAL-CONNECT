@@ -2,6 +2,7 @@
 VayalConnect Backend — Buyer Repository
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 
 class BuyerRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["buyer_profiles"]
+        self.collection = collection(db, "buyer_profiles")
 
     async def create(self, profile_data: Dict[str, Any]) -> str:
         profile_data["created_at"] = datetime.now(timezone.utc)

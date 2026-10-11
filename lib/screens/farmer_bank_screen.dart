@@ -1,3 +1,6 @@
+import '../utils/commerce_strings.dart';
+import '../widgets/vayal_app_bar.dart';
+import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import '../services/farmer_service.dart';
 
@@ -8,7 +11,8 @@ class FarmerBankScreen extends StatefulWidget {
   State<FarmerBankScreen> createState() => _FarmerBankScreenState();
 }
 
-class _FarmerBankScreenState extends State<FarmerBankScreen> {
+class _FarmerBankScreenState extends State<FarmerBankScreen>
+    with LanguageRebuild<FarmerBankScreen> {
   late final _service = widget.service ?? FarmerService();
   final _form = GlobalKey<FormState>();
   final _fields = {
@@ -46,8 +50,9 @@ class _FarmerBankScreenState extends State<FarmerBankScreen> {
               : e.value.text.trim()
       });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Bank details saved. Verification remains pending.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(S.t('Bank details saved. Verification remains pending.'))));
       Navigator.pop(context, true);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -58,8 +63,7 @@ class _FarmerBankScreenState extends State<FarmerBankScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar:
-            AppBar(title: const Text('Bank payout details / வங்கி விவரங்கள்')),
+        appBar: VayalAppBar(title: S.t('Bank payout details'), showBack: true),
         body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Form(
@@ -67,8 +71,8 @@ class _FarmerBankScreenState extends State<FarmerBankScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                        'Enter your own bank details. Saving replaces the previous details and resets verification. Your full account number is never returned for display.'),
+                    Text(S.t(
+                        'Enter your own bank details. Saving resets verification. Full account numbers are never displayed.')),
                     if (_busy) const LinearProgressIndicator(),
                     if (_error != null)
                       Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -90,25 +94,27 @@ class _FarmerBankScreenState extends State<FarmerBankScreen> {
                                 ? TextInputType.number
                                 : TextInputType.text,
                             decoration: InputDecoration(
-                                labelText: e.key.replaceAll('_', ' ')),
+                                labelText: S.t(e.key.replaceAll('_', ' '))),
                             validator: (v) {
                               final value = v?.trim() ?? '';
-                              if (e.key == 'account_number')
+                              if (e.key == 'account_number') {
                                 return RegExp(r'^[0-9]{8,20}$').hasMatch(value)
                                     ? null
-                                    : 'Enter 8–20 digits.';
-                              if (e.key == 'ifsc')
+                                    : S.t('Enter 8–20 digits.');
+                              }
+                              if (e.key == 'ifsc') {
                                 return RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$')
                                         .hasMatch(value.toUpperCase())
                                     ? null
-                                    : 'Enter a valid IFSC.';
+                                    : S.t('Enter a valid IFSC.');
+                              }
                               if (e.key == 'upi_id') return null;
-                              return value.length < 2 ? 'Required' : null;
+                              return value.length < 2 ? S.t('Required') : null;
                             },
                           )),
                     ElevatedButton(
                         onPressed: _busy ? null : _save,
-                        child: const Text('Save bank details')),
+                        child: Text(S.t('Save bank details'))),
                   ],
                 ))),
       );

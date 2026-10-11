@@ -11,11 +11,18 @@ from datetime import datetime, timezone
 import hmac
 import hashlib
 import logging
+import requests
 import asyncio
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+class TimeoutSession(requests.Session):
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", (5, 15))
+        return super().request(method, url, **kwargs)
+
 
 
 class PaymentProvider(ABC):
@@ -76,7 +83,7 @@ class RazorpayPaymentProvider(PaymentProvider):
         if self._configured:
             try:
                 import razorpay
-                self.client = razorpay.Client(auth=(self.key_id, self.key_secret))
+                self.client = razorpay.Client(session=TimeoutSession(), auth=(self.key_id, self.key_secret))
                 self.client.set_app_details({
                     "title": "VayalConnect",
                     "version": settings.APP_VERSION,
@@ -111,7 +118,14 @@ class RazorpayPaymentProvider(PaymentProvider):
             order_data["notes"] = notes
 
         try:
-            order = await asyncio.to_thread(self.client.order.create, data=order_data)
+            existing = await asyncio.to_thread(self.client.order.all, {"receipt": receipt, "count": 100})
+            candidates = [o for o in existing.get("items", []) if o.get("receipt") == receipt]
+            if candidates:
+                order = candidates[0]
+                if order.get("amount") != amount_paise or order.get("currency") != currency:
+                    raise RuntimeError("Existing gateway receipt has an incompatible amount.")
+            else:
+                order = await asyncio.to_thread(self.client.order.create, data=order_data)
             logger.info(f"Razorpay order created: {order.get('id')}")
             return {
                 "razorpay_order_id": order["id"],
@@ -177,6 +191,7 @@ class RazorpayPaymentProvider(PaymentProvider):
 
 
 class RazorpayPayoutProvider(PayoutProvider):
+    supports_bank_transfers = False
     """
     Razorpay payout provider using RazorpayX.
     Note: RazorpayX requires separate activation and may need
@@ -194,7 +209,7 @@ class RazorpayPayoutProvider(PayoutProvider):
         if self._configured:
             try:
                 import razorpay
-                self.client = razorpay.Client(auth=(self.key_id, self.key_secret))
+                self.client = razorpay.Client(session=TimeoutSession(), auth=(self.key_id, self.key_secret))
             except (ImportError, Exception) as e:
                 logger.error("Razorpay provider operation failed.")
                 self._configured = False
@@ -218,33 +233,14 @@ class RazorpayPayoutProvider(PayoutProvider):
                 "RazorpayX account activation required."
             )
 
-        # RazorpayX payout requires:
-        # 1. Create a Contact
-        # 2. Create a Fund Account
-        # 3. Create a Payout
-        # This is the correct flow but requires RazorpayX activation
-        logger.info(
-            f"Initiating payout: amount={amount_paise}, ref={reference_id}"
-        )
-
-        return {
-            "provider": "razorpay",
-            "status": "PROCESSING",
-            "reference_id": reference_id,
-            "initiated_at": datetime.now(timezone.utc),
-            "note": "RazorpayX payout initiated — awaiting confirmation",
-        }
+        raise RuntimeError("RazorpayX payouts are unavailable in this test-payment demonstration. No transfer was initiated.")
 
     async def check_payout_status(self, payout_id: str) -> Dict[str, Any]:
         """Check payout status from Razorpay."""
         if not self._configured:
             return {"status": "UNKNOWN", "error": "Not configured"}
 
-        # Query RazorpayX for payout status
-        return {
-            "payout_id": payout_id,
-            "status": "PROCESSING",
-        }
+        raise RuntimeError("No configured RazorpayX payout query is available.")
 
 
 class SandboxPayoutProvider(PayoutProvider):
@@ -289,4 +285,4 @@ razorpay_payment = RazorpayPaymentProvider()
 if settings.APP_ENV == "production":
     payout_provider: PayoutProvider = RazorpayPayoutProvider()
 else:
-    payout_provider = SandboxPayoutProvider()
+    payout_provider = RazorpayPayoutProvider()

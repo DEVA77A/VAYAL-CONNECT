@@ -11,8 +11,13 @@ from datetime import datetime
 from app.utils.validators import is_valid_ifsc, is_valid_upi
 
 
+from app.schemas.location import Coordinates
+
+
 class FarmerApplicationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    coordinates: Optional[Coordinates] = None
+    farm_details: str = Field("", max_length=1000)
     farm_name: str = Field(..., min_length=2, max_length=200)
     farm_address: str = Field(..., min_length=10, max_length=500)
     pickup_address: str = Field(..., min_length=10, max_length=500)
@@ -67,6 +72,9 @@ class FarmerProfileResponse(BaseModel):
     age: int
     approval_status: str
     bank_details_present: bool = False
+    profile_complete: bool = False
+    missing_fields: list[str] = []
+    can_publish: bool = False
     application: Optional[dict] = None
     application_revision: int = 0
     submitted_at: Optional[datetime] = None

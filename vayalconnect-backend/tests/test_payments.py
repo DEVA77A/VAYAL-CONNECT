@@ -23,7 +23,9 @@ def mock_db():
 
 
 @pytest.mark.asyncio
-async def test_create_payment_uses_server_order_amount(mock_db):
+async def test_create_payment_uses_server_order_amount(mock_db, monkeypatch):
+    monkeypatch.setattr("app.repositories.payments.PaymentRepository.claim_creation", AsyncMock(return_value={"id":"payment", "creation_owner":"lease"}))
+    monkeypatch.setattr("app.repositories.payments.PaymentRepository.complete_creation", AsyncMock(return_value=True))
     service = PaymentService(mock_db)
 
     order = {
@@ -75,8 +77,10 @@ async def test_create_payment_rejects_unauthorized_buyer(mock_db):
 @pytest.mark.asyncio
 async def test_verify_payment_success_transitions_order_to_paid(mock_db, monkeypatch):
     monkeypatch.setattr("app.services.payment_service.razorpay_payment.fetch_payment", AsyncMock(return_value={
-        "id": "pay_rzp_001", "order_id": "order_rzp_999", "amount": 42000, "currency": "INR", "status": "captured",
+        "id": "pay_rzp_888", "order_id": "order_rzp_999", "amount": 42000, "currency": "INR", "status": "captured",
     }))
+    settlement = AsyncMock(return_value={"payment_verified": True, "order_status": "PAID"})
+    monkeypatch.setattr("app.services.payment_settlement.PaymentSettlement.captured", settlement)
     service = PaymentService(mock_db)
 
     payment = {
@@ -109,11 +113,12 @@ async def test_verify_payment_success_transitions_order_to_paid(mock_db, monkeyp
                                                 res = await service.verify_payment(
                                                     order_id="order_123",
                                                     razorpay_order_id="order_rzp_999",
-                                                    razorpay_payment_id="pay_rzp_001",
+                                                    razorpay_payment_id="pay_rzp_888",
                                                     razorpay_signature="sig_valid",
                                                     buyer_id="buyer_1",
                                                 )
 
+                                                settlement.assert_awaited_once()
                                                 assert res["payment_verified"] is True
                                                 assert res["order_status"] == OrderStatus.PAID.value
 
@@ -121,6 +126,7 @@ async def test_verify_payment_success_transitions_order_to_paid(mock_db, monkeyp
 @pytest.mark.asyncio
 async def test_admin_approve_payout_success(mock_db):
     service = PayoutService(mock_db)
+    service.order_repo.find_by_id = AsyncMock(return_value={"order_status":"COMPLETED","payment_status":"CAPTURED","farmer_total_payout_paise":42000})
 
     payout = {
         "id": "payout_1",

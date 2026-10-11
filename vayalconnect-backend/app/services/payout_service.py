@@ -12,6 +12,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
 from app.repositories.payouts import PayoutRepository
+from app.core.transactions import transactional
 from app.repositories.orders import OrderRepository
 from app.repositories.farmers import FarmerRepository
 from app.repositories.users import UserRepository
@@ -49,11 +50,16 @@ class PayoutService:
     async def get_payout(self, payout_id: str) -> Optional[Dict[str, Any]]:
         return await self.payout_repo.find_by_id(payout_id)
 
+    @transactional
     async def approve_payout(self, payout_id: str, admin_id: str) -> Dict[str, Any]:
         """Admin approves a payout for processing."""
         payout = await self.payout_repo.find_by_id(payout_id)
         if not payout:
             raise NotFoundError("Payout")
+
+        order = await self.order_repo.find_by_id(payout["order_id"])
+        if not order or order.get("order_status") != "COMPLETED" or order.get("payment_status") != "CAPTURED" or order.get("farmer_total_payout_paise") != payout["amount_paise"]:
+            raise PayoutNotEligibleError("Payout review requires a completed, captured order with matching farmer earnings.")
 
         if payout["status"] != PayoutStatus.PENDING_APPROVAL.value:
             raise InvalidStateTransitionError(
@@ -83,6 +89,7 @@ class PayoutService:
 
         return await self.payout_repo.find_by_id(payout_id)
 
+    @transactional
     async def reject_payout(
         self, payout_id: str, admin_id: str, reason: str
     ) -> Dict[str, Any]:
@@ -129,6 +136,9 @@ class PayoutService:
         if payout["status"] != PayoutStatus.APPROVED.value:
             raise PayoutNotEligibleError("Payout must be approved before processing.")
 
+        if not getattr(payout_provider, "supports_bank_transfers", False):
+            raise PayoutNotEligibleError("Bank transfers are disabled for this Razorpay TEST demonstration. A verified payout provider is required.")
+
         # Get farmer bank details
         farmer_profile = await self.farmer_repo.find_by_user_id(payout["farmer_id"])
         if not farmer_profile:
@@ -143,7 +153,7 @@ class PayoutService:
             ifsc = decrypt_value(farmer_profile["bank_ifsc"])
             account_name = decrypt_value(farmer_profile["bank_account_holder_name"])
         except Exception as e:
-            logger.error(f"Failed to decrypt bank details for payout {payout_id}: {e}")
+            logger.error("Failed to decrypt payout bank details category=%s", type(e).__name__)
             raise PayoutNotEligibleError("Unable to process bank details.")
 
         # Update to PROCESSING
@@ -189,16 +199,16 @@ class PayoutService:
             return result
 
         except Exception as e:
-            logger.error(f"Payout initiation failed: {e}")
+            logger.error("Payout initiation failed category=%s", type(e).__name__)
             await self.payout_repo.update_status(
                 payout_id,
                 PayoutStatus.FAILED.value,
-                failure_reason=str(e),
+                failure_reason="Provider transfer could not be confirmed.",
             )
             await self.order_repo.update_payout_status(
                 payout["order_id"], PayoutStatus.FAILED.value
             )
-            raise PayoutNotEligibleError(f"Payout processing failed: {e}")
+            raise PayoutNotEligibleError("Payout processing could not be confirmed.") from None
 
     async def get_farmer_payout_summary(self, farmer_id: str) -> Dict[str, Any]:
         """Aggregate payout data for farmer dashboard."""

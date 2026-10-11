@@ -92,13 +92,7 @@ async def list_farmers(
     farmer_repo = FarmerRepository(db)
     user_repo = UserRepository(db)
 
-    if status:
-        farmers, total = await farmer_repo.list_by_status(status, page, limit)
-    else:
-        farmers, total = await farmer_repo.list_by_status("PENDING", page, limit)
-        approved, t2 = await farmer_repo.list_by_status("APPROVED", page, limit)
-        farmers.extend(approved)
-        total += t2
+    farmers, total = await farmer_repo.list_by_status(status, page, limit)
 
     items = []
     for f in farmers:
@@ -115,6 +109,7 @@ async def list_farmers(
                 "email_verified": user.get("email_verified", False),
                 "is_active": user.get("is_active", False),
                 **application_view(f),
+                "bank_details_present": bool(f.get("bank_account_number")),
                 "created_at": f.get("created_at"),
             })
 
@@ -172,7 +167,7 @@ async def get_commission(
     config = await commission_service.get_active_commission()
     return APIResponse(
         success=True,
-        data=config or {"message": "No commission configured. Using defaults."},
+        data=config or {"commission_percentage_bps": 2000, "version": 0, "is_default": True, "message": "Using the server default 20% commission."},
         request_id=get_request_id(request),
     )
 
@@ -231,3 +226,28 @@ async def get_commission_history(
         data={"items": history},
         request_id=get_request_id(request),
     )
+
+
+@router.get("/users/{user_id}/activity", response_model=APIResponse)
+async def user_activity(user_id: str, request: Request, current_user=Depends(get_current_admin), db=Depends(get_database)):
+    from app.repositories.orders import OrderRepository
+    from app.repositories.products import ProductRepository
+    user = await UserRepository(db).find_by_id(user_id)
+    if not user: raise NotFoundError("User")
+    if user.get("role") == "FARMER":
+        orders, total = await OrderRepository(db).list_by_farmer(user_id, 1, 100)
+        products, product_total = await ProductRepository(db).list_by_farmer(user_id, 1, 100)
+    else:
+        orders, total = await OrderRepository(db).list_by_buyer(user_id, 1, 100)
+        products, product_total = [], 0
+    return APIResponse(data={"orders": orders, "total_orders": total, "products": products, "total_products": product_total}, request_id=get_request_id(request))
+
+
+@router.get("/farmers/{user_id}", response_model=APIResponse)
+async def farmer_review_detail(user_id: str, request: Request, current_user=Depends(get_current_admin), db=Depends(get_database)):
+    user = await UserRepository(db).find_by_id(user_id)
+    profile = await FarmerRepository(db).find_by_user_id(user_id)
+    if not user or user.get("role") != "FARMER" or not profile:
+        raise NotFoundError("Farmer")
+    return APIResponse(data={"user_id": user_id, **{k: user.get(k) for k in ("name", "email", "phone", "address", "area_location", "is_active", "email_verified")},
+        "approval_status": profile.get("approval_status"), **application_view(profile), "bank_details_present": bool(profile.get("bank_account_number"))}, request_id=get_request_id(request))

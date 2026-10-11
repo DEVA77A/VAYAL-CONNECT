@@ -3,16 +3,17 @@ VayalConnect Backend — Payment Schemas
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
 
 class PaymentVerifyRequest(BaseModel):
     """Verify Razorpay payment — server validates signature."""
-    order_id: str
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
+    model_config = ConfigDict(extra="forbid")
+    order_id: str = Field(..., min_length=1, max_length=100)
+    razorpay_order_id: str = Field(..., min_length=1, max_length=100)
+    razorpay_payment_id: str = Field(..., min_length=1, max_length=100)
+    razorpay_signature: str = Field(..., min_length=1, max_length=256)
 
 
 class PaymentVerifyResponse(BaseModel):

@@ -1,3 +1,4 @@
+from app.core.transactions import transactional_endpoint, collection
 """
 VayalConnect Backend — Products Router
 
@@ -25,10 +26,18 @@ from app.core.exceptions import NotFoundError, ForbiddenError
 from app.utils.money import format_rupees, percentage_bps_to_display
 
 from app.repositories.farmers import FarmerRepository
+from app.api.v1.media import validate_owned_image
+from datetime import datetime, timezone, date
 
 def reference_view(product):
-    fields = ("government_reference_price_paise", "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit", "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale", "reference_price_retrieved_at", "reference_commodity", "reference_market")
-    return {k: product.get(k) for k in fields} if product.get("pricing_mode") == "FARMER_SELECTED" else None
+    fields = ("reference_price_available", "reference_price_message", "government_reference_price_paise", "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit", "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale", "reference_price_retrieved_at", "reference_commodity", "reference_market", "reference_min_paise", "reference_max_paise", "reference_state", "reference_source_url")
+    if product.get("pricing_mode") != "FARMER_SELECTED": return None
+    result = {k: product.get(k) for k in fields}
+    try:
+        result["reference_price_stale"] = (datetime.now(timezone.utc).date() - date.fromisoformat(str(product.get("reference_price_date"))[:10])).days > 1
+    except (TypeError, ValueError):
+        result["reference_price_stale"] = True
+    return result
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -45,6 +54,7 @@ async def price_reference(request: Request, commodity: str = Query(..., min_leng
 
 
 @router.post("/", response_model=APIResponse, status_code=201)
+@transactional_endpoint
 async def create_product(
     data: CreateProductRequest,
     request: Request,
@@ -56,6 +66,7 @@ async def create_product(
     Backend validates an official reference and adds commission to the selected payout.
     Response shows ONLY farmer payout — no buyer price, no commission.
     """
+    await validate_owned_image(db, data.image_url, current_user["id"])
     pricing_engine = PricingEngine(db)
     product_repo = ProductRepository(db)
     audit = AuditService(db)
@@ -77,6 +88,7 @@ async def create_product(
     product_doc = {
         "farmer_id": current_user["id"],
         "product_name": data.product_name,
+        "description": data.description,
         "category": data.category,
         "quantity_available": data.quantity,
         "quantity_unit": data.quantity_unit.value,
@@ -120,6 +132,7 @@ async def create_product(
     return APIResponse(
         success=True,
         data=FarmerProductResponse(
+            description=data.description,
             product_id=product_id,
             product_name=data.product_name,
             category=data.category,
@@ -153,6 +166,7 @@ async def list_my_products(
 
     items = [
         FarmerProductResponse(
+            description=p.get("description", ""),
             product_id=p["id"],
             product_name=p.get("product_name", ""),
             category=p.get("category", ""),
@@ -183,6 +197,8 @@ async def list_my_products(
 @router.get("/", response_model=APIResponse)
 async def list_products(
     request: Request,
+    search: str = Query(None, max_length=200),
+    sort: str = Query("newest", pattern="^(newest|price_asc|price_desc)$"),
     category: str = Query(None),
     location: str = Query(None),
     page: int = Query(1, ge=1),
@@ -198,17 +214,19 @@ async def list_products(
     if role == "ADMIN":
         products, total = await product_repo.list_all(page, limit)
     else:
-        products, total = await product_repo.list_active(category, location, page, limit)
+        products, total = await product_repo.list_active(category, location, page, limit, search=search, sort=sort)
 
     items = []
+    pricing_engine = PricingEngine(db)
     for p in products:
         if role == "BUYER":
-            p = await PricingEngine(db).buyer_pricing(p)
+            p = await pricing_engine.buyer_pricing(p)
             farm = await FarmerRepository(db).find_by_user_id(p.get("farmer_id", ""))
             application = (farm or {}).get("application") or {}
             farmer = await user_repo.find_by_id(p.get("farmer_id", ""))
             items.append(BuyerProductResponse(
-                product_id=p["id"],
+                description=p.get("description", ""),
+            product_id=p["id"],
                 product_name=p.get("product_name", ""),
                 category=p.get("category", ""),
                 quantity_available=p.get("quantity_available", 0),
@@ -219,6 +237,10 @@ async def list_products(
                 farmer_name=farmer["name"] if farmer else None,
                 pickup_address=application.get("pickup_address", p.get("location")),
                 delivery_available=application.get("delivery_available", False),
+                farmer_base_price_paise=p.get("farmer_payout_per_unit_paise", 0),
+                commission_per_unit_paise=p.get("commission_per_unit_paise", 0),
+                commission_percentage_bps=p.get("commission_percentage", 0),
+                farm_coordinates=application.get("coordinates"), market_reference=reference_view(p),
                 buyer_price_per_unit_paise=p.get("buyer_price_per_unit_paise", 0),
                 buyer_price_per_unit_display=format_rupees(p.get("buyer_price_per_unit_paise", 0)),
                 harvest_date=p.get("harvest_date"),
@@ -226,7 +248,8 @@ async def list_products(
         elif role == "ADMIN":
             farmer = await user_repo.find_by_id(p.get("farmer_id", ""))
             items.append(AdminProductResponse(
-                product_id=p["id"],
+                description=p.get("description", ""),
+            product_id=p["id"],
                 product_name=p.get("product_name", ""),
                 category=p.get("category", ""),
                 farmer_id=p.get("farmer_id", ""),
@@ -288,6 +311,7 @@ async def get_product(
         if product["farmer_id"] != current_user["id"]:
             raise ForbiddenError("You can only view your own products.")
         data = FarmerProductResponse(
+            description=product.get("description", ""),
             product_id=product["id"],
             product_name=product.get("product_name", ""),
             category=product.get("category", ""),
@@ -311,6 +335,7 @@ async def get_product(
         application = (farm or {}).get("application") or {}
         farmer = await user_repo.find_by_id(product.get("farmer_id", ""))
         data = BuyerProductResponse(
+            description=product.get("description", ""),
             product_id=product["id"],
             product_name=product.get("product_name", ""),
             category=product.get("category", ""),
@@ -322,6 +347,10 @@ async def get_product(
             farmer_name=farmer["name"] if farmer else None,
             pickup_address=application.get("pickup_address", product.get("location")),
             delivery_available=application.get("delivery_available", False),
+            farmer_base_price_paise=product.get("farmer_payout_per_unit_paise", 0),
+            commission_per_unit_paise=product.get("commission_per_unit_paise", 0),
+            commission_percentage_bps=product.get("commission_percentage", 0),
+            farm_coordinates=application.get("coordinates"), market_reference=reference_view(product),
             buyer_price_per_unit_paise=product.get("buyer_price_per_unit_paise", 0),
             buyer_price_per_unit_display=format_rupees(product.get("buyer_price_per_unit_paise", 0)),
             harvest_date=product.get("harvest_date"),
@@ -330,6 +359,7 @@ async def get_product(
         # ADMIN
         farmer = await user_repo.find_by_id(product.get("farmer_id", ""))
         data = AdminProductResponse(
+            description=product.get("description", ""),
             product_id=product["id"],
             product_name=product.get("product_name", ""),
             category=product.get("category", ""),
@@ -365,6 +395,7 @@ async def get_product(
 
 
 @router.put("/{product_id}", response_model=APIResponse)
+@transactional_endpoint
 async def update_product(
     product_id: str,
     data: UpdateProductRequest,
@@ -380,7 +411,28 @@ async def update_product(
     if product["farmer_id"] != current_user["id"]:
         raise ForbiddenError("You can only update your own products.")
 
+    if data.image_url is not None and data.image_url != product.get("image_url"):
+        await validate_owned_image(db, data.image_url, current_user["id"])
     update_fields = {k: v.value if hasattr(v, 'value') else v for k, v in data.model_dump(exclude_none=True).items()}
+    if "quantity" in update_fields:
+        from app.core.exceptions import ValidationError
+        raise ValidationError("Use stock_adjustment to add or remove available units safely.")
+    price = update_fields.pop("selling_price_per_unit_paise", None)
+    if price is not None:
+        amounts = await PricingEngine(db).selling_amounts(price)
+        update_fields.update({**amounts, "commission_percentage": amounts["commission_percentage_bps"], "pricing_mode": "FARMER_SELECTED"})
+    adjustment = update_fields.pop("stock_adjustment", None)
+    if adjustment is not None:
+        from bson import ObjectId
+        result = await collection(db, "products").update_one({"_id": ObjectId(product_id), "quantity_available": {"$gte": max(0, -adjustment)}}, {"$inc": {"quantity_available": adjustment}})
+        if not result.matched_count:
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Stock adjustment would make available inventory negative.")
+    if "status" in update_fields:
+        if update_fields["status"] not in ("ACTIVE", "INACTIVE"):
+            from app.core.exceptions import ValidationError
+            raise ValidationError("Farmer availability must be ACTIVE or INACTIVE.")
+        update_fields["is_active"] = update_fields["status"] == "ACTIVE"
     if update_fields:
         await product_repo.update(product_id, update_fields)
 

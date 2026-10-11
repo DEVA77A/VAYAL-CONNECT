@@ -2,6 +2,7 @@
 VayalConnect Backend — Payout Repository
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -10,7 +11,7 @@ from datetime import datetime, timezone
 
 class PayoutRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["payouts"]
+        self.collection = collection(db, "payouts")
 
     async def create(self, payout_data: Dict[str, Any]) -> str:
         payout_data["created_at"] = datetime.now(timezone.utc)

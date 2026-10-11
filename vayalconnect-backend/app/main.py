@@ -4,10 +4,12 @@ VayalConnect Backend — Main Application
 FastAPI application factory with all routers, middleware, and startup hooks.
 """
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import logging
 
 from app.core.config import settings
@@ -17,6 +19,7 @@ from app.core.exceptions import VayalConnectError
 from app.middleware.request_id import RequestIDMiddleware
 
 # Import routers
+from app.api.v1.media import router as media_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.users import router as users_router
 from app.api.v1.farmers import router as farmers_router
@@ -46,7 +49,23 @@ async def lifespan(app: FastAPI):
     await create_indexes()
     logger.info("Database connected and indexes created")
 
-    yield
+    async def reservation_worker():
+        from app.services.order_service import OrderService
+        from app.core.database import get_database
+        while True:
+            try:
+                await OrderService(get_database()).expire_reservations()
+            except Exception as exc:
+                logger.warning("Reservation cleanup failed (%s)", type(exc).__name__)
+            await asyncio.sleep(60)
+
+    task = asyncio.create_task(reservation_worker())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
     # Shutdown
     logger.info("Shutting down VayalConnect Backend")
@@ -99,6 +118,16 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
+        # FastAPI's default includes submitted values, including passwords/bank data.
+        return JSONResponse(status_code=422, content={
+            "success": False, "data": None,
+            "error": {"code": "VALIDATION_ERROR", "message": "Check required fields and values.",
+                "fields": [{"location": list(e["loc"]), "type": e["type"]} for e in exc.errors()]},
+            "request_id": getattr(request.state, "request_id", None),
+        })
+
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception):
         logger.error("Unhandled exception category=%s", type(exc).__name__)
@@ -119,6 +148,7 @@ def create_app() -> FastAPI:
     # API Routers (v1)
     # ============================================================
     api_prefix = "/api/v1"
+    app.include_router(media_router, prefix=api_prefix)
     app.include_router(auth_router, prefix=api_prefix)
     app.include_router(users_router, prefix=api_prefix)
     app.include_router(farmers_router, prefix=api_prefix)
@@ -138,7 +168,15 @@ def create_app() -> FastAPI:
     # ============================================================
     @app.get("/health")
     async def health_check():
+        from app.core.database import database
+        connected = await database.is_connected()
+        from fastapi.responses import JSONResponse
+        if not connected:
+            return JSONResponse(status_code=503, content={"status": "unhealthy", "database": "unavailable"})
+        import os
         return {
+            "commit": os.getenv("RENDER_GIT_COMMIT"),
+            "database": "connected",
             "status": "healthy",
             "service": "VayalConnect Backend",
             "version": settings.APP_VERSION,

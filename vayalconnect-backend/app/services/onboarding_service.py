@@ -1,4 +1,5 @@
 """Farmer applications: allowlisted fields and atomic review of a submitted revision."""
+from app.core.transactions import transactional
 from app.repositories.farmers import FarmerRepository
 from app.repositories.users import UserRepository
 from app.schemas.farmer import FarmerApplicationRequest
@@ -12,10 +13,12 @@ def application_view(profile):
 
 class OnboardingService:
     def __init__(self, db):
+        self.db = db
         self.farmers = FarmerRepository(db)
         self.users = UserRepository(db)
         self.audit = AuditService(db)
 
+    @transactional
     async def submit(self, user, data: FarmerApplicationRequest):
         if not user.get("email_verified"):
             raise ForbiddenError("Verify your email before submitting an application.")
@@ -28,6 +31,7 @@ class OnboardingService:
         await self.audit.log(actor_id=user["id"], actor_role="FARMER", action="FARMER_APPLICATION_SUBMITTED", entity_type="farmer_profile", entity_id=user["id"])
         return {"approval_status": "PENDING", "application_revision": data.application_revision + 1}
 
+    @transactional
     async def decide(self, user_id, revision, actor, approved, reason=None):
         profile = await self.farmers.find_by_user_id(user_id)
         user = await self.users.find_by_id(user_id)
@@ -39,6 +43,9 @@ class OnboardingService:
             if not profile.get("submitted_at") or not profile.get("application"):
                 raise ValidationError("Farmer must submit a complete application before approval.")
             FarmerApplicationRequest.model_validate(profile["application"])
+            from app.services.profile_completeness import missing_farmer_fields
+            if missing_farmer_fields(profile):
+                raise ValidationError("Approval requires farm coordinates and complete bank payout details.")
         if not await self.farmers.decide_application(user_id, revision, "APPROVED" if approved else "REJECTED", actor, reason):
             raise ConflictError("APPLICATION_CHANGED", "Application changed or was already reviewed. Reload before deciding.")
         await self.users.update(user_id, {"is_approved": approved})

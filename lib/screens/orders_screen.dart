@@ -1,292 +1,308 @@
+import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
-import '../models/auth_models.dart';
-import '../models/order_models.dart';
-import '../services/order_service.dart';
+import '../services/api_client.dart';
 import '../services/session_manager.dart';
-import '../theme/app_theme.dart';
-import '../widgets/demo_banner.dart';
+import '../models/auth_models.dart';
+import '../utils/commerce_strings.dart';
+import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
+import 'payment_screen.dart';
 
-/// Orders History Screen (Role Scoped)
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({Key? key}) : super(key: key);
-
+  final ApiClient? api;
+  const OrdersScreen({super.key, this.api});
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
-  final _orderService = OrderService();
-  bool _isLoading = true;
-  String? _errorMessage;
-  List<BuyerOrder> _buyerOrders = [];
-  List<FarmerOrder> _farmerOrders = [];
+class _OrdersScreenState extends State<OrdersScreen>
+    with LanguageRebuild<OrdersScreen> {
+  String _status = '', _period = '';
+  @override
+  Widget build(BuildContext context) {
+    final query = Uri(queryParameters: {
+      if (_status.isNotEmpty) 'status': _status,
+      if (_period.isNotEmpty) 'period': _period
+    }).query;
+    return Scaffold(
+        appBar: VayalAppBar(title: S.t('Orders'), showBack: true),
+        body: Column(children: [
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButton<String>(
+                        isExpanded: true,
+                        value: _status,
+                        items: [
+                          '',
+                          'PENDING_PAYMENT',
+                          'PAID',
+                          'CONFIRMED',
+                          'PROCESSING',
+                          'SHIPPED',
+                          'COMPLETED',
+                          'CANCELLED'
+                        ]
+                            .map((v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(v.isEmpty
+                                    ? S.t('All statuses')
+                                    : S.status(v))))
+                            .toList(),
+                        onChanged: (v) => setState(() => _status = v!)),
+                    DropdownButton<String>(
+                        isExpanded: true,
+                        value: _period,
+                        items: {
+                          '': 'All dates',
+                          'today': 'Day',
+                          'month': 'Month',
+                          'year': 'Year'
+                        }
+                            .entries
+                            .map((e) => DropdownMenuItem(
+                                value: e.key, child: Text(S.t(e.value))))
+                            .toList(),
+                        onChanged: (v) => setState(() => _period = v!)),
+                  ])),
+          Expanded(
+              child: RecordPage(
+                  key: ValueKey(query),
+                  title: 'Orders',
+                  embedded: true,
+                  api: widget.api,
+                  path: '/api/v1/orders/?$query',
+                  itemBuilder: (ctx, o, reload) => Card(
+                      child: ListTile(
+                          leading: const Icon(Icons.receipt_long),
+                          title: Text(o['product_name'] ?? ''),
+                          subtitle: Text(
+                              '${o['order_number']}\n${o['quantity']} ${o['unit']} · ${S.status(o['order_status'])}\n${S.t('Payment')}: ${S.status(o['payment_status'] ?? 'PENDING')}'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            await Navigator.push(
+                                ctx,
+                                MaterialPageRoute(
+                                    builder: (_) => OrderDetailScreen(
+                                        orderId: o['order_id'],
+                                        api: widget.api)));
+                            reload();
+                          })))),
+        ]));
+  }
+}
 
+class OrderDetailScreen extends StatefulWidget {
+  final String orderId;
+  final ApiClient? api;
+  const OrderDetailScreen({super.key, required this.orderId, this.api});
+  @override
+  State<OrderDetailScreen> createState() => _OrderDetailScreenState();
+}
+
+class _OrderDetailScreenState extends State<OrderDetailScreen>
+    with LanguageRebuild<OrderDetailScreen> {
+  late final _api = widget.api ?? ApiClient();
+  Map<String, dynamic>? _order;
+  bool _busy = true;
+  String? _error;
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    _load();
   }
 
   @override
   void dispose() {
-    _orderService.dispose();
+    if (widget.api == null) _api.dispose();
     super.dispose();
   }
 
-  Future<void> _loadOrders() async {
+  Future<void> _load() async {
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _busy = true;
+      _error = null;
     });
-    final role = SessionManager().activeRole;
-
     try {
-      if (role == AppRole.buyer) {
-        final orders = await _orderService.fetchBuyerOrders();
-        if (mounted) setState(() => _buyerOrders = orders);
-      } else {
-        final orders = await _orderService.fetchFarmerOrders();
-        if (mounted) setState(() => _farmerOrders = orders);
-      }
+      final o = await _api.request('/api/v1/orders/${widget.orderId}');
+      if (mounted) setState(() => _order = Map<String, dynamic>.from(o));
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _transition(String next) async {
+    setState(() => _busy = true);
+    try {
+      await _api.request('/api/v1/orders/${widget.orderId}/status',
+          method: 'PUT', body: {'order_status': next});
+      await _load();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _cancel() async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+                title: Text(S.t('Cancel unpaid order')),
+                content: TextField(
+                    controller: controller,
+                    maxLength: 500,
+                    decoration:
+                        InputDecoration(labelText: S.t('Cancellation reason'))),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text(S.t('Close'))),
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(S.t('Cancel')))
+                ]));
+    if (confirmed != true) {
+      controller.dispose();
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await _api.request('/api/v1/orders/${widget.orderId}/cancel',
+          method: 'PUT', body: {'reason': controller.text.trim()});
+      await _load();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      controller.dispose();
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final session = SessionManager();
-    final isBuyer = session.activeRole == AppRole.buyer;
-
+    final o = _order;
+    final buyer = SessionManager().activeRole == AppRole.buyer;
+    final status = o?['order_status'];
     return Scaffold(
-      backgroundColor: AppTheme.backgroundWarm,
-      appBar: VayalAppBar(
-        showBack: true,
-        title: session.isTamil ? 'என் ஆர்டர்கள்' : 'My Orders',
-        subtitle: isBuyer
-            ? (session.isTamil ? 'கொள்முதல் வரலாறு' : 'Procurement History')
-            : (session.isTamil ? 'பட்டுவாடா வரலாறு' : 'Payouts & Deliveries'),
-      ),
-      body: RefreshIndicator(
-        color: AppTheme.primaryGreen,
-        onRefresh: _loadOrders,
-        child: Column(
-          children: [
-            if (session.isDemoMode) const DemoModeBanner(),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
-                  : _errorMessage != null
-                      ? _buildErrorView(session)
-                      : isBuyer
-                          ? _buildBuyerOrderList()
-                          : _buildFarmerOrderList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorView(SessionManager session) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.wifi_off_rounded, color: AppTheme.errorRed, size: 48),
-            const SizedBox(height: 12),
-            Text(
-              session.isTamil ? 'ஆர்டர் தகவல்களைப் பெறுவதில் பிழை' : 'Failed to fetch orders',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadOrders,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: Text(session.isTamil ? 'மீண்டும் முயற்சிக்கவும்' : 'Retry'),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBuyerOrderList() {
-    if (_buyerOrders.isEmpty) {
-      return _buildEmpty();
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _buyerOrders.length,
-      itemBuilder: (context, index) {
-        final ord = _buyerOrders[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: Border.all(color: AppTheme.cardBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'ஆர்டர் #${ord.orderNumber}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppTheme.softGreen,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      ord.orderStatus,
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${ord.productName} • ${ord.quantity} ${ord.unit}',
-                style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
-              ),
-              if (ord.fulfillmentMethod != null) Text('Fulfillment: ' + ord.fulfillmentMethod!),
-              if (ord.pickupAddress != null) Text('Pickup: ' + ord.pickupAddress!),
-              if (ord.deliveryAddress != null) Text('Delivery: ' + ord.deliveryAddress!['address'].toString() + ' • ' + ord.deliveryAddress!['postal_code'].toString()),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'மொத்த தொகை: ${ord.buyerTotalDisplay}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                  ),
-                  Text(
-                    'பணம்: ${ord.paymentStatus}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildFarmerOrderList() {
-    if (_farmerOrders.isEmpty) {
-      return _buildEmpty();
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _farmerOrders.length,
-      itemBuilder: (context, index) {
-        final ord = _farmerOrders[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-            border: Border.all(color: AppTheme.cardBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'ஆர்டர் #${ord.orderNumber}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: ord.payoutStatus == 'PAID' ? AppTheme.softGreen : AppTheme.goldLight,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      ord.payoutStatus,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: ord.payoutStatus == 'PAID' ? AppTheme.primaryGreen : AppTheme.warningOrange,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${ord.productName} • ${ord.quantity} ${ord.unit}',
-                style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
-              ),
-              if (ord.fulfillmentMethod != null) Text('Fulfillment: ' + ord.fulfillmentMethod!),
-              if (ord.pickupAddress != null) Text('Pickup: ' + ord.pickupAddress!),
-              if (ord.deliveryAddress != null) Text('Delivery: ' + ord.deliveryAddress!['address'].toString() + ' • ' + ord.deliveryAddress!['postal_code'].toString()),
-              if (ord.buyerName != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'வாங்குபவர்: ${ord.buyerName}',
-                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                ),
-              ],
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'பட்டுவாடா: ${ord.farmerTotalPayoutDisplay}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
-                  ),
-                  Text(
-                    'நிலை: ${ord.orderStatus}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildEmpty() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Icon(Icons.receipt_long, size: 48, color: AppTheme.textSecondary),
-          SizedBox(height: 12),
-          Text(
-            'ஆர்டர்கள் எதுவும் இல்லை',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
+        appBar: VayalAppBar(title: S.t('Order details'), showBack: true),
+        body: RefreshIndicator(
+            onRefresh: _load,
+            child: ListView(padding: const EdgeInsets.all(16), children: [
+              if (_busy) const LinearProgressIndicator(),
+              if (_error != null) ErrorPanel(_error!, _load),
+              if (o != null)
+                Card(
+                    child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(o['product_name'],
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall),
+                              Text(o['order_number']),
+                              detailLine(
+                                  'Quantity', '${o['quantity']} ${o['unit']}'),
+                              detailLine('Order date', o['created_at']),
+                              if (status == 'PENDING_PAYMENT' &&
+                                  o['reservation_expires_at'] != null)
+                                detailLine('Stock reserved until',
+                                    o['reservation_expires_at']),
+                              detailLine('Orders', S.status(status)),
+                              detailLine('Payment',
+                                  S.status(o['payment_status'] ?? 'PENDING')),
+                              if (o['buyer_name'] != null)
+                                detailLine('Buyers', o['buyer_name']),
+                              detailLine(
+                                  'Farmer earnings',
+                                  S.money(o['farmer_base_total_paise'] ??
+                                      o['farmer_total_payout_paise'])),
+                              detailLine('Platform commission',
+                                  S.money(o['commission_total_paise'])),
+                              detailLine('Delivery charge',
+                                  S.money(o['delivery_fee_paise'])),
+                              if (buyer)
+                                detailLine(
+                                    'Buyer total', o['buyer_total_display']),
+                              Text(S.t(
+                                  'Farmer receives the full base price. Commission is added for buyers.')),
+                              detailLine('Delivery',
+                                  S.status(o['fulfillment_method'] ?? '')),
+                              if (o['pickup_address'] != null)
+                                detailLine(
+                                    'Pickup address', o['pickup_address']),
+                              if (o['delivery_address'] != null)
+                                Text(
+                                    '${o['delivery_address']['recipient_name']}\n${o['delivery_address']['phone']}\n${o['delivery_address']['address']} ${o['delivery_address']['postal_code']}'),
+                              if (o['delivery_estimate']?['available'] ==
+                                  true) ...[
+                                detailLine('Straight-line distance',
+                                    '${o['delivery_estimate']['distance_km']} km'),
+                                detailLine('Estimated arrival window',
+                                    '${o['delivery_estimate']['arrival_from']} – ${o['delivery_estimate']['arrival_to']}'),
+                                Text(S.t(
+                                    'Farmer confirmation required. Road distance and exact arrival are unavailable.')),
+                              ],
+                              if (o['cancellation_reason'] != null)
+                                detailLine('Cancellation reason',
+                                    o['cancellation_reason']),
+                              const SizedBox(height: 16),
+                              if (buyer && status == 'PENDING_PAYMENT')
+                                ElevatedButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () async {
+                                            await Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        PaymentScreen(
+                                                            orderId: widget
+                                                                .orderId)));
+                                            if (mounted) _load();
+                                          },
+                                    child: Text(S.t('Pay in test mode'))),
+                              if (status == 'PENDING_PAYMENT')
+                                OutlinedButton(
+                                    onPressed: _busy ? null : _cancel,
+                                    child: Text(S.t('Cancel unpaid order'))),
+                              if (!buyer && status == 'PAID')
+                                ElevatedButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _transition('CONFIRMED'),
+                                    child: Text(S.t('Accept order'))),
+                              if (!buyer && status == 'CONFIRMED')
+                                ElevatedButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _transition('PROCESSING'),
+                                    child: Text(S.t('Start preparing'))),
+                              if (!buyer &&
+                                  status == 'PROCESSING' &&
+                                  o['fulfillment_method'] == 'DELIVERY')
+                                ElevatedButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _transition('SHIPPED'),
+                                    child: Text(S.t('Mark shipped'))),
+                              if (!buyer &&
+                                  (status == 'SHIPPED' ||
+                                      status == 'PROCESSING' &&
+                                          o['fulfillment_method'] == 'PICKUP'))
+                                ElevatedButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _transition('COMPLETED'),
+                                    child: Text(S.t('Complete order'))),
+                            ]))),
+            ])));
   }
 }

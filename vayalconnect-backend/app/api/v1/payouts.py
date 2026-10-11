@@ -29,20 +29,26 @@ async def list_payouts(
     service = PayoutService(db)
     payouts, total = await service.list_payouts(status, page, limit)
 
+    from app.repositories.orders import OrderRepository
+    from bson import ObjectId
+    order_ids = [ObjectId(p["order_id"]) for p in payouts]
+    order_repo = OrderRepository(db)
+    rows = await order_repo.collection.find({"_id": {"$in": order_ids}}).to_list(limit)
+    order_map = {str(o["_id"]): o for o in rows}
     items = [
         AdminPayoutDetailResponse(
             payout_id=p["id"],
             payout_number=p.get("payout_number", ""),
             order_id=p.get("order_id", ""),
-            order_number="",
+            order_number=order_map.get(p["order_id"], {}).get("order_number", ""),
             farmer_id=p.get("farmer_id", ""),
-            farmer_name="",
-            product_name="",
+            farmer_name=order_map.get(p["order_id"], {}).get("farmer_name", ""),
+            product_name=order_map.get(p["order_id"], {}).get("product_name", ""),
             amount_paise=p.get("amount_paise", 0),
             amount_display=format_rupees(p.get("amount_paise", 0)),
-            commission_total_paise=0,
-            commission_display="",
-            buyer_total_paise=0,
+            commission_total_paise=order_map.get(p["order_id"], {}).get("commission_total_paise", 0),
+            commission_display=format_rupees(order_map.get(p["order_id"], {}).get("commission_total_paise", 0)),
+            buyer_total_paise=order_map.get(p["order_id"], {}).get("buyer_total_paise", 0),
             status=p.get("status", ""),
             provider=p.get("provider"),
             provider_reference_id=p.get("provider_reference_id"),

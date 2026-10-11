@@ -54,6 +54,13 @@ async def get_payment_status(
 
     # Ownership check
     role = current_user.get("role", "")
+    if role == "FARMER":
+        from app.repositories.orders import OrderRepository
+        order = await OrderRepository(db).find_by_id(order_id)
+        if not order or order.get("farmer_id") != current_user["id"]:
+            raise NotFoundError("Payment")
+    if role not in ("ADMIN", "BUYER", "FARMER"):
+        raise NotFoundError("Payment")
     if role == "BUYER" and payment.get("buyer_id") != current_user["id"]:
         raise NotFoundError("Payment")
 
@@ -72,3 +79,14 @@ async def get_payment_status(
         ).model_dump(),
         request_id=get_request_id(request),
     )
+
+
+@router.post("/{order_id}/checkout", response_model=APIResponse)
+async def create_checkout(order_id: str, request: Request, current_user=Depends(get_current_buyer), db=Depends(get_database)):
+    from app.integrations.razorpay import razorpay_payment
+    from app.core.exceptions import ValidationError
+    if not razorpay_payment._configured or not razorpay_payment.key_id.startswith("rzp_test_"):
+        raise ValidationError("Razorpay TEST mode is not configured. Payment remains pending.")
+    result = await PaymentService(db).create_payment(order_id, current_user["id"])
+    result.update({"key_id": razorpay_payment.key_id, "test_mode": True})
+    return APIResponse(data=result, request_id=get_request_id(request))

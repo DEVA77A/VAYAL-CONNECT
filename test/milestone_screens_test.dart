@@ -1,3 +1,4 @@
+import 'package:vayalconnect_flutter/services/api_client.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,7 +30,8 @@ void main() {
       'farm_address': '10 Test farm road',
       'pickup_address': '10 Pickup farm road',
       'crops': 'Paddy',
-      'delivery_available': true
+      'delivery_available': true,
+      'coordinates': {'latitude': 9.92, 'longitude': 78.12}
     };
     final service = FarmerService(client: MockClient((request) async {
       if (request.method == 'PUT') {
@@ -58,12 +60,12 @@ void main() {
         MaterialApp(home: FarmerApplicationScreen(service: service)));
     await tester.pumpAndSettle();
     expect(find.text('Review reason: Correct farm details'), findsOneWidget);
-    final submit = find.text('Submit for review / சமர்ப்பி');
+    final submit = find.text('Submit for review');
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
     expect(submits, 1);
-    expect(find.text('Approval: PENDING'), findsOneWidget);
+    expect(find.text('Pending'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -94,17 +96,31 @@ void main() {
     }));
     await tester.pumpWidget(MaterialApp(
         home: ProductDetailsScreen(
-            product: product(false), orderService: service)));
+            product: product(false),
+            orderService: service,
+            api: ApiClient(
+                client: MockClient((r) async => http.Response(
+                    '{"success":true,"data":{"order_id":"test","order_status":"PENDING_PAYMENT","product_name":"Paddy","order_number":"TEST-1","quantity":1,"unit":"KG","buyer_total_paise":4969,"farmer_base_total_paise":4321,"commission_total_paise":648,"payment_status":"PENDING"}}',
+                    200))))));
     await tester.pumpAndSettle();
-    expect(find.text('₹49.69'), findsWidgets);
-    await tester.ensureVisible(find.text('This farmer offers pickup only.'));
-    expect(find.text('Pickup: 10 Pickup farm road'), findsOneWidget);
-    final orderButton = find.text('Create pending order');
+    expect(find.text('Buyer total: ₹49.69'), findsWidgets);
+    await tester.ensureVisible(find.text('Place order'));
+    final options = tester.widget<DropdownButtonFormField<String>>(
+        find.byType(DropdownButtonFormField<String>));
+    expect(options.initialValue, 'PICKUP');
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    expect(find.text('Pickup'), findsWidgets);
+    expect(find.text('Delivery'),
+        findsOneWidget); // Field label only, no delivery option.
+    await tester.tap(find.text('Pickup').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Pickup address: 10 Pickup farm road'), findsOneWidget);
+    final orderButton = find.text('Place order');
     await tester.tap(orderButton);
     await tester.pumpAndSettle();
-    expect(find.text('Order recorded • Payment pending'), findsOneWidget);
-    expect(
-        find.textContaining('No payment has been confirmed'), findsOneWidget);
+    expect(find.text('Order recorded. Payment pending.'), findsOneWidget);
+    expect(find.textContaining('Payment verified'), findsNothing);
     expect(find.textContaining('escrow'), findsNothing);
     expect(find.textContaining('APMC VERIFIED'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -132,27 +148,38 @@ void main() {
     await tester.ensureVisible(selector);
     await tester.tap(selector);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Delivery / விநியோகம்').last);
+    await tester.tap(find.text('Delivery').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Create pending order'));
+    await tester.tap(find.text('Place order'));
     await tester.pumpAndSettle();
     expect(calls, 0);
-    final values = {
-      'recipient_name': 'Test buyer',
-      'phone': '9876543210',
-      'address': '10 Test buyer road',
-      'postal_code': '625001'
-    };
-    for (final entry in values.entries) {
-      final input =
-          find.widgetWithText(TextFormField, entry.key.replaceAll('_', ' '));
-      await tester.ensureVisible(input);
-      await tester.enterText(input, entry.value);
-    }
-    await tester.tap(find.text('Create pending order'));
+    await tester.pumpWidget(MaterialApp(
+        home: ProductDetailsScreen(
+            key: const ValueKey("saved-address"),
+            product: product(true),
+            orderService: service,
+            initialDeliveryAddress: const {
+          'recipient_name': 'Test buyer',
+          'phone': '9876543210',
+          'address': '10 Test buyer road',
+          'postal_code': '625001',
+          'coordinates': {'latitude': 9.94, 'longitude': 78.14}
+        })));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delivery').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Place order'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Place order'));
     await tester.pumpAndSettle();
     expect(calls, 1);
-    expect(find.textContaining('Payment service unavailable'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, 1400));
+    await tester.pumpAndSettle();
+    expect(
+        find.textContaining('Unable to complete this request. Please retry.'),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

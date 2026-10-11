@@ -52,9 +52,11 @@ class ReportService:
 
         # Payout status counts
         payout_pipeline = [
+            {"$match": window},
             {"$group": {
                 "_id": "$status",
                 "count": {"$sum": 1},
+                "amount": {"$sum": "$amount_paise"},
             }},
         ]
         payout_results = await self.payouts.aggregate(payout_pipeline).to_list(10)
@@ -69,7 +71,24 @@ class ReportService:
         total_farmer = order_data.get("total_farmer_payout", 0)
         total_commission = order_data.get("total_commission", 0)
 
+        status_results = await self.orders.aggregate([{"$match": window}, {"$group": {"_id": "$order_status", "count": {"$sum": 1}, "gross": {"$sum": "$buyer_total_paise"}}}]).to_list(20)
+        counts = {r["_id"]: r["count"] for r in status_results}
+        captured = await self.orders.aggregate([{"$match": {**window, "payment_status": "CAPTURED"}}, {"$group": {"_id": None, "amount": {"$sum": "$buyer_total_paise"}}}]).to_list(1)
         return {
+            "total_farmers": await self.users.count_documents({"role": "FARMER"}),
+            "total_buyers": await self.users.count_documents({"role": "BUYER"}),
+            "approved_farmers": await self.db["farmer_profiles"].count_documents({"approval_status": "APPROVED"}),
+            "rejected_farmers": await self.db["farmer_profiles"].count_documents({"approval_status": "REJECTED"}),
+            "active_products": await self.db["products"].count_documents({"status": "ACTIVE", "is_active": True, "quantity_available": {"$gt": 0}}),
+            "pending_orders": sum(counts.get(k, 0) for k in ("PENDING_PAYMENT", "PAID", "CONFIRMED", "PROCESSING", "SHIPPED")),
+            "completed_orders": counts.get("COMPLETED", 0),
+            "cancelled_orders": counts.get("CANCELLED", 0),
+            "gross_order_value_paise": sum(r["gross"] for r in status_results),
+            "captured_payments_paise": captured[0]["amount"] if captured else 0,
+            "paid_payouts_paise": sum(r["amount"] for r in payout_results if r["_id"] == "PAID"),
+            "pending_payouts_paise": sum(r["amount"] for r in payout_results if r["_id"] in ("PENDING_APPROVAL", "APPROVED", "PROCESSING")),
+            "period": period or "all", "timezone": "UTC",
+            "financial_definition": "Order creation cohort in UTC. Gross order value includes all recorded orders. Earned revenue and commission require COMPLETED plus CAPTURED. Captured payment total excludes unpaid orders. Payout totals use payout creation dates.",
             "total_orders": await self.orders.count_documents(window),
             "total_sales_paise": total_sales,
             "total_sales_display": format_rupees(total_sales),
@@ -172,7 +191,7 @@ class ReportService:
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         if period == "today":
-            return {"$gte": today_start}
+            return {"$gte": today_start, "$lt": today_start + timedelta(days=1)}
         elif period == "yesterday":
             yesterday = today_start - timedelta(days=1)
             return {"$gte": yesterday, "$lt": today_start}
@@ -181,7 +200,10 @@ class ReportService:
             return {"$gte": week_ago}
         elif period == "month":
             month_ago = today_start.replace(day=1)
-            return {"$gte": month_ago}
+            next_month = (month_ago.replace(day=28) + timedelta(days=4)).replace(day=1)
+            return {"$gte": month_ago, "$lt": next_month}
+        elif period == "year":
+            return {"$gte": today_start.replace(month=1, day=1), "$lt": today_start.replace(year=today_start.year+1, month=1, day=1)}
         elif date_from or date_to:
             f: Dict[str, Any] = {}
             if date_from:

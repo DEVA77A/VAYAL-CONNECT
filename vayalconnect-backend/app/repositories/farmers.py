@@ -4,6 +4,7 @@ VayalConnect Backend — Farmer Repository
 Farmer profile and bank detail data access.
 """
 
+from app.core.transactions import collection
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class FarmerRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
-        self.collection = db["farmer_profiles"]
+        self.collection = collection(db, "farmer_profiles")
 
     async def create(self, profile_data: Dict[str, Any]) -> str:
         profile_data["created_at"] = datetime.now(timezone.utc)
@@ -35,7 +36,7 @@ class FarmerRepository:
         revision_query = {"application_revision": revision} if revision else {"$or": [{"application_revision": 0}, {"application_revision": {"$exists": False}}]}
         now = datetime.now(timezone.utc)
         result = await self.collection.update_one(
-            {"user_id": ObjectId(user_id), "approval_status": {"$in": ["PENDING", "REJECTED"]}, **revision_query},
+            {"user_id": ObjectId(user_id), "approval_status": {"$in": ["PENDING", "REJECTED", "APPROVED"]}, **revision_query},
             {"$set": {"application": application, "submitted_at": now, "updated_at": now, "approval_status": "PENDING", "rejection_reason": None},
              "$inc": {"application_revision": 1}, "$unset": {"approved_by": "", "approved_at": ""}},
         )
@@ -86,7 +87,7 @@ class FarmerRepository:
     async def list_by_status(
         self, status: str, page: int = 1, limit: int = 50
     ) -> tuple[List[Dict[str, Any]], int]:
-        query = {"approval_status": status}
+        query = {"approval_status": status} if status else {}
         total = await self.collection.count_documents(query)
         cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
         docs = [self._serialize(doc) async for doc in cursor]

@@ -1,15 +1,17 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'services/session_manager.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SessionManager().restoreLanguage();
   runApp(const VayalConnectApp());
 }
 
 class VayalConnectApp extends StatelessWidget {
-  const VayalConnectApp({Key? key}) : super(key: key);
+  const VayalConnectApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +21,9 @@ class VayalConnectApp extends StatelessWidget {
         return MaterialApp(
           title: 'VayalConnect • வயல் Connect',
           debugShowCheckedModeBanner: false,
+          locale: Locale(SessionManager().isTamil ? 'ta' : 'en'),
+          supportedLocales: const [Locale('en'), Locale('ta')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
           theme: AppTheme.lightTheme,
           home: const SplashScreen(),
         );

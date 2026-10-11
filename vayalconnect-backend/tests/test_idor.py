@@ -12,7 +12,7 @@ from app.schemas.product import BuyerProductResponse, FarmerProductResponse, Adm
 from app.utils.money import format_rupees
 
 
-def test_buyer_product_response_contains_no_sensitive_margins():
+def test_buyer_breakdown_is_public_but_bank_and_internal_policy_are_private():
     """Verify that BuyerProductResponse does NOT have payout or commission fields."""
     buyer_resp = BuyerProductResponse(
         product_id="prod_123",
@@ -31,11 +31,13 @@ def test_buyer_product_response_contains_no_sensitive_margins():
     assert dumped["buyer_price_per_unit_paise"] == 4500
     assert dumped["buyer_price_per_unit_display"] == "₹45.00"
 
-    # CRITICAL: Buyer schema must NOT contain internal fields
+    assert "bank_account_number" not in dumped
+    assert "pricing_policy_id" not in dumped
+    # Public commission is transparent; bank and internal policy remain private
     assert "farmer_payout_per_unit_paise" not in dumped
     assert "farmer_payout_per_unit_display" not in dumped
-    assert "commission_percentage_bps" not in dumped
-    assert "commission_per_unit_paise" not in dumped
+    assert "commission_percentage_bps" in dumped
+    assert "commission_per_unit_paise" in dumped
     assert "government_reference_price_paise" not in dumped
 
 
