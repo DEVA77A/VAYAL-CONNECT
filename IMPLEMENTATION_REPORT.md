@@ -23,7 +23,7 @@ Baseline: main, `fa32f9c4b473de214c554a1b64f7d0e13188998c`, DEVA77A/VAYAL-CONNEC
 | 13 | Backend suite | PASS | 154 passed, 63 dependency deprecation warnings, 34.59 seconds; Mongo integration enabled. Baseline 144 passed/four skipped. |
 | 14 | Flutter suite | PASS | pub get succeeded; 61 tests passed. Baseline 49. |
 | 15 | Analyzer | FAIL | Exit 1 for 19 pre-existing informational lints; zero errors/warnings, no suppression. Baseline 76 infos. |
-| 16 | Git delivery | NOT TESTED | Actual commit/push verification appended after execution below. |
+| 16 | Git delivery | PASS | Source commit f84110a6a9291665fa2098fb4a3b5e2f1f4248d9 pushed to origin/main; git ls-remote matched. Final documentation commit is recorded in the local delivery JSON. |
 | 17 | Render deployment | BLOCKED | No authenticated configuration/log/deployment access. Post-push public evidence appended below; push alone is not deployment proof. |
 | 18 | APK artifact | PASS | Build/package/version/URL/signature/known-secret scan passed. Candidate explicitly UNVERIFIED for deployed functionality. |
 | 19 | Complete demonstration | BLOCKED | External/security/deployment/Android gates remain. No verified GitHub release published. |
@@ -82,7 +82,9 @@ Logs: `.local-verification/backend-final.log`, `flutter-final.log`, `analyze-fin
 
 ## Source delivery and deployment
 
-Actual Git and public Render results will be appended after verification. No Render account token/connector/session is available. Exact settings/deployment/security actions: [RELEASE_GUIDE.md](RELEASE_GUIDE.md).
+Source commit **f84110a6a9291665fa2098fb4a3b5e2f1f4248d9** pushed successfully to origin/main; `git ls-remote origin refs/heads/main` matched exactly. GitHub commit status had no deployment statuses. This subsequent documentation update changes no tested application code. Final HEAD/remote evidence is recorded in `.local-verification/delivery-verification.json` and a uniquely created release delivery record.
+
+Public Render verification at **2026-10-11 15:44:21 UTC**: `/health` HTTP 200, version **1.0.0**, no database/commit fields; saved-address route HTTP **404**; market route HTTP 200 with zero records/upstream unreachable, request ID `02c7f139-8076-4407-8927-717eeb3d2d6a`. An earlier post-push check gave the same old contracts. **BLOCKED:** intended commit is not verified deployed; this is not proof of the reason or outcome of an asynchronous deployment. No Render token/connector/session/log access is available. Coordinate secret rotation, install valid private TEST credentials, deploy the intended main commit manually in the existing service, then verify health commit/database and authenticated contracts. Exact actions: [RELEASE_GUIDE.md](RELEASE_GUIDE.md).
 
 ## Every remaining limitation
 
