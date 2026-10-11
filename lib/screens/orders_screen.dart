@@ -169,6 +169,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 '${ord.productName} • ${ord.quantity} ${ord.unit}',
                 style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
               ),
+              if (ord.fulfillmentMethod != null) Text('Fulfillment: ' + ord.fulfillmentMethod!),
+              if (ord.pickupAddress != null) Text('Pickup: ' + ord.pickupAddress!),
+              if (ord.deliveryAddress != null) Text('Delivery: ' + ord.deliveryAddress!['address'].toString() + ' • ' + ord.deliveryAddress!['postal_code'].toString()),
               const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -240,6 +243,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                 '${ord.productName} • ${ord.quantity} ${ord.unit}',
                 style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary, fontWeight: FontWeight.w500),
               ),
+              if (ord.fulfillmentMethod != null) Text('Fulfillment: ' + ord.fulfillmentMethod!),
+              if (ord.pickupAddress != null) Text('Pickup: ' + ord.pickupAddress!),
+              if (ord.deliveryAddress != null) Text('Delivery: ' + ord.deliveryAddress!['address'].toString() + ' • ' + ord.deliveryAddress!['postal_code'].toString()),
               if (ord.buyerName != null) ...[
                 const SizedBox(height: 2),
                 Text(

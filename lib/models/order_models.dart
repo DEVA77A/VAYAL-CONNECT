@@ -16,6 +16,9 @@ class BuyerOrder {
   final String paymentStatus;
   final String? razorpayOrderId;
   final String? createdAt;
+  final String? fulfillmentMethod;
+  final String? pickupAddress;
+  final Map<String, dynamic>? deliveryAddress;
 
   BuyerOrder({
     required this.orderId,
@@ -31,6 +34,9 @@ class BuyerOrder {
     required this.paymentStatus,
     this.razorpayOrderId,
     this.createdAt,
+    this.fulfillmentMethod,
+    this.pickupAddress,
+    this.deliveryAddress,
   });
 
   factory BuyerOrder.fromJson(Map<String, dynamic> json) {
@@ -48,6 +54,9 @@ class BuyerOrder {
       paymentStatus: json['payment_status'] as String? ?? 'PENDING',
       razorpayOrderId: json['razorpay_order_id'] as String?,
       createdAt: json['created_at'] as String?,
+      fulfillmentMethod: json['fulfillment_method'] as String?,
+      pickupAddress: json['pickup_address'] as String?,
+      deliveryAddress: json['delivery_address'] == null ? null : Map<String, dynamic>.from(json['delivery_address'] as Map),
     );
   }
 }
@@ -66,6 +75,9 @@ class FarmerOrder {
   final String payoutStatus;
   final String? buyerName;
   final String? createdAt;
+  final String? fulfillmentMethod;
+  final String? pickupAddress;
+  final Map<String, dynamic>? deliveryAddress;
 
   FarmerOrder({
     required this.orderId,
@@ -81,6 +93,9 @@ class FarmerOrder {
     required this.payoutStatus,
     this.buyerName,
     this.createdAt,
+    this.fulfillmentMethod,
+    this.pickupAddress,
+    this.deliveryAddress,
   });
 
   factory FarmerOrder.fromJson(Map<String, dynamic> json) {
@@ -98,6 +113,9 @@ class FarmerOrder {
       payoutStatus: json['payout_status'] as String? ?? 'PENDING',
       buyerName: json['buyer_name'] as String?,
       createdAt: json['created_at'] as String?,
+      fulfillmentMethod: json['fulfillment_method'] as String?,
+      pickupAddress: json['pickup_address'] as String?,
+      deliveryAddress: json['delivery_address'] == null ? null : Map<String, dynamic>.from(json['delivery_address'] as Map),
     );
   }
 }

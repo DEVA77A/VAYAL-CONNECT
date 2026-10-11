@@ -17,12 +17,14 @@ from app.repositories.orders import OrderRepository
 from app.services.payout_service import PayoutService
 from app.services.audit_service import AuditService
 from app.schemas.farmer import (
-    FarmerBankDetailsRequest, FarmerBankDetailsResponse,
+    FarmerApplicationRequest, FarmerBankDetailsRequest, FarmerBankDetailsResponse,
     FarmerProfileResponse, FarmerDashboardResponse,
     FarmerPayoutResponse, FarmerTransactionResponse,
 )
 from app.schemas.common import APIResponse
 from app.utils.money import format_rupees
+
+from app.services.onboarding_service import OnboardingService, application_view
 
 router = APIRouter(prefix="/farmers", tags=["Farmer"])
 
@@ -53,10 +55,19 @@ async def get_farmer_profile(
             age=current_user.get("age", 0),
             approval_status=profile.get("approval_status", "PENDING") if profile else "PENDING",
             bank_details_present=has_bank,
+            **application_view(profile or {}),
             created_at=current_user.get("created_at"),
         ).model_dump(),
         request_id=get_request_id(request),
     )
+
+
+@router.put("/me/application", response_model=APIResponse)
+async def submit_application(data: FarmerApplicationRequest, request: Request,
+                             current_user: dict = Depends(get_current_farmer),
+                             db: AsyncIOMotorDatabase = Depends(get_database)):
+    result = await OnboardingService(db).submit(current_user, data)
+    return APIResponse(success=True, data=result, request_id=get_request_id(request))
 
 
 @router.get("/me/bank", response_model=APIResponse)
@@ -119,10 +130,13 @@ async def update_bank_details(
         "bank_account_number": encrypt_value(data.account_number),
         "bank_ifsc": encrypt_value(data.ifsc),
         "bank_details_verified": False,  # Needs re-verification
+        "upi_id": encrypt_value(data.upi_id) if data.upi_id else None,
     }
-    if data.upi_id:
-        encrypted_data["upi_id"] = encrypt_value(data.upi_id)
 
+    profile = await farmer_repo.find_by_user_id(current_user["id"])
+    if not profile:
+        from app.core.exceptions import NotFoundError
+        raise NotFoundError("Farmer profile")
     await farmer_repo.update_bank_details(current_user["id"], encrypted_data)
 
     await audit.log(

@@ -17,6 +17,10 @@ from app.schemas.common import APIResponse
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.utils.money import format_rupees, percentage_bps_to_display
 
+def fulfillment_view(order):
+    return {k: order.get(k) for k in ("fulfillment_method", "delivery_address", "pickup_address", "delivery_fee_paise")}
+
+
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
@@ -28,7 +32,7 @@ async def create_order(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """
-    Buyer creates an order. Only product_id and quantity are sent.
+    Buyer supplies product, quantity and validated fulfillment.
     Backend calculates everything from stored pricing.
     """
     order_service = OrderService(db)
@@ -39,6 +43,9 @@ async def create_order(
         product_id=data.product_id,
         quantity=data.quantity,
         idempotency_key=data.idempotency_key,
+        fulfillment_method=data.fulfillment_method,
+        expected_unit_price_paise=data.expected_unit_price_paise,
+        delivery_address=data.delivery_address.model_dump() if data.delivery_address else None,
     )
 
     # Auto-create Razorpay payment
@@ -48,6 +55,7 @@ async def create_order(
         success=True,
         data=BuyerOrderResponse(
             order_id=order["id"],
+            **fulfillment_view(order),
             order_number=order.get("order_number", ""),
             product_name=order.get("product_name", ""),
             quantity=order.get("quantity", 0),
@@ -91,6 +99,7 @@ async def list_orders(
         if role == "BUYER":
             items.append(BuyerOrderResponse(
                 order_id=o["id"],
+                **fulfillment_view(o),
                 order_number=o.get("order_number", ""),
                 product_name=o.get("product_name", ""),
                 quantity=o.get("quantity", 0),
@@ -107,6 +116,7 @@ async def list_orders(
         elif role == "FARMER":
             items.append(FarmerOrderResponse(
                 order_id=o["id"],
+                **fulfillment_view(o),
                 order_number=o.get("order_number", ""),
                 product_name=o.get("product_name", ""),
                 quantity=o.get("quantity", 0),
@@ -123,6 +133,7 @@ async def list_orders(
         elif role == "ADMIN":
             items.append(AdminOrderResponse(
                 order_id=o["id"],
+                **fulfillment_view(o),
                 order_number=o.get("order_number", ""),
                 buyer_id=o.get("buyer_id", ""),
                 buyer_name=o.get("buyer_name", ""),
@@ -179,6 +190,7 @@ async def get_order(
     if role == "BUYER":
         data = BuyerOrderResponse(
             order_id=order["id"],
+            **fulfillment_view(order),
             order_number=order.get("order_number", ""),
             product_name=order.get("product_name", ""),
             quantity=order.get("quantity", 0),
@@ -195,6 +207,7 @@ async def get_order(
     elif role == "FARMER":
         data = FarmerOrderResponse(
             order_id=order["id"],
+            **fulfillment_view(order),
             order_number=order.get("order_number", ""),
             product_name=order.get("product_name", ""),
             quantity=order.get("quantity", 0),

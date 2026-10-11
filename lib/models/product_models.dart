@@ -65,6 +65,8 @@ class BuyerProduct {
   final String? imageUrl;
   final String location;
   final String? farmerName;
+  final String? pickupAddress;
+  final bool deliveryAvailable;
   final int buyerPricePerUnitPaise;
   final String buyerPricePerUnitDisplay;
   final String? harvestDate;
@@ -79,6 +81,8 @@ class BuyerProduct {
     this.imageUrl,
     required this.location,
     this.farmerName,
+    this.pickupAddress,
+    this.deliveryAvailable = false,
     required this.buyerPricePerUnitPaise,
     required this.buyerPricePerUnitDisplay,
     this.harvestDate,
@@ -95,6 +99,8 @@ class BuyerProduct {
       imageUrl: json['image_url'] as String?,
       location: json['location'] as String? ?? '',
       farmerName: json['farmer_name'] as String?,
+      pickupAddress: json['pickup_address'] as String?,
+      deliveryAvailable: json['delivery_available'] == true,
       buyerPricePerUnitPaise: (json['buyer_price_per_unit_paise'] as num?)?.toInt() ?? 0,
       buyerPricePerUnitDisplay: json['buyer_price_per_unit_display'] as String? ?? '₹0.00',
       harvestDate: json['harvest_date'] as String?,
@@ -103,6 +109,7 @@ class BuyerProduct {
 }
 
 class CreateProductPayload {
+  final int sellingPricePerUnitPaise;
   final String productName;
   final String category;
   final int quantity;
@@ -115,6 +122,7 @@ class CreateProductPayload {
 
   CreateProductPayload({
     required this.productName,
+    required this.sellingPricePerUnitPaise,
     required this.category,
     required this.quantity,
     this.quantityUnit = 'Quintal',
@@ -128,6 +136,7 @@ class CreateProductPayload {
   Map<String, dynamic> toJson() {
     return {
       'product_name': productName,
+      'selling_price_per_unit_paise': sellingPricePerUnitPaise,
       'category': category,
       'quantity': quantity,
       'quantity_unit': quantityUnit,

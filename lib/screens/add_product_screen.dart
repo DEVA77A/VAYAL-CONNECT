@@ -3,6 +3,7 @@ import '../models/product_models.dart';
 import '../services/product_service.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
+import '../utils/money_input.dart';
 
 /// Farmer Add Harvest Listing Screen
 ///
@@ -15,6 +16,7 @@ import '../theme/app_theme.dart';
 /// - location (str)
 /// - market (str)
 /// - harvest_date (YYYY-MM-DD)
+/// - selling_price_per_unit_paise (positive integer payout price)
 class AddProductScreen extends StatefulWidget {
   const AddProductScreen({Key? key}) : super(key: key);
 
@@ -26,10 +28,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
   final _productService = ProductService();
 
-  final _nameController = TextEditingController(text: 'பொன்னி நெல் (Ponni Paddy)');
-  final _quantityController = TextEditingController(text: '25');
-  final _locationController = TextEditingController(text: 'பாபநாசம், தஞ்சாவூர்');
-  final _marketController = TextEditingController(text: 'தஞ்சாவூர் ஒழுங்குமுறை விற்பனைக்கூடம்');
+  final _nameController = TextEditingController();
+  final _quantityController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _marketController = TextEditingController();
+  final _sellingPriceController = TextEditingController();
+  bool _referenceBusy = false;
   DateTime _selectedDate = DateTime.now();
 
   String _category = 'தானியங்கள் (Grains)';
@@ -64,6 +68,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   @override
   void dispose() {
+    _sellingPriceController.dispose();
     _nameController.dispose();
     _quantityController.dispose();
     _locationController.dispose();
@@ -73,7 +78,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   void _submitHarvest() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isSubmitting || !_formKey.currentState!.validate()) return;
 
     setState(() => _isSubmitting = true);
 
@@ -84,8 +89,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
       final payload = CreateProductPayload(
         productName: _nameController.text.trim(),
+        sellingPricePerUnitPaise: parseSellingPricePaise(_sellingPriceController.text)!,
         category: _category,
-        quantity: int.tryParse(_quantityController.text.trim()) ?? 10,
+        quantity: int.parse(_quantityController.text.trim()),
         quantityUnit: _unit,
         qualityGrade: _grade,
         location: _locationController.text.trim(),
@@ -117,6 +123,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  Future<void> _showReference() async {
+    if (_nameController.text.trim().length < 2 || _marketController.text.trim().length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter the official commodity and mandi names first.')));
+      return;
+    }
+    setState(() => _referenceBusy = true);
+    try {
+      final ref = await _productService.fetchPriceReference(commodity: _nameController.text.trim(), market: _marketController.text.trim(), unit: _unit);
+      if (!mounted) return;
+      await showDialog<void>(context: context, builder: (ctx) => AlertDialog(
+        title: Text(ref['reference_commodity'].toString() + ' • ' + ref['reference_market'].toString()),
+        content: Text('Source: ' + ref['reference_price_source'].toString() + '\nDate: ' + ref['reference_price_date'].toString() +
+          '\nReported: ₹' + ((ref['government_reference_price_paise'] as num) / 100).toStringAsFixed(2) + ' / ' + ref['reference_price_unit'].toString() +
+          '\nComparison: ₹' + ((ref['reference_price_per_listing_unit_paise'] as num) / 100).toStringAsFixed(2) + ' / ' + ref['reference_listing_unit'].toString() +
+          '\n' + (ref['reference_price_cached'] == true ? 'Cached official record' : 'Fetched official record') +
+          '\n' + (ref['reference_price_stale'] == true ? 'Historical rate (older than one day)' : 'Rate dated today or yesterday') +
+          '\nReference only. Your selected selling price is unchanged.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+      ));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verified reference unavailable: ' + e.toString())));
+    } finally { if (mounted) setState(() => _referenceBusy = false); }
   }
 
   void _pickHarvestDate() async {
@@ -176,8 +206,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                     Expanded(
                       child: Text(
                         session.isTamil
-                            ? 'அரசு மண்டி விலை அடிப்படையில் உங்களுக்கான பட்டுவாடா தானாக கணக்கிடப்படும்.'
-                            : 'Farmer payout is calculated server-side from official mandi rates.',
+                            ? 'உங்கள் விற்பனை விலையை தேர்வு செய்யவும். மண்டி விலை ஒப்பீட்டுக்கு மட்டுமே.'
+                            : 'Choose your payout price per listing unit. The server adds platform commission for buyers. Mandi rates are references only.',
                         style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                       ),
                     ),
@@ -334,6 +364,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 decoration: const InputDecoration(hintText: 'எ.கா: தஞ்சாவூர் ஒழுங்குமுறை விற்பனைக்கூடம்'),
               ),
 
+              const SizedBox(height: 14),
+              OutlinedButton.icon(onPressed: _referenceBusy || _isSubmitting ? null : _showReference,
+                icon: const Icon(Icons.compare_arrows), label: const Text('Look up verified mandi reference')),
+              TextFormField(controller: _sellingPriceController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: 'Your selling price (₹ per ' + _unit + ')'),
+                validator: (v) => parseSellingPricePaise(v ?? '') == null ? 'Enter ₹0.01–₹1,000,000 with up to 2 decimal places.' : null),
+              const Text('Delivery, if offered, is included in this price. A valid official reference is required to publish.'),
               const SizedBox(height: 24),
 
               ElevatedButton.icon(

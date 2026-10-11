@@ -16,6 +16,7 @@ import 'add_product_screen.dart';
 import 'market_prices_screen.dart';
 import 'orders_screen.dart';
 import 'profile_screen.dart';
+import 'farmer_application_screen.dart';
 
 /// Farmer Home Dashboard
 ///
@@ -134,6 +135,9 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const DemoModeBanner(),
+              if (!session.isDemoMode) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FarmerApplicationScreen())),
+                icon: const Icon(Icons.assignment), label: const Text('Complete farmer application / Check approval'))),
 
               // Error notification banner if backend failed
               if (_errorMessage != null)

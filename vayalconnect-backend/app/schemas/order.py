@@ -5,22 +5,51 @@ Role-specific order views.
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, model_validator
+from typing import Literal
 from datetime import datetime
+
+
+class DeliveryAddress(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    recipient_name: str = Field(..., min_length=2, max_length=200)
+    phone: str = Field(..., pattern=r"^[6-9][0-9]{9}$")
+    address: str = Field(..., min_length=10, max_length=500)
+    postal_code: str = Field(..., pattern=r"^[1-9][0-9]{5}$")
 
 
 class CreateOrderRequest(BaseModel):
     """
     Buyer creates an order.
-    ONLY product_id and quantity — never price, commission, or payout.
-    Backend calculates everything from stored pricing snapshot.
+    Product, quantity and fulfillment; expected price is only a stale-preview guard.
+    Backend determines authoritative pricing and freezes the order snapshot.
     """
+    model_config = ConfigDict(extra="forbid")
+    expected_unit_price_paise: Optional[int] = Field(None, gt=0, strict=True)
+    fulfillment_method: Literal["PICKUP", "DELIVERY"]
+    delivery_address: Optional[DeliveryAddress] = None
     product_id: str = Field(..., min_length=1)
-    quantity: int = Field(..., gt=0, le=1_000_000)
+    quantity: int = Field(..., gt=0, le=1_000_000, strict=True)
     idempotency_key: Optional[str] = Field(None, max_length=100)
 
 
-class BuyerOrderResponse(BaseModel):
+    @model_validator(mode="after")
+    def validate_fulfillment(self):
+        if self.fulfillment_method == "DELIVERY" and self.delivery_address is None:
+            raise ValueError("A delivery address is required.")
+        if self.fulfillment_method == "PICKUP" and self.delivery_address is not None:
+            raise ValueError("Pickup must not include a delivery address.")
+        return self
+
+
+class FulfillmentResponse(BaseModel):
+    fulfillment_method: Optional[str] = None
+    delivery_address: Optional[DeliveryAddress] = None
+    pickup_address: Optional[str] = None
+    delivery_fee_paise: Optional[int] = None
+
+
+class BuyerOrderResponse(FulfillmentResponse):
     """Order response for buyer — NO farmer payout, NO commission."""
     order_id: str
     order_number: str
@@ -38,7 +67,7 @@ class BuyerOrderResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class FarmerOrderResponse(BaseModel):
+class FarmerOrderResponse(FulfillmentResponse):
     """Order response for farmer — only payout info, NO buyer price, NO commission."""
     order_id: str
     order_number: str
@@ -55,7 +84,7 @@ class FarmerOrderResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
-class AdminOrderResponse(BaseModel):
+class AdminOrderResponse(FulfillmentResponse):
     """Order response for admin — FULL financial breakdown."""
     order_id: str
     order_number: str

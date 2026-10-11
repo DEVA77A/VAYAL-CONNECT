@@ -52,22 +52,22 @@ class AdminService {
   }
 
   /// Approve farmer account
-  Future<void> approveFarmer(String userId) async {
+  Future<void> approveFarmer(String userId, {int applicationRevision = 0}) async {
     if (SessionManager().isDemoMode) return;
 
     final uri = Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/approve');
-    final response = await _client.put(uri, headers: _headers(), body: json.encode({}));
+    final response = await _client.put(uri, headers: _headers(), body: json.encode({'application_revision': applicationRevision})).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
       throw Exception('Failed to approve farmer. Status code ${response.statusCode}');
     }
   }
 
   /// Reject farmer account
-  Future<void> rejectFarmer(String userId, String reason) async {
+  Future<void> rejectFarmer(String userId, String reason, {int applicationRevision = 0}) async {
     if (SessionManager().isDemoMode) return;
 
     final uri = Uri.parse('${ApiConfig.baseUrl}/api/v1/admin/farmers/$userId/reject');
-    final response = await _client.put(uri, headers: _headers(), body: json.encode({'reason': reason}));
+    final response = await _client.put(uri, headers: _headers(), body: json.encode({'reason': reason, 'application_revision': applicationRevision})).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
       throw Exception('Failed to reject farmer. Status code ${response.statusCode}');
     }

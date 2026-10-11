@@ -3,7 +3,7 @@ VayalConnect Backend — Admin & Report Schemas
 """
 
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime, date
 
 
@@ -104,12 +104,15 @@ class RevenueReportResponse(BaseModel):
 
 class FarmerApproveRequest(BaseModel):
     """Approve a farmer account."""
-    pass
+    model_config = ConfigDict(extra="forbid")
+    application_revision: int = Field(0, ge=0, strict=True)
 
 
 class FarmerRejectRequest(BaseModel):
     """Reject a farmer account."""
-    reason: str
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    reason: str = Field(..., min_length=1, max_length=500)
+    application_revision: int = Field(0, ge=0, strict=True)
 
 
 class AdminUserListItem(BaseModel):

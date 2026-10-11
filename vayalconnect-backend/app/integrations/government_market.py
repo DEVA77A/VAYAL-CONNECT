@@ -292,13 +292,7 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
             )
         )
 
-        # If modal is 0 but min/max are present, estimate modal as midpoint
-        if modal_price <= 0 and min_price > 0 and max_price > 0:
-            modal_price = round((min_price + max_price) / 2.0, 2)
-        elif modal_price <= 0 and max_price > 0:
-            modal_price = max_price
-        elif modal_price <= 0 and min_price > 0:
-            modal_price = min_price
+        # A missing modal price is unavailable; never estimate an official rate.
 
         # Unit in AGMARKNET is always Quintal (1 Quintal = 100 kg)
         unit = "Quintal"
@@ -327,6 +321,7 @@ class GovernmentMarketPriceProvider(MarketPriceProvider):
             "min_price_paise": min_price_paise,
             "max_price_paise": max_price_paise,
             "modal_price_paise": modal_price_paise,
+            "modal_price_verified": modal_price_paise > 0,
             "min_price_display": f"₹{min_price:,.2f}",
             "max_price_display": f"₹{max_price:,.2f}",
             "modal_price_display": f"₹{modal_price:,.2f}",

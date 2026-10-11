@@ -31,6 +31,25 @@ class FarmerRepository:
         doc = await self.collection.find_one({"user_id": ObjectId(user_id)})
         return self._serialize(doc)
 
+    async def submit_application(self, user_id: str, application: dict, revision: int) -> bool:
+        revision_query = {"application_revision": revision} if revision else {"$or": [{"application_revision": 0}, {"application_revision": {"$exists": False}}]}
+        now = datetime.now(timezone.utc)
+        result = await self.collection.update_one(
+            {"user_id": ObjectId(user_id), "approval_status": {"$in": ["PENDING", "REJECTED"]}, **revision_query},
+            {"$set": {"application": application, "submitted_at": now, "updated_at": now, "approval_status": "PENDING", "rejection_reason": None},
+             "$inc": {"application_revision": 1}, "$unset": {"approved_by": "", "approved_at": ""}},
+        )
+        return result.modified_count == 1
+
+    async def decide_application(self, user_id: str, revision: int, status: str, actor_id: str, reason=None) -> bool:
+        revision_query = {"application_revision": revision} if revision else {"$or": [{"application_revision": 0}, {"application_revision": {"$exists": False}}]}
+        result = await self.collection.update_one(
+            {"user_id": ObjectId(user_id), "approval_status": {"$in": ["PENDING", "APPROVED"]} if status == "REJECTED" else "PENDING", **revision_query},
+            {"$set": {"approval_status": status, "reviewed_by": ObjectId(actor_id), "reviewed_at": datetime.now(timezone.utc),
+                      "rejection_reason": reason, "updated_at": datetime.now(timezone.utc)}},
+        )
+        return result.modified_count == 1
+
     async def update_bank_details(
         self, user_id: str, bank_data: Dict[str, Any]
     ) -> bool:

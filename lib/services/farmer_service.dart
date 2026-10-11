@@ -60,6 +60,22 @@ class FarmerService {
     return Map<String, dynamic>.from(data['data']);
   }
 
+  Future<Map<String, dynamic>> fetchProfile() => _request('GET', 'profile');
+  Future<Map<String, dynamic>> submitApplication(Map<String, dynamic> application) => _request('PUT', 'application', application);
+  Future<Map<String, dynamic>> saveBankDetails(Map<String, dynamic> bank) => _request('PUT', 'bank', bank);
+
+  Future<Map<String, dynamic>> _request(String method, String resource, [Map<String, dynamic>? payload]) async {
+    if (SessionManager().isDemoMode) throw Exception('Sign in to submit a real farmer application.');
+    final uri = Uri.parse(ApiConfig.baseUrl + '/api/v1/farmers/me/' + resource);
+    final response = await (method == 'GET' ? _client.get(uri, headers: _headers()) :
+        _client.put(uri, headers: _headers(), body: jsonEncode(payload))).timeout(const Duration(seconds: 15));
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode != 200 || decoded is! Map || decoded['success'] != true || decoded['data'] is! Map) {
+      throw Exception(decoded is Map ? (decoded['error']?['message'] ?? 'Unable to save or load farmer details. Check the fields and retry.') : 'Invalid response.');
+    }
+    return Map<String, dynamic>.from(decoded['data']);
+  }
+
   void dispose() {
     _client.close();
   }

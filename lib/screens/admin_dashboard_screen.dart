@@ -105,8 +105,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
     setState(() => _decidingFarmers.add(id));
     try {
-      if (approved) { await _adminService.approveFarmer(id); }
-      else { await _adminService.rejectFarmer(id, reason!); }
+      if (approved) { await _adminService.approveFarmer(id, applicationRevision: farmer['application_revision'] as int? ?? 0); }
+      else { await _adminService.rejectFarmer(id, reason!, applicationRevision: farmer['application_revision'] as int? ?? 0); }
       await _loadMetrics();
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Unable to save the decision. Please retry.')));
@@ -239,8 +239,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: StatsKpiCard(
                             title: session.isTamil ? 'மொத்த ஆர்டர்கள்' : 'Total Orders',
                             value: '${_metrics.totalOrders}',
-                            subtitle: '+18% இந்த வாரம்',
-                            trendText: '+18%',
+                            subtitle: 'Orders in selected period',
+
                             icon: Icons.receipt_long,
                           ),
                         ),
@@ -249,8 +249,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: StatsKpiCard(
                             title: session.isTamil ? 'மொத்த விற்பனை (GMV)' : 'Gross Sales',
                             value: _metrics.totalSalesDisplay,
-                            subtitle: '+24% வளர்ச்சி',
-                            trendText: '+24%',
+                            subtitle: 'Completed, captured orders',
+
                             icon: Icons.trending_up,
                           ),
                         ),
@@ -263,7 +263,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: StatsKpiCard(
                             title: session.isTamil ? 'விவசாயி பட்டுவாடா' : 'Farmer Payouts',
                             value: _metrics.totalFarmerPayoutDisplay,
-                            subtitle: '92.3% பகிர்ந்தளிக்கப்பட்டது',
+                            subtitle: 'Order payout totals',
                             icon: Icons.account_balance_wallet,
                             iconColor: AppTheme.primaryGreen,
                           ),
@@ -273,7 +273,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: StatsKpiCard(
                             title: session.isTamil ? 'தள வருவாய் (Commission)' : 'Platform Commission',
                             value: _metrics.totalPlatformCommissionDisplay,
-                            subtitle: '7.7% நிகர வருவாய்',
+                            subtitle: 'Stored order commissions',
                             icon: Icons.account_balance,
                             iconColor: AppTheme.accentGold,
                             iconBgColor: AppTheme.surfaceCream,
@@ -297,7 +297,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     Row(
                       children: [
                         Text(
-                          session.isTamil ? 'விவசாயிகள் சரிபார்ப்பு' : 'Farmer KYC Verification',
+                          session.isTamil ? 'விவசாயிகள் சரிபார்ப்பு' : 'Farmer Application Review',
                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                         ),
                         const SizedBox(width: 6),
@@ -358,6 +358,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         'Phone: ${f['phone'] ?? ''}',
                         style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
+                      ExpansionTile(title: const Text('Review submitted farm details'), children: [
+                        if (f['application'] is Map) ...[
+                          for (final key in ['farm_name', 'farm_address', 'pickup_address', 'crops', 'delivery_available'])
+                            ListTile(title: Text(key.replaceAll('_', ' ')), subtitle: Text(f['application'][key].toString())),
+                          ListTile(title: Text('Submitted: ' + f['submitted_at'].toString() + ' • Revision: ' + f['application_revision'].toString())),
+                        ] else const ListTile(title: Text('Application not submitted. Approval is unavailable.')),
+                        ListTile(title: Text('Email verified: ' + (f['email_verified'] == true).toString())),
+                      ]),
                       const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -373,7 +381,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            onPressed: _decidingFarmers.contains(f['id']) ? null : () => _decideFarmer(f, true),
+                            onPressed: _decidingFarmers.contains(f['id']) || f['application'] == null ? null : () => _decideFarmer(f, true),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryGreen,
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),

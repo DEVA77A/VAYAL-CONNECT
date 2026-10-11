@@ -6,16 +6,27 @@ Bank details are always masked in responses.
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from datetime import datetime
 from app.utils.validators import is_valid_ifsc, is_valid_upi
 
 
+class FarmerApplicationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    farm_name: str = Field(..., min_length=2, max_length=200)
+    farm_address: str = Field(..., min_length=10, max_length=500)
+    pickup_address: str = Field(..., min_length=10, max_length=500)
+    crops: str = Field(..., min_length=2, max_length=500)
+    delivery_available: bool = Field(False, strict=True)
+    application_revision: int = Field(0, ge=0, strict=True)
+
+
 class FarmerBankDetailsRequest(BaseModel):
     """Request to set/update farmer bank details."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     account_holder_name: str = Field(..., min_length=2, max_length=200)
     bank_name: str = Field(..., min_length=2, max_length=200)
-    account_number: str = Field(..., min_length=8, max_length=20)
+    account_number: str = Field(..., min_length=8, max_length=20, pattern=r"^[0-9]+$")
     ifsc: str = Field(..., min_length=11, max_length=11)
     upi_id: Optional[str] = Field(None, max_length=100)
 
@@ -56,6 +67,10 @@ class FarmerProfileResponse(BaseModel):
     age: int
     approval_status: str
     bank_details_present: bool = False
+    application: Optional[dict] = None
+    application_revision: int = 0
+    submitted_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
     created_at: Optional[datetime] = None
 
 

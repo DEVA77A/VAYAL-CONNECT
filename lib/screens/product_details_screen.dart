@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/product_models.dart';
+import '../models/order_models.dart';
 import '../services/order_service.dart';
 import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
@@ -10,10 +11,12 @@ import 'orders_screen.dart';
 /// Implements Stitch Screen 2d547dab47594885bdb82ee3a63ff7f4
 class ProductDetailsScreen extends StatefulWidget {
   final BuyerProduct product;
+  final OrderService? orderService;
 
   const ProductDetailsScreen({
     Key? key,
     required this.product,
+    this.orderService,
   }) : super(key: key);
 
   @override
@@ -21,27 +24,35 @@ class ProductDetailsScreen extends StatefulWidget {
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
-  final _orderService = OrderService();
-  int _selectedQuantity = 5;
+  late final _orderService = widget.orderService ?? OrderService();
+  int _selectedQuantity = 1;
+  String _fulfillment = 'PICKUP';
+  final _deliveryForm = GlobalKey<FormState>();
+  final _addressFields = {'recipient_name': TextEditingController(), 'phone': TextEditingController(), 'address': TextEditingController(), 'postal_code': TextEditingController()};
   bool _isOrdering = false;
 
   @override
   void dispose() {
+    for (final field in _addressFields.values) { field.dispose(); }
     _orderService.dispose();
     super.dispose();
   }
 
   void _confirmOrder() async {
+    if (_isOrdering || (_fulfillment == 'DELIVERY' && !_deliveryForm.currentState!.validate())) return;
     setState(() => _isOrdering = true);
 
     try {
       final order = await _orderService.createOrder(
         productId: widget.product.productId,
         quantity: _selectedQuantity,
+        fulfillmentMethod: _fulfillment,
+        expectedUnitPricePaise: widget.product.buyerPricePerUnitPaise,
+        deliveryAddress: _fulfillment == 'DELIVERY' ? {for (final e in _addressFields.entries) e.key: e.value.text.trim()} : null,
       );
 
       if (!mounted) return;
-      _showSuccessDialog(order.orderNumber);
+      _showOrderDialog(order);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -55,8 +66,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     }
   }
 
-  void _showSuccessDialog(String orderNumber) {
+  void _showOrderDialog(BuyerOrder order) {
     final session = SessionManager();
+    final orderNumber = order.orderNumber;
 
     showDialog(
       context: context,
@@ -76,7 +88,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              session.isTamil ? 'ஆர்டர் வெற்றிகரமாக பதிவு செய்யப்பட்டது!' : 'Order Placed Successfully!',
+              session.isDemoMode ? 'Demo order preview' : 'Order recorded • Payment pending',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
@@ -87,9 +99,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              session.isTamil
-                  ? 'விவசாயிக்கு தகவல் அனுப்பப்பட்டது. எஸ்க்ரோ கட்டணம் பாதுகாப்பானது.'
-                  : 'Farmer notified. Payment held securely in escrow until delivery inspection.',
+              'Status: ' + order.orderStatus + '\nPayment: ' + order.paymentStatus + '\nNo payment has been confirmed by this checkout. Gateway checkout is not yet available in the app.',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
@@ -118,7 +128,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Widget build(BuildContext context) {
     final session = SessionManager();
     final p = widget.product;
-    final totalAmount = (_selectedQuantity * (p.buyerPricePerUnitPaise / 100)).toInt();
+    final totalAmount = (_selectedQuantity * p.buyerPricePerUnitPaise / 100).toStringAsFixed(2);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundWarm,
@@ -185,7 +195,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           Icon(Icons.verified, size: 14, color: AppTheme.primaryGreen),
                           SizedBox(width: 4),
                           Text(
-                            'APMC VERIFIED',
+                            'Farmer listing',
                             style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen),
                           ),
                         ],
@@ -257,9 +267,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            session.isTamil
-                                ? 'சந்தை விலையை விட இடைத்தரகர் கட்டணம் இன்றி சேமிப்பு'
-                                : 'Direct from farm savings with zero middleman fee',
+                            'Buyer price includes platform commission. No savings claim is guaranteed.',
                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryDarkGreen),
                           ),
                         ),
@@ -294,7 +302,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         Row(
                           children: [
                             Text(
-                              p.farmerName ?? 'முருகன் கே.',
+                              p.farmerName ?? 'Farmer',
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(width: 4),
@@ -302,7 +310,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           ],
                         ),
                         Text(
-                          '${p.location} • ★ 4.9 (128 மதிப்பீடுகள்)',
+                          p.location,
                           style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                         ),
                       ],
@@ -322,31 +330,31 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
             const SizedBox(height: 16),
 
-            // Quality & Lab Certification Badges
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                session.isTamil ? 'தர உத்தரவாதம் மற்றும் ஆய்வறிக்கை' : 'Quality Assurance & Lab Reports',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _buildQualityChip('ஈரப்பதம் <12% (Moisture Safe)'),
-                  _buildQualityChip('வேதியியல் சாயம் இல்லை'),
-                  _buildQualityChip('100% பூச்சி தாக்குதல் அற்றது'),
-                  _buildQualityChip('APMC சான்றிதழ் எண்: TN-8842'),
+            Padding(padding: const EdgeInsets.all(16), child: Form(key: _deliveryForm, child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('Pickup or delivery / பெறுதல் அல்லது விநியோகம்', style: TextStyle(fontWeight: FontWeight.bold)),
+                DropdownButtonFormField<String>(value: _fulfillment,
+                  items: [const DropdownMenuItem(value: 'PICKUP', child: Text('Pickup / நேரில் பெறுதல்')),
+                    if (p.deliveryAvailable) const DropdownMenuItem(value: 'DELIVERY', child: Text('Delivery / விநியோகம்'))],
+                  onChanged: _isOrdering ? null : (value) => setState(() => _fulfillment = value!)),
+                if (_fulfillment == 'PICKUP') Text('Pickup: ' + (p.pickupAddress ?? p.location)),
+                if (!p.deliveryAvailable) const Text('This farmer offers pickup only.'),
+                if (_fulfillment == 'DELIVERY') ...[
+                  const Text('Delivery is included. Timing must be arranged with the farmer; no ETA is promised.'),
+                  for (final field in _addressFields.entries) TextFormField(
+                    controller: field.value, enabled: !_isOrdering,
+                    decoration: InputDecoration(labelText: field.key.replaceAll('_', ' ')),
+                    keyboardType: field.key == 'phone' || field.key == 'postal_code' ? TextInputType.number : TextInputType.streetAddress,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (field.key == 'phone') return RegExp(r'^[6-9][0-9]{9}$').hasMatch(value) ? null : 'Enter a valid 10-digit mobile number.';
+                      if (field.key == 'postal_code') return RegExp(r'^[1-9][0-9]{5}$').hasMatch(value) ? null : 'Enter a valid 6-digit postal code.';
+                      return value.length >= (field.key == 'address' ? 10 : 2) ? null : 'Complete this field.';
+                    },
+                  ),
                 ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
+              ],
+            ))),
 
             // Wholesale Quantity Selector
             Container(
@@ -370,7 +378,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     children: [
                       IconButton.outlined(
                         icon: const Icon(Icons.remove),
-                        onPressed: _selectedQuantity > 1
+                        onPressed: !_isOrdering && _selectedQuantity > 1
                             ? () => setState(() => _selectedQuantity--)
                             : null,
                       ),
@@ -382,7 +390,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       const SizedBox(width: 16),
                       IconButton.outlined(
                         icon: const Icon(Icons.add),
-                        onPressed: _selectedQuantity < p.quantityAvailable
+                        onPressed: !_isOrdering && _selectedQuantity < p.quantityAvailable
                             ? () => setState(() => _selectedQuantity++)
                             : null,
                       ),
@@ -392,11 +400,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   // Preset Quick Chips
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [1, 5, 10, 20].map((q) {
+                    children: [1, 5, 10, 20].where((q) => q <= p.quantityAvailable).map((q) {
                       return ChoiceChip(
                         label: Text('$q ${p.quantityUnit}'),
                         selected: _selectedQuantity == q,
-                        onSelected: (_) => setState(() => _selectedQuantity = q),
+                        onSelected: _isOrdering ? null : (_) => setState(() => _selectedQuantity = q),
                         selectedColor: AppTheme.softGreen,
                       );
                     }).toList(),
@@ -439,7 +447,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               ],
             ),
             ElevatedButton.icon(
-              onPressed: _isOrdering ? null : _confirmOrder,
+              onPressed: _isOrdering || p.quantityAvailable < 1 ? null : _confirmOrder,
               icon: _isOrdering
                   ? const SizedBox(
                       width: 16,
@@ -448,7 +456,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     )
                   : const Icon(Icons.check_circle_outline, size: 18),
               label: Text(
-                session.isTamil ? 'முன்பதிவு செய் • Confirm Order' : 'Confirm Order',
+                session.isTamil ? 'ஆர்டர் பதிவு செய்' : 'Create pending order',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
@@ -462,25 +470,4 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  Widget _buildQualityChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.backgroundLight,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.primaryLightGreen.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.check, size: 14, color: AppTheme.primaryGreen),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryDarkGreen),
-          ),
-        ],
-      ),
-    );
-  }
 }

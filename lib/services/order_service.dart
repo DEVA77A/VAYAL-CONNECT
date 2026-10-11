@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
@@ -12,6 +13,7 @@ import 'session_manager.dart';
 /// Strictly throws informative errors upon network or API failures.
 class OrderService {
   final http.Client _client;
+  final Map<String, String> _checkoutKeys = {};
 
   OrderService({http.Client? client}) : _client = client ?? http.Client();
 
@@ -29,6 +31,9 @@ class OrderService {
   Future<BuyerOrder> createOrder({
     required String productId,
     required int quantity,
+    required String fulfillmentMethod,
+    int? expectedUnitPricePaise,
+    Map<String, dynamic>? deliveryAddress,
   }) async {
     // Isolated Demo Preview Mode
     if (SessionManager().isDemoMode) {
@@ -42,23 +47,25 @@ class OrderService {
         buyerUnitPriceDisplay: '₹2,450 / Quintal',
         buyerTotalPaise: quantity * 245000,
         buyerTotalDisplay: '₹${(quantity * 2450).toString()}',
-        orderStatus: 'CONFIRMED',
-        paymentStatus: 'PAID',
+        orderStatus: 'PENDING_PAYMENT',
+        paymentStatus: 'PENDING',
         createdAt: '2026-10-09',
       );
     }
 
+    final payload = {'product_id': productId, 'quantity': quantity, 'fulfillment_method': fulfillmentMethod,
+      if (expectedUnitPricePaise != null) 'expected_unit_price_paise': expectedUnitPricePaise,
+      if (deliveryAddress != null) 'delivery_address': deliveryAddress};
+    final fingerprint = jsonEncode(payload);
+    final key = _checkoutKeys.putIfAbsent(fingerprint, () => List.generate(24, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join());
+    payload['idempotency_key'] = key;
     final uri = Uri.parse(ApiConfig.ordersUrl);
 
     try {
       final response = await _client.post(
         uri,
         headers: _headers(),
-        body: json.encode({
-          'product_id': productId,
-          'quantity': quantity,
-          'idempotency_key': 'order-${DateTime.now().millisecondsSinceEpoch}',
-        }),
+        body: json.encode(payload),
       ).timeout(const Duration(seconds: 15));
 
       final decoded = json.decode(response.body) as Map<String, dynamic>;

@@ -8,13 +8,15 @@ Role-specific product views:
 """
 
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import date, datetime
 from app.schemas.common import QuantityUnit, QualityGrade, ProductStatus
 
 
 class CreateProductRequest(BaseModel):
-    """Farmer product creation request. Pricing is calculated server-side."""
+    """Farmer selects payout per unit; buyer totals and commission stay server-owned."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    selling_price_per_unit_paise: int = Field(..., gt=0, le=100_000_000, strict=True)
     product_name: str = Field(..., min_length=2, max_length=200)
     category: str = Field(..., min_length=2, max_length=100)
     quantity: int = Field(..., gt=0, le=1_000_000)
@@ -51,6 +53,7 @@ class FarmerProductResponse(BaseModel):
     location: str
     market: str
     harvest_date: Optional[date] = None
+    market_reference: Optional[dict] = None
     farmer_payout_per_unit_paise: int
     farmer_payout_per_unit_display: str
     status: str
@@ -73,6 +76,8 @@ class BuyerProductResponse(BaseModel):
     image_url: Optional[str] = None
     location: str
     farmer_name: Optional[str] = None
+    pickup_address: Optional[str] = None
+    delivery_available: bool = False
     buyer_price_per_unit_paise: int
     buyer_price_per_unit_display: str
     harvest_date: Optional[date] = None

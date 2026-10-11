@@ -24,7 +24,24 @@ from app.schemas.common import APIResponse
 from app.core.exceptions import NotFoundError, ForbiddenError
 from app.utils.money import format_rupees, percentage_bps_to_display
 
+from app.repositories.farmers import FarmerRepository
+
+def reference_view(product):
+    fields = ("government_reference_price_paise", "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit", "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale", "reference_price_retrieved_at", "reference_commodity", "reference_market")
+    return {k: product.get(k) for k in fields} if product.get("pricing_mode") == "FARMER_SELECTED" else None
+
+
 router = APIRouter(prefix="/products", tags=["Products"])
+
+
+@router.get("/price-reference", response_model=APIResponse)
+async def price_reference(request: Request, commodity: str = Query(..., min_length=2, max_length=200),
+                          market: str = Query(..., min_length=2, max_length=200),
+                          unit: str = Query(..., pattern="^(KG|QUINTAL|TON|PIECE|DOZEN)$"),
+                          current_user: dict = Depends(get_current_farmer),
+                          db: AsyncIOMotorDatabase = Depends(get_database)):
+    reference = await PricingEngine(db).get_verified_reference(commodity, market, unit)
+    return APIResponse(success=True, data=reference, request_id=get_request_id(request))
 
 
 @router.post("/", response_model=APIResponse, status_code=201)
@@ -36,14 +53,14 @@ async def create_product(
 ):
     """
     Farmer creates a product.
-    Backend fetches Government price and calculates pricing.
+    Backend validates an official reference and adds commission to the selected payout.
     Response shows ONLY farmer payout — no buyer price, no commission.
     """
     pricing_engine = PricingEngine(db)
     product_repo = ProductRepository(db)
     audit = AuditService(db)
 
-    # Calculate pricing from Government data
+    # The reference is advisory; the farmer selects only their payout, never buyer totals.
     pricing = await pricing_engine.calculate_pricing(
         product_name=data.product_name,
         category=data.category,
@@ -53,6 +70,7 @@ async def create_product(
         location=data.location,
         market=data.market,
         farmer_id=current_user["id"],
+        selling_price_per_unit_paise=data.selling_price_per_unit_paise,
     )
 
     # Build product document
@@ -79,6 +97,8 @@ async def create_product(
         "pricing_policy_version": pricing.get("pricing_policy_version", 0),
     }
 
+    product_doc.update(reference_view({**pricing, "pricing_mode": "FARMER_SELECTED"}) or {})
+    product_doc["pricing_mode"] = "FARMER_SELECTED"
     product_id = await product_repo.create(product_doc)
 
     # Create immutable pricing snapshot
@@ -110,6 +130,7 @@ async def create_product(
             location=data.location,
             market=data.market,
             harvest_date=data.harvest_date,
+            market_reference=reference_view({**pricing, "pricing_mode": "FARMER_SELECTED"}),
             farmer_payout_per_unit_paise=pricing["farmer_payout_per_unit_paise"],
             farmer_payout_per_unit_display=format_rupees(pricing["farmer_payout_per_unit_paise"]),
             status="ACTIVE",
@@ -142,6 +163,7 @@ async def list_my_products(
             location=p.get("location", ""),
             market=p.get("market", ""),
             harvest_date=p.get("harvest_date"),
+            market_reference=reference_view(p),
             farmer_payout_per_unit_paise=p.get("farmer_payout_per_unit_paise", 0),
             farmer_payout_per_unit_display=format_rupees(p.get("farmer_payout_per_unit_paise", 0)),
             status=p.get("status", ""),
@@ -181,6 +203,9 @@ async def list_products(
     items = []
     for p in products:
         if role == "BUYER":
+            p = await PricingEngine(db).buyer_pricing(p)
+            farm = await FarmerRepository(db).find_by_user_id(p.get("farmer_id", ""))
+            application = (farm or {}).get("application") or {}
             farmer = await user_repo.find_by_id(p.get("farmer_id", ""))
             items.append(BuyerProductResponse(
                 product_id=p["id"],
@@ -192,6 +217,8 @@ async def list_products(
                 image_url=p.get("image_url"),
                 location=p.get("location", ""),
                 farmer_name=farmer["name"] if farmer else None,
+                pickup_address=application.get("pickup_address", p.get("location")),
+                delivery_available=application.get("delivery_available", False),
                 buyer_price_per_unit_paise=p.get("buyer_price_per_unit_paise", 0),
                 buyer_price_per_unit_display=format_rupees(p.get("buyer_price_per_unit_paise", 0)),
                 harvest_date=p.get("harvest_date"),
@@ -271,6 +298,7 @@ async def get_product(
             location=product.get("location", ""),
             market=product.get("market", ""),
             harvest_date=product.get("harvest_date"),
+            market_reference=reference_view(product),
             farmer_payout_per_unit_paise=product.get("farmer_payout_per_unit_paise", 0),
             farmer_payout_per_unit_display=format_rupees(product.get("farmer_payout_per_unit_paise", 0)),
             status=product.get("status", ""),
@@ -278,6 +306,9 @@ async def get_product(
             updated_at=product.get("updated_at"),
         ).model_dump()
     elif role == "BUYER":
+        product = await PricingEngine(db).buyer_pricing(product)
+        farm = await FarmerRepository(db).find_by_user_id(product.get("farmer_id", ""))
+        application = (farm or {}).get("application") or {}
         farmer = await user_repo.find_by_id(product.get("farmer_id", ""))
         data = BuyerProductResponse(
             product_id=product["id"],
@@ -289,6 +320,8 @@ async def get_product(
             image_url=product.get("image_url"),
             location=product.get("location", ""),
             farmer_name=farmer["name"] if farmer else None,
+            pickup_address=application.get("pickup_address", product.get("location")),
+            delivery_available=application.get("delivery_available", False),
             buyer_price_per_unit_paise=product.get("buyer_price_per_unit_paise", 0),
             buyer_price_per_unit_display=format_rupees(product.get("buyer_price_per_unit_paise", 0)),
             harvest_date=product.get("harvest_date"),

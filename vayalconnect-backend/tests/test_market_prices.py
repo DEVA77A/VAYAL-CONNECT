@@ -162,6 +162,7 @@ def test_api_endpoint_market_prices_cached_fallback(test_client):
         "min_price_paise": 200000,
         "max_price_paise": 240000,
         "modal_price_paise": 220000,
+        "modal_price_verified": True,
         "min_price_display": "₹2,000.00",
         "max_price_display": "₹2,400.00",
         "modal_price_display": "₹2,200.00",
@@ -169,7 +170,7 @@ def test_api_endpoint_market_prices_cached_fallback(test_client):
         "price_per_kg_display": "₹22.00 / kg",
         "unit": "Quintal",
         "arrival_date": "2026-10-09",
-        "source": "data.gov.in AGMARKNET (Cached)",
+        "source": "data.gov.in AGMARKNET",
         "retrieved_at": "2026-10-09T06:00:00Z",
     }
 
@@ -231,3 +232,11 @@ def test_api_credentials_never_exposed(test_client):
     # Ensure key prefix or full key is never in content
     assert "579b464" not in content
     assert "api-key" not in content.lower()
+
+
+def test_api_excludes_unverified_legacy_cache(test_client):
+    client, _ = test_client
+    legacy = {"commodity": "Paddy", "market": "Madurai", "modal_price_paise": 220000, "source": "data.gov.in AGMARKNET", "unit": "Quintal", "arrival_date": "2026-10-09"}
+    with patch("app.api.v1.market_prices.market_price_provider.search_prices", AsyncMock(return_value={"live": False, "records": []})), patch("app.repositories.pricing.PricingRepository.list_market_prices", AsyncMock(return_value=[legacy])):
+        result = client.get("/api/v1/market-prices").json()["data"]
+        assert result["count"] == 0 and result["records"] == []

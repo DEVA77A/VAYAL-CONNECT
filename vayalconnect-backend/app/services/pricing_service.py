@@ -15,7 +15,7 @@ CRITICAL RULES:
 
 from typing import Optional, Dict, Any
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
@@ -68,6 +68,7 @@ class PricingEngine:
         location: str,
         market: str,
         farmer_id: str,
+        selling_price_per_unit_paise: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Calculate complete pricing for a product.
@@ -75,6 +76,17 @@ class PricingEngine:
 
         This is the ONLY place where prices are calculated.
         """
+        if selling_price_per_unit_paise is not None:
+            reference = await self.get_verified_reference(product_name, market, unit)
+            amounts = await self.selling_amounts(selling_price_per_unit_paise)
+            return {**reference, **amounts, "farmer_id": farmer_id, "pricing_mode": "FARMER_SELECTED",
+                    "pricing_policy_id": None, "pricing_policy_version": 0,
+                    "market": market, "location": location, "quality_grade": quality_grade, "quantity": quantity, "unit": unit,
+                    "farmer_total_payout_paise": safe_multiply(selling_price_per_unit_paise, quantity),
+                    "buyer_total_paise": safe_multiply(amounts["buyer_price_per_unit_paise"], quantity),
+                    "commission_total_paise": safe_multiply(amounts["commission_per_unit_paise"], quantity),
+                    "calculated_at": datetime.now(timezone.utc)}
+        # Legacy pricing remains available internally for historical compatibility.
         # Step 1: Fetch Government reference price
         market_price = await market_price_provider.get_market_price(
             commodity=product_name,
@@ -183,6 +195,73 @@ class PricingEngine:
         }
 
         return snapshot_data
+
+    async def selling_amounts(self, selling_price: int) -> Dict[str, Any]:
+        if type(selling_price) is not int or not 0 < selling_price <= 100_000_000:
+            raise ValidationError("Selling price must be positive integer paise, at most ₹1,000,000 per unit.")
+        config = await self.pricing_repo.get_active_commission()
+        bps = config["commission_percentage_bps"] if config else DEFAULT_COMMISSION_BPS
+        if type(bps) is not int or not 0 <= bps <= 10000:
+            raise FinancialInconsistencyError("Invalid commission configuration.")
+        commission = calculate_percentage(selling_price, bps)
+        return {"farmer_payout_per_unit_paise": selling_price, "buyer_price_per_unit_paise": selling_price + commission,
+                "commission_per_unit_paise": commission, "commission_percentage_bps": bps,
+                "commission_config_id": config.get("id") if config else None,
+                "commission_config_version": config.get("version", 0) if config else 0}
+
+    async def buyer_pricing(self, product: dict) -> dict:
+        if product.get("pricing_mode") != "FARMER_SELECTED":
+            return product
+        amounts = await self.selling_amounts(product["farmer_payout_per_unit_paise"])
+        return {**product, **amounts, "commission_percentage": amounts["commission_percentage_bps"]}
+
+    async def get_verified_reference(self, commodity: str, market: str, unit: str) -> dict:
+        record = await market_price_provider.get_market_price(commodity=commodity, market=market, state=None)
+        cached = False
+        if not self._valid_reference(record, commodity, market):
+            record = await self.pricing_repo.get_latest_market_price(commodity=commodity, market=market)
+            cached = True
+        if not self._valid_reference(record, commodity, market):
+            raise MarketPriceUnavailableError()
+        arrival = date.fromisoformat(str(record["arrival_date"])[:10])
+        raw_unit = record["unit"].upper().strip()
+        aliases = {"KILOGRAM": "KG", "QTL": "QUINTAL", "TONNE": "TON", "MT": "TON", "PIECES": "PIECE"}
+        raw_unit = aliases.get(raw_unit, raw_unit)
+        factors = {"KG": 1, "QUINTAL": 100, "TON": 1000}
+        raw_price = record["modal_price_paise"]
+        if unit in factors and raw_unit in factors:
+            converted = int((Decimal(raw_price) * factors[unit] / factors[raw_unit]).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        elif unit == raw_unit and unit in ("PIECE", "DOZEN"):
+            converted = raw_price
+        else:
+            raise ValidationError("Market reference unit cannot be compared with this listing unit.")
+        if not cached:
+            await self.pricing_repo.store_market_price(record)
+        return {"government_reference_price_paise": raw_price, "reference_price_per_listing_unit_paise": converted,
+                "reference_price_unit": record["unit"], "reference_listing_unit": unit,
+                "reference_price_date": arrival.isoformat(), "reference_price_source": record["source"],
+                "reference_price_cached": cached, "reference_price_stale": (datetime.now(timezone.utc).date() - arrival).days > 1,
+                "reference_price_retrieved_at": record.get("retrieved_at"),
+                "reference_commodity": record["commodity"], "reference_market": record["market"]}
+
+    @staticmethod
+    def _valid_reference(record, commodity, market):
+        if not isinstance(record, dict):
+            return False
+        if str(record.get("commodity", "")).strip().casefold() != commodity.strip().casefold() or str(record.get("market", "")).strip().casefold() != market.strip().casefold():
+            return False
+        if record.get("modal_price_verified") is not True:
+            return False
+        if record.get("source") != "data.gov.in AGMARKNET" or not record.get("unit"):
+            return False
+        price = record.get("modal_price_paise")
+        if type(price) is not int or price <= 0:
+            return False
+        try:
+            arrival = date.fromisoformat(str(record.get("arrival_date"))[:10])
+            return arrival <= datetime.now(timezone.utc).date()
+        except (ValueError, TypeError):
+            return False
 
     async def create_snapshot(
         self, product_id: str, snapshot_data: Dict[str, Any]

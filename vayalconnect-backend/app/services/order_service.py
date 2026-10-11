@@ -43,6 +43,9 @@ class OrderService:
         product_id: str,
         quantity: int,
         idempotency_key: Optional[str] = None,
+        fulfillment_method: str = "PICKUP",
+        delivery_address: Optional[dict] = None,
+        expected_unit_price_paise: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Create an order with atomic inventory reservation.
@@ -50,6 +53,10 @@ class OrderService:
         CRITICAL: Price comes from stored product/snapshot data.
         NEVER from the mobile app.
         """
+        from app.schemas.order import CreateOrderRequest
+        validated = CreateOrderRequest(product_id=product_id, quantity=quantity, idempotency_key=idempotency_key,
+                                       fulfillment_method=fulfillment_method, delivery_address=delivery_address, expected_unit_price_paise=expected_unit_price_paise)
+        delivery_address = validated.delivery_address.model_dump() if validated.delivery_address else None
         # Idempotency check
         if idempotency_key:
             existing = await self.order_repo.find_by_idempotency_key(idempotency_key)
@@ -59,6 +66,8 @@ class OrderService:
                     raise ForbiddenError("Order does not belong to you.")
                 if existing.get("product_id") != product_id or existing.get("quantity") != quantity:
                     raise ValidationError("Idempotency key was already used for a different order.")
+                if existing.get("fulfillment_method", "PICKUP") != fulfillment_method or existing.get("delivery_address") != delivery_address:
+                    raise ValidationError("Idempotency key was already used for different fulfillment details.")
                 return existing
 
         # Validate product
@@ -74,6 +83,10 @@ class OrderService:
         if not farmer_profile or farmer_profile.get("approval_status") != "APPROVED":
             raise FarmerNotApprovedError()
 
+        application = farmer_profile.get("application") or {}
+        if fulfillment_method == "DELIVERY" and not application.get("delivery_available", False):
+            raise ValidationError("This farmer does not offer delivery.")
+        pickup_address = application.get("pickup_address") or product.get("location", "")
         # Validate buyer is not the farmer
         if buyer_id == farmer_id:
             raise ValidationError("You cannot purchase your own product.")
@@ -89,8 +102,17 @@ class OrderService:
         if not reserved:
             raise ProductOutOfStockError()
 
+        order_persisted = False
         try:
-            # Get pricing from product (set during product creation)
+            # Use the reserved document so a simultaneous listing edit cannot change this checkout.
+            if isinstance(reserved, dict):
+                product = reserved
+            from app.services.pricing_service import PricingEngine
+            product = await PricingEngine(self.db).buyer_pricing(product)
+            if expected_unit_price_paise is not None and product["buyer_price_per_unit_paise"] != expected_unit_price_paise:
+                from app.core.exceptions import ConflictError
+                raise ConflictError("PRICE_CHANGED", "Price changed. Reload the listing before placing your order.")
+            # Get server pricing; commission and fulfillment are frozen in this order.
             buyer_unit_price = product["buyer_price_per_unit_paise"]
             farmer_unit_payout = product["farmer_payout_per_unit_paise"]
             commission_per_unit = product["commission_per_unit_paise"]
@@ -113,6 +135,13 @@ class OrderService:
             # Create order document with complete financial snapshot
             order_doc = {
                 "order_number": order_number,
+                "fulfillment_method": fulfillment_method,
+                "delivery_address": delivery_address,
+                "pickup_address": pickup_address if fulfillment_method == "PICKUP" else None,
+                "delivery_fee_paise": 0,
+                "commission_config_id": product.get("commission_config_id"),
+                "commission_config_version": product.get("commission_config_version"),
+                "pricing_mode": product.get("pricing_mode"),
                 "buyer_id": buyer_id,
                 "farmer_id": farmer_id,
                 "product_id": product_id,
@@ -142,6 +171,7 @@ class OrderService:
             }
 
             order_id = await self.order_repo.create(order_doc)
+            order_persisted = True
 
             await self.audit_service.log(
                 actor_id=buyer_id,
@@ -162,8 +192,9 @@ class OrderService:
 
         except Exception as e:
             # Restore quantity on failure
-            await self.product_repo.restore_quantity(product_id, quantity)
-            logger.error(f"Order creation failed, quantity restored: {e}")
+            if not order_persisted:
+                await self.product_repo.restore_quantity(product_id, quantity)
+            logger.error("Order creation failed (%s); persisted=%s", type(e).__name__, order_persisted)
             raise
 
     async def get_order(self, order_id: str) -> Optional[Dict[str, Any]]:
@@ -239,6 +270,9 @@ class OrderService:
         # Ownership check for buyer
         if actor_role == "BUYER" and order["buyer_id"] != actor_id:
             raise ForbiddenError("You can only cancel your own orders.")
+
+        if actor_role not in ("BUYER", "ADMIN"):
+            raise ForbiddenError("Only the owning buyer or an administrator may cancel an order.")
 
         # Restore quantity
         await self.product_repo.restore_quantity(

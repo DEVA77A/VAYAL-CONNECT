@@ -7,7 +7,8 @@ Pricing policies, commission configs, and immutable pricing snapshots.
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+import re
 
 
 class PricingRepository:
@@ -104,6 +105,7 @@ class PricingRepository:
     # ============================================================
 
     async def store_market_price(self, price_data: Dict[str, Any]) -> str:
+        price_data = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in price_data.items()}
         price_data["created_at"] = datetime.now(timezone.utc)
         result = await self.market_prices.insert_one(price_data)
         return str(result.inserted_id)
@@ -124,8 +126,8 @@ class PricingRepository:
 
             # Unique key by commodity, market, and arrival_date
             query: Dict[str, Any] = {
-                "commodity": {"$regex": f"^{p_copy.get('commodity', '')}$", "$options": "i"},
-                "market": {"$regex": f"^{p_copy.get('market', '')}$", "$options": "i"},
+                "commodity": {"$regex": f"^{re.escape(p_copy.get('commodity', ''))}$", "$options": "i"},
+                "market": {"$regex": f"^{re.escape(p_copy.get('market', ''))}$", "$options": "i"},
             }
             if p_copy.get("arrival_date"):
                 # Handle arrival_date as date or string
@@ -152,14 +154,14 @@ class PricingRepository:
         district: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         query: Dict[str, Any] = {
-            "commodity": {"$regex": f"^{commodity}$", "$options": "i"}
+            "commodity": {"$regex": f"^{re.escape(commodity)}$", "$options": "i"}
         }
         if market:
-            query["market"] = {"$regex": f"^{market}$", "$options": "i"}
+            query["market"] = {"$regex": f"^{re.escape(market)}$", "$options": "i"}
         if state:
-            query["state"] = {"$regex": f"^{state}$", "$options": "i"}
+            query["state"] = {"$regex": f"^{re.escape(state)}$", "$options": "i"}
         if district:
-            query["district"] = {"$regex": f"^{district}$", "$options": "i"}
+            query["district"] = {"$regex": f"^{re.escape(district)}$", "$options": "i"}
         doc = await self.market_prices.find_one(
             query, sort=[("arrival_date", -1), ("retrieved_at", -1)]
         )
@@ -176,13 +178,13 @@ class PricingRepository:
     ) -> List[Dict[str, Any]]:
         query: Dict[str, Any] = {}
         if commodity:
-            query["commodity"] = {"$regex": commodity, "$options": "i"}
+            query["commodity"] = {"$regex": re.escape(commodity), "$options": "i"}
         if market:
-            query["market"] = {"$regex": market, "$options": "i"}
+            query["market"] = {"$regex": re.escape(market), "$options": "i"}
         if state:
-            query["state"] = {"$regex": state, "$options": "i"}
+            query["state"] = {"$regex": re.escape(state), "$options": "i"}
         if district:
-            query["district"] = {"$regex": district, "$options": "i"}
+            query["district"] = {"$regex": re.escape(district), "$options": "i"}
         cursor = (
             self.market_prices.find(query)
             .sort([("arrival_date", -1), ("retrieved_at", -1)])

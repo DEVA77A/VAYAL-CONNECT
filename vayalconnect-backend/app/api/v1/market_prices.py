@@ -14,6 +14,7 @@ import logging
 from app.core.database import get_database
 from app.api.deps import get_request_id
 from app.repositories.pricing import PricingRepository
+from app.services.pricing_service import PricingEngine
 from app.integrations.government_market import market_price_provider
 from app.schemas.market_price import (
     MarketPriceItem,
@@ -92,7 +93,7 @@ async def list_market_prices(
         offset=offset,
     )
 
-    records = live_result.get("records", [])
+    records = [r for r in live_result.get("records", []) if PricingEngine._valid_reference(r, r.get("commodity", ""), r.get("market", ""))]
 
     if live_result.get("live") and records:
         # Cache live records asynchronously to MongoDB for resilience
@@ -125,6 +126,7 @@ async def list_market_prices(
         offset=offset,
     )
 
+    cached_docs = [r for r in cached_docs if PricingEngine._valid_reference(r, r.get("commodity", ""), r.get("market", ""))]
     if cached_docs:
         cached_items = []
         for doc in cached_docs:
@@ -207,7 +209,7 @@ async def get_latest_market_price(
         district=district,
     )
 
-    if price_record:
+    if price_record and PricingEngine._valid_reference(price_record, commodity, market or price_record.get("market", "")):
         # Cache to db
         try:
             await pricing_repo.store_market_price(price_record)
@@ -229,7 +231,7 @@ async def get_latest_market_price(
         district=district,
     )
 
-    if cached:
+    if cached and PricingEngine._valid_reference(cached, commodity, market or cached.get("market", "")):
         cached["source"] = "data.gov.in AGMARKNET (Cached)"
         item = MarketPriceItem(
             price_id=cached.get("price_id") or cached.get("id"),

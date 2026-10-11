@@ -23,6 +23,8 @@ from app.schemas.common import APIResponse
 from app.core.exceptions import NotFoundError
 from app.utils.money import format_rupees, percentage_bps_to_display
 
+from app.services.onboarding_service import OnboardingService, application_view
+
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
@@ -109,6 +111,10 @@ async def list_farmers(
                 "email": user.get("email", ""),
                 "phone": user.get("phone", ""),
                 "approval_status": f.get("approval_status", ""),
+                "address": user.get("address", ""),
+                "email_verified": user.get("email_verified", False),
+                "is_active": user.get("is_active", False),
+                **application_view(f),
                 "created_at": f.get("created_at"),
             })
 
@@ -122,31 +128,13 @@ async def list_farmers(
 @router.put("/farmers/{user_id}/approve", response_model=APIResponse)
 async def approve_farmer(
     user_id: str,
+    data: FarmerApproveRequest,
     request: Request,
     current_user: dict = Depends(get_current_admin),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """Approve a farmer account."""
-    farmer_repo = FarmerRepository(db)
-    user_repo = UserRepository(db)
-    audit = AuditService(db)
-
-    profile = await farmer_repo.find_by_user_id(user_id)
-    if not profile:
-        raise NotFoundError("Farmer profile")
-
-    await farmer_repo.update_approval_status(
-        user_id, "APPROVED", approved_by=current_user["id"]
-    )
-    await user_repo.update(user_id, {"is_approved": True})
-
-    await audit.log(
-        actor_id=current_user["id"],
-        actor_role="ADMIN",
-        action="FARMER_APPROVED",
-        entity_type="farmer_profile",
-        entity_id=user_id,
-    )
+    await OnboardingService(db).decide(user_id, data.application_revision, current_user["id"], True)
 
     return APIResponse(
         success=True,
@@ -164,26 +152,7 @@ async def reject_farmer(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """Reject a farmer account."""
-    farmer_repo = FarmerRepository(db)
-    audit = AuditService(db)
-
-    profile = await farmer_repo.find_by_user_id(user_id)
-    if not profile:
-        raise NotFoundError("Farmer profile")
-
-    await farmer_repo.update_approval_status(
-        user_id, "REJECTED", rejection_reason=data.reason
-    )
-    await UserRepository(db).update(user_id, {"is_approved": False})
-
-    await audit.log(
-        actor_id=current_user["id"],
-        actor_role="ADMIN",
-        action="FARMER_REJECTED",
-        entity_type="farmer_profile",
-        entity_id=user_id,
-        details={"reason": data.reason},
-    )
+    await OnboardingService(db).decide(user_id, data.application_revision, current_user["id"], False, data.reason)
 
     return APIResponse(
         success=True,

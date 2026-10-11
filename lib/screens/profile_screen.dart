@@ -8,6 +8,8 @@ import '../theme/app_theme.dart';
 import '../widgets/demo_banner.dart';
 import '../widgets/vayal_app_bar.dart';
 import 'auth_gateway_screen.dart';
+import 'farmer_application_screen.dart';
+import 'farmer_bank_screen.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
 import 'admin_dashboard_screen.dart';
@@ -23,7 +25,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = AuthService();
   final _farmerService = FarmerService();
-  late final Future<Map<String, dynamic>>? _bank;
+  late Future<Map<String, dynamic>>? _bank;
   bool _securityBusy = false;
   @override
   void initState() {
@@ -159,6 +161,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             const SizedBox(height: 16),
 
+            if (!session.isDemoMode && session.activeRole == AppRole.farmer) OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FarmerApplicationScreen())),
+              icon: const Icon(Icons.agriculture), label: const Text('Farmer application / Approval status')),
+            if (_bank != null) OutlinedButton.icon(onPressed: () async {
+              final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const FarmerBankScreen()));
+              if (saved == true && mounted) setState(() => _bank = _farmerService.fetchBankDetails());
+            }, icon: const Icon(Icons.account_balance), label: const Text('Add / replace bank payout details')),
             if (_bank != null) FutureBuilder<Map<String, dynamic>>(
               future: _bank,
               builder: (context, snapshot) => Card(child: Padding(padding: const EdgeInsets.all(16), child:

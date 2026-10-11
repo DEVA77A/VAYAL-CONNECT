@@ -66,6 +66,10 @@ MongoDB integration tests use only uniquely named disposable databases on localh
 
 Production environment inspection/deployment, real Brevo delivery, real Razorpay checkout, Android hardware permission behavior, and accessible production inbox confirmation are BLOCKED or NOT TESTED until access is available. Public health alone proves none of these workflows.
 
-## Next incomplete milestone
+## Subsequent milestone
+
+Farmer applications, selected payout pricing, and checkout fulfillment are now implemented; see [Marketplace milestone 2](MARKETPLACE_MILESTONE_2.md) for verified behavior and external blockers.
+
+### Original next-milestone scope
 
 Implement complete farmer application/completeness screens and administrative review; farmer-chosen base pricing plus commission snapshots for new orders; saved delivery addresses; **both pickup and delivery selected at checkout**; disclosed distance/ETA assumptions; concurrent order/payment idempotency and reservation expiry; complete checkout/refund/state transitions; full English/Tamil coverage and secure session persistence. Preserve old order snapshots. Market reference prices must show source/date/units and freshness and must never replace a farmer's chosen price silently.

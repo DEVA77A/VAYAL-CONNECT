@@ -7,7 +7,7 @@ Product data access with atomic inventory operations.
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
 import re
 
@@ -19,6 +19,7 @@ class ProductRepository:
         self.collection = db["products"]
 
     async def create(self, product_data: Dict[str, Any]) -> str:
+        product_data = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in product_data.items()}
         product_data["created_at"] = datetime.now(timezone.utc)
         product_data["updated_at"] = datetime.now(timezone.utc)
         product_data.setdefault("is_active", True)
@@ -93,6 +94,7 @@ class ProductRepository:
         return docs, total
 
     async def update(self, product_id: str, update_data: Dict[str, Any]) -> bool:
+        update_data = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in update_data.items()}
         update_data["updated_at"] = datetime.now(timezone.utc)
         result = await self.collection.update_one(
             {"_id": ObjectId(product_id)},

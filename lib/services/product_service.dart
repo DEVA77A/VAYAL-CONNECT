@@ -141,8 +141,8 @@ class ProductService {
         location: payload.location,
         market: payload.market,
         harvestDate: payload.harvestDate,
-        farmerPayoutPerUnitPaise: 220000,
-        farmerPayoutPerUnitDisplay: '₹2,200.00 / ${payload.quantityUnit}',
+        farmerPayoutPerUnitPaise: payload.sellingPricePerUnitPaise,
+        farmerPayoutPerUnitDisplay: '₹' + (payload.sellingPricePerUnitPaise / 100).toStringAsFixed(2) + ' / ' + payload.quantityUnit,
         status: 'ACTIVE',
       );
     }
@@ -168,6 +168,17 @@ class ProductService {
       if (e is Exception) rethrow;
       throw Exception('Create crop failed: $e');
     }
+  }
+
+  Future<Map<String, dynamic>> fetchPriceReference({required String commodity, required String market, required String unit}) async {
+    if (SessionManager().isDemoMode) throw Exception('Sign in to look up a verified reference.');
+    final uri = Uri.parse(ApiConfig.productsUrl + 'price-reference').replace(queryParameters: {'commodity': commodity, 'market': market, 'unit': unit});
+    final response = await _client.get(uri, headers: _headers()).timeout(const Duration(seconds: 15));
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode != 200 || decoded is! Map || decoded['success'] != true || decoded['data'] is! Map) {
+      throw Exception(decoded is Map ? (decoded['error']?['message'] ?? 'Reference unavailable.') : 'Reference unavailable.');
+    }
+    return Map<String, dynamic>.from(decoded['data']);
   }
 
   void dispose() {
