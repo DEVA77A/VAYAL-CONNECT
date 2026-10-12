@@ -24,12 +24,15 @@ class OnboardingService:
             raise ForbiddenError("Verify your email before submitting an application.")
         profile = await self.farmers.find_by_user_id(user["id"])
         if not profile:
-            raise NotFoundError("Farmer profile")
+            if data.application_revision != 0:
+                raise ConflictError("APPLICATION_CHANGED", "Application is missing. Reload before submitting.")
+            await self.farmers.ensure_pending_profile(user["id"])
         if not await self.farmers.submit_application(user["id"], data.model_dump(exclude={"application_revision"}), data.application_revision):
             raise ConflictError("APPLICATION_CHANGED", "Application changed or is already approved. Reload before submitting.")
         await self.users.update(user["id"], {"is_approved": False})
         await self.audit.log(actor_id=user["id"], actor_role="FARMER", action="FARMER_APPLICATION_SUBMITTED", entity_type="farmer_profile", entity_id=user["id"])
-        return {"approval_status": "PENDING", "application_revision": data.application_revision + 1}
+        return {"approval_status": "PENDING", "application_revision": data.application_revision + 1,
+                "rejection_reason": None, "profile_present": True}
 
     @transactional
     async def decide(self, user_id, revision, actor, approved, reason=None):
@@ -42,7 +45,11 @@ class OnboardingService:
                 raise ValidationError("Approval requires an active farmer with verified email.")
             if not profile.get("submitted_at") or not profile.get("application"):
                 raise ValidationError("Farmer must submit a complete application before approval.")
-            FarmerApplicationRequest.model_validate(profile["application"])
+            from pydantic import ValidationError as SchemaError
+            try:
+                FarmerApplicationRequest.model_validate(profile["application"])
+            except SchemaError:
+                raise ValidationError("Farmer must correct and resubmit the application before approval.") from None
             from app.services.profile_completeness import missing_farmer_fields
             if missing_farmer_fields(profile):
                 raise ValidationError("Approval requires farm coordinates and complete bank payout details.")

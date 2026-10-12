@@ -18,6 +18,7 @@ from app.core.security import (
     hash_otp, verify_otp as verify_otp_hash,
 )
 from app.core.config import settings
+from app.core.transactions import transactional
 from app.core.exceptions import (
     InvalidCredentialsError, UnauthorizedError,
     EmailAlreadyExistsError, PhoneAlreadyExistsError,
@@ -127,6 +128,7 @@ class AuthService:
 
         return verified
 
+    @transactional
     async def select_role(self, user_id: str, role: str) -> Dict[str, Any]:
         """Assign role after email verification."""
         user = await self.user_repo.find_by_id(user_id)

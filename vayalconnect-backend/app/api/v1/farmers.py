@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_database
+from app.core.transactions import transactional_endpoint
 from app.core.security import encrypt_value, decrypt_value, mask_value
 from app.api.deps import get_current_farmer, get_request_id
 from app.repositories.farmers import FarmerRepository
@@ -57,6 +58,7 @@ async def get_farmer_profile(
             age=current_user.get("age", 0),
             approval_status=profile.get("approval_status", "PENDING") if profile else "PENDING",
             bank_details_present=has_bank,
+            profile_present=profile is not None,
             profile_complete=not missing, missing_fields=missing,
             can_publish=bool(profile and profile.get("approval_status") == "APPROVED" and not missing),
             **application_view(profile or {}),
@@ -117,6 +119,7 @@ async def get_bank_details(
 
 
 @router.put("/me/bank", response_model=APIResponse)
+@transactional_endpoint
 async def update_bank_details(
     data: FarmerBankDetailsRequest,
     request: Request,
@@ -139,8 +142,10 @@ async def update_bank_details(
 
     profile = await farmer_repo.find_by_user_id(current_user["id"])
     if not profile:
-        from app.core.exceptions import NotFoundError
-        raise NotFoundError("Farmer profile")
+        from app.core.exceptions import ForbiddenError
+        if not current_user.get("email_verified"):
+            raise ForbiddenError("Verify your email before saving bank payout details.")
+        await farmer_repo.ensure_pending_profile(current_user["id"])
     await farmer_repo.update_bank_details(current_user["id"], encrypted_data)
 
     await audit.log(

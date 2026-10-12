@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class FarmerRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.collection = collection(db, "farmer_profiles")
+        self.users = collection(db, "users")
 
     async def create(self, profile_data: Dict[str, Any]) -> str:
         profile_data["created_at"] = datetime.now(timezone.utc)
@@ -31,6 +32,20 @@ class FarmerRepository:
             return None
         doc = await self.collection.find_one({"user_id": ObjectId(user_id)})
         return self._serialize(doc)
+
+    async def ensure_pending_profile(self, user_id: str) -> None:
+        """Repair a missing profile during an explicit onboarding write only.
+
+        Existing applications, bank details and approval decisions are untouched.
+        The caller must verify the authenticated account's farmer role.
+        """
+        now = datetime.now(timezone.utc)
+        await self.collection.update_one(
+            {"user_id": ObjectId(user_id)},
+            {"$setOnInsert": {"approval_status": "PENDING", "application_revision": 0,
+                              "bank_details_verified": False, "created_at": now, "updated_at": now}},
+            upsert=True,
+        )
 
     async def submit_application(self, user_id: str, application: dict, revision: int) -> bool:
         revision_query = {"application_revision": revision} if revision else {"$or": [{"application_revision": 0}, {"application_revision": {"$exists": False}}]}
@@ -87,14 +102,42 @@ class FarmerRepository:
     async def list_by_status(
         self, status: str, page: int = 1, limit: int = 50
     ) -> tuple[List[Dict[str, Any]], int]:
-        query = {"approval_status": status} if status else {}
-        total = await self.collection.count_documents(query)
-        cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
-        docs = [self._serialize(doc) async for doc in cursor]
-        return docs, total
+        rows = await self.users.aggregate(
+            self._farmer_profiles_pipeline(status) + [{"$facet": {
+                "items": [{"$sort": {"created_at": -1, "user_id": 1}},
+                          {"$skip": (page - 1) * limit}, {"$limit": limit}],
+                "total": [{"$count": "count"}],
+            }}]
+        ).to_list(1)
+        result = rows[0] if rows else {"items": [], "total": []}
+        return ([self._serialize(doc) for doc in result["items"]],
+                result["total"][0]["count"] if result["total"] else 0)
+
+    @staticmethod
+    def _farmer_profiles_pipeline(status):
+        # A legacy farmer account can lack its profile. Include it in admin
+        # views without writing on GET or deriving approval from user flags.
+        pipeline = [
+            {"$match": {"role": "FARMER"}},
+            {"$lookup": {"from": "farmer_profiles", "localField": "_id",
+                         "foreignField": "user_id", "as": "profile"}},
+            {"$unwind": {"path": "$profile", "preserveNullAndEmptyArrays": True}},
+            {"$replaceRoot": {"newRoot": {"$mergeObjects": [
+                {"_id": "$_id", "user_id": "$_id", "created_at": "$created_at",
+                 "approval_status": "PENDING", "application_revision": 0,
+                 "profile_present": {"$eq": [{"$type": "$profile"}, "object"]}},
+                "$profile",
+            ]}}},
+        ]
+        if status:
+            pipeline.append({"$match": {"approval_status": status}})
+        return pipeline
 
     async def count_by_status(self, status: str) -> int:
-        return await self.collection.count_documents({"approval_status": status})
+        rows = await self.users.aggregate(
+            self._farmer_profiles_pipeline(status) + [{"$count": "count"}]
+        ).to_list(1)
+        return rows[0]["count"] if rows else 0
 
     def _serialize(self, doc: Optional[Dict]) -> Optional[Dict[str, Any]]:
         if doc is None:

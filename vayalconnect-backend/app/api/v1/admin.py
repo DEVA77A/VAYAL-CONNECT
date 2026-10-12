@@ -105,6 +105,7 @@ async def list_farmers(
                 "email": user.get("email", ""),
                 "phone": user.get("phone", ""),
                 "approval_status": f.get("approval_status", ""),
+                "profile_present": f.get("profile_present", True),
                 "address": user.get("address", ""),
                 "email_verified": user.get("email_verified", False),
                 "is_active": user.get("is_active", False),
@@ -247,7 +248,10 @@ async def user_activity(user_id: str, request: Request, current_user=Depends(get
 async def farmer_review_detail(user_id: str, request: Request, current_user=Depends(get_current_admin), db=Depends(get_database)):
     user = await UserRepository(db).find_by_id(user_id)
     profile = await FarmerRepository(db).find_by_user_id(user_id)
-    if not user or user.get("role") != "FARMER" or not profile:
+    if not user or user.get("role") != "FARMER":
         raise NotFoundError("Farmer")
+    profile_present = profile is not None
+    profile = profile or {"approval_status": "PENDING"}
     return APIResponse(data={"user_id": user_id, **{k: user.get(k) for k in ("name", "email", "phone", "address", "area_location", "is_active", "email_verified")},
+        "profile_present": profile_present,
         "approval_status": profile.get("approval_status"), **application_view(profile), "bank_details_present": bool(profile.get("bank_account_number"))}, request_id=get_request_id(request))

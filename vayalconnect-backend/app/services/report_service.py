@@ -65,7 +65,8 @@ class ReportService:
         # Active users
         active_farmers = await self.users.count_documents({"role": "FARMER", "is_active": True})
         active_buyers = await self.users.count_documents({"role": "BUYER", "is_active": True})
-        pending_approvals = await self.db["farmer_profiles"].count_documents({"approval_status": "PENDING"})
+        from app.repositories.farmers import FarmerRepository
+        pending_approvals = await FarmerRepository(self.db).count_by_status("PENDING")
 
         total_sales = order_data.get("total_sales", 0)
         total_farmer = order_data.get("total_farmer_payout", 0)

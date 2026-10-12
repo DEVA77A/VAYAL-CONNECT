@@ -71,6 +71,7 @@ class FarmerProfileResponse(BaseModel):
     gender: str
     age: int
     approval_status: str
+    profile_present: bool = True
     bank_details_present: bool = False
     profile_complete: bool = False
     missing_fields: list[str] = []
