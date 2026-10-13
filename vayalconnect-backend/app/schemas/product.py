@@ -20,6 +20,9 @@ class CreateProductRequest(BaseModel):
     description: str = Field("", max_length=2000)
     product_name: str = Field(..., min_length=2, max_length=200)
     category: str = Field(..., min_length=2, max_length=100)
+    state: Optional[str] = Field(None, min_length=2, max_length=100)
+    district: Optional[str] = Field(None, min_length=2, max_length=100)
+    variety: Optional[str] = Field(None, min_length=2, max_length=100)
     quantity: int = Field(..., gt=0, le=1_000_000)
     quantity_unit: QuantityUnit
     quality_grade: QualityGrade
@@ -52,6 +55,9 @@ class FarmerProductResponse(BaseModel):
     product_id: str
     product_name: str
     category: str
+    state: Optional[str] = None
+    district: Optional[str] = None
+    variety: Optional[str] = None
     quantity_available: int
     quantity_unit: str
     quality_grade: str

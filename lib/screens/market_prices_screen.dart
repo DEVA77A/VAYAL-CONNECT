@@ -1,3 +1,4 @@
+import '../utils/form_examples.dart';
 import 'package:flutter/material.dart';
 import '../models/market_price.dart';
 import '../services/market_price_service.dart';
@@ -16,9 +17,7 @@ class MarketPricesScreen extends StatefulWidget {
 class _MarketPricesScreenState extends State<MarketPricesScreen>
     with LanguageRebuild<MarketPricesScreen> {
   late final _service = widget.service ?? MarketPriceService();
-  final _commodity = TextEditingController(),
-      _state = TextEditingController(text: 'Tamil Nadu'),
-      _market = TextEditingController();
+  final _commodity = TextEditingController();
   MarketPriceListResponse? _data;
   bool _busy = true;
   String? _error;
@@ -31,8 +30,6 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
   @override
   void dispose() {
     _commodity.dispose();
-    _state.dispose();
-    _market.dispose();
     if (widget.service == null) _service.dispose();
     super.dispose();
   }
@@ -44,10 +41,7 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
     });
     try {
       final d = await _service.fetchMarketPrices(
-          commodity: _commodity.text,
-          state: _state.text,
-          market: _market.text,
-          limit: 50);
+          commodity: _commodity.text, state: 'Tamil Nadu', limit: 50);
       if (mounted) setState(() => _data = d);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -63,30 +57,29 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
           onRefresh: _load,
           child: ListView(padding: const EdgeInsets.all(16), children: [
             Text(S.t(
-                'Government prices are references. Farmers set their own selling price.')),
+                'Verified market prices are references. Farmers set their own selling price.')),
+            Text(S.t(
+                'Tamil Nadu statewide reference price — calculated from available market observations')),
             const SizedBox(height: 12),
             TextField(
                 controller: _commodity,
-                decoration: InputDecoration(labelText: S.t('Commodity'))),
-            TextField(
-                controller: _state,
-                decoration: InputDecoration(labelText: S.t('State'))),
-            TextField(
-                controller: _market,
-                decoration: InputDecoration(labelText: S.t('Market'))),
+                decoration: InputDecoration(
+                    labelText: S.t('Commodity'),
+                    hintText: FormExamples.hint('product_name'),
+                    hintStyle: FormExamples.style)),
             FilledButton(
                 onPressed: _busy ? null : _load, child: Text(S.t('Search'))),
             if (_busy) const LinearProgressIndicator(),
             if (_error != null) ErrorPanel(_error!, _load),
             if (_data != null && _error == null) ...[
               Text(S.t(_data!.isLive
-                  ? 'Retrieved from official source'
-                  : 'Cached official records')),
+                  ? 'Retrieved verified market records'
+                  : 'Cached verified records')),
+              if (_data!.message != null) Text(_data!.message!),
               if (_data!.records.isEmpty)
                 Padding(
                     padding: const EdgeInsets.all(24),
-                    child:
-                        Text(S.t('No matching official market prices found.'))),
+                    child: Text(S.t('Market price unavailable'))),
               for (final r in _data!.records)
                 Card(
                     child: Padding(
@@ -99,24 +92,35 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                                       Theme.of(context).textTheme.titleLarge),
                               Text('${r.market} · ${r.district} · ${r.state}'),
                               detailLine('Minimum',
-                                  '${S.money(r.minPricePaise)} / ${r.unit}'),
+                                  '${r.minPriceDisplay} / ${r.unit}'),
                               detailLine('Maximum',
-                                  '${S.money(r.maxPricePaise)} / ${r.unit}'),
-                              detailLine('Modal',
-                                  '${S.money(r.modalPricePaise)} / ${r.unit}'),
+                                  '${r.maxPriceDisplay} / ${r.unit}'),
+                              detailLine('Quoted price',
+                                  '${r.priceDisplay} / ${r.unit}'),
+                              detailLine('Currency', r.currency),
+                              detailLine('Price type', S.t(r.quoteType)),
+                              if (r.verificationMethod ==
+                                  'provider_reported_quote')
+                                Text(S.t('Source-reported market reference')),
                               detailLine('Reported date', r.arrivalDate),
                               detailLine('Retrieved at', r.retrievedAt),
                               detailLine('Source', r.source),
-                              if (!_data!.isLive ||
-                                  (DateTime.tryParse(r.arrivalDate ?? '')
-                                          ?.isBefore(DateTime.now().subtract(
-                                              const Duration(days: 1))) ??
-                                      true))
-                                Text(S.t('Historical official reference')),
+                              detailLine('Trade type', r.priceType),
+                              detailLine('Verification', r.verificationStatus),
+                              detailLine('Variety', r.variety),
+                              if (r.observationCount != null)
+                                detailLine('Eligible observations',
+                                    r.observationCount.toString()),
+                              if (r.aggregationMethod != null)
+                                detailLine('Aggregation method',
+                                    S.t(r.aggregationMethod!)),
+                              if (r.sourceUrl != null)
+                                SelectableText(r.sourceUrl!),
+                              if (r.stale) Text(S.t('Stale market reference')),
                             ]))),
               if (_data!.records.length == 50)
                 Text(S.t(
-                    'First 50 matching records. Narrow the filters for a specific market.')),
+                    'First 50 matching records. Search by crop for more specific results.')),
             ],
           ])));
 }

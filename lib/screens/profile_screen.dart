@@ -1,3 +1,4 @@
+import '../utils/form_examples.dart';
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
 import '../services/session_manager.dart';
@@ -79,13 +80,18 @@ class _ProfileScreenState extends State<ProfileScreen>
                           for (final e in fields.entries)
                             TextFormField(
                                 controller: e.value,
+                                keyboardType: e.key == 'phone'
+                                    ? TextInputType.phone
+                                    : TextInputType.text,
                                 decoration: InputDecoration(
+                                    hintText: FormExamples.hint(e.key),
+                                    hintStyle: FormExamples.style,
                                     labelText: S.t({
-                                  'name': 'Name',
-                                  'phone': 'Contact number',
-                                  'address': 'Address',
-                                  'area_location': 'Area / locality'
-                                }[e.key]!)),
+                                      'name': 'Name',
+                                      'phone': 'Contact number',
+                                      'address': 'Address',
+                                      'area_location': 'Area / locality'
+                                    }[e.key]!)),
                                 validator: (v) {
                                   if (e.key == 'phone') {
                                     return RegExp(r'^[6-9][0-9]{9}$')
@@ -141,14 +147,16 @@ class _ProfileScreenState extends State<ProfileScreen>
                           controller: current,
                           obscureText: true,
                           decoration: InputDecoration(
-                              labelText: S.t('Current password')),
+                              labelText: S.t('Current password'),
+                              hintText: FormExamples.hint('password')),
                           validator: (v) =>
                               v == null || v.isEmpty ? S.t('Required') : null),
                       TextFormField(
                           controller: next,
                           obscureText: true,
-                          decoration:
-                              InputDecoration(labelText: S.t('New password')),
+                          decoration: InputDecoration(
+                              labelText: S.t('New password'),
+                              hintText: FormExamples.hint('password')),
                           validator: (v) => v == null ||
                                   v.length < 8 ||
                                   v.length > 128 ||

@@ -1,3 +1,5 @@
+import '../utils/commerce_strings.dart';
+import '../utils/form_examples.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
@@ -311,7 +313,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       decoration: InputDecoration(
                         labelText: VayalStrings.enterOtp,
                         prefixIcon: const Icon(Icons.security, size: 20),
-                        hintText: '6-digit OTP',
+                        hintText: FormExamples.hint('otp'),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -505,10 +507,12 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               validator: (v) => v == null || v.trim().length < 2
                                   ? 'Enter valid name'
                                   : null,
-                              decoration: const InputDecoration(
-                                labelText: 'Full Name',
+                              decoration: InputDecoration(
+                                labelText: S.t('Full Name'),
+                                hintText: FormExamples.hint('name'),
+                                hintStyle: FormExamples.style,
                                 prefixIcon:
-                                    Icon(Icons.badge_outlined, size: 20),
+                                    const Icon(Icons.badge_outlined, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -524,10 +528,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                         v == null || !v.contains('@')
                                             ? 'Valid email required'
                                             : null,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Email Address',
-                                      prefixIcon:
-                                          Icon(Icons.email_outlined, size: 20),
+                                    decoration: InputDecoration(
+                                      labelText: S.t('Email Address'),
+                                      hintText: FormExamples.hint('email'),
+                                      hintStyle: FormExamples.style,
+                                      prefixIcon: const Icon(
+                                          Icons.email_outlined,
+                                          size: 20),
                                     ),
                                   ),
                                 ),
@@ -544,10 +551,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                                     120
                                             ? '18-120'
                                             : null,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Age',
-                                      prefixIcon:
-                                          Icon(Icons.cake_outlined, size: 20),
+                                    decoration: InputDecoration(
+                                      labelText: S.t('Age'),
+                                      hintText: FormExamples.hint('age'),
+                                      hintStyle: FormExamples.style,
+                                      prefixIcon: const Icon(
+                                          Icons.cake_outlined,
+                                          size: 20),
                                     ),
                                   ),
                                 ),
@@ -559,12 +569,14 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               controller: phoneController,
                               keyboardType: TextInputType.phone,
                               validator: validateRegistrationPhone,
-                              decoration: const InputDecoration(
-                                labelText: 'Phone Number',
+                              decoration: InputDecoration(
+                                labelText: S.t('Phone Number'),
+                                hintText: FormExamples.hint('phone'),
+                                hintStyle: FormExamples.style,
                                 helperText:
                                     '10 digits or +91 followed by 10 digits',
                                 prefixIcon:
-                                    Icon(Icons.phone_outlined, size: 20),
+                                    const Icon(Icons.phone_outlined, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -578,9 +590,12 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                       !RegExp(r'[0-9]').hasMatch(v)
                                   ? '8+ chars, uppercase letter and number'
                                   : null,
-                              decoration: const InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: Icon(Icons.lock_outline, size: 20),
+                              decoration: InputDecoration(
+                                labelText: S.t('Password'),
+                                hintText: FormExamples.hint('password'),
+                                hintStyle: FormExamples.style,
+                                prefixIcon:
+                                    const Icon(Icons.lock_outline, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -637,9 +652,12 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               validator: (v) => v == null || v.trim().length < 5
                                   ? 'Address required'
                                   : null,
-                              decoration: const InputDecoration(
-                                labelText: 'Address',
-                                prefixIcon: Icon(Icons.home_outlined, size: 20),
+                              decoration: InputDecoration(
+                                labelText: S.t('Address'),
+                                hintText: FormExamples.hint('address'),
+                                hintStyle: FormExamples.style,
+                                prefixIcon:
+                                    const Icon(Icons.home_outlined, size: 20),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -649,10 +667,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               validator: (v) => v == null || v.trim().length < 2
                                   ? 'District required'
                                   : null,
-                              decoration: const InputDecoration(
-                                labelText: 'District / Area',
-                                prefixIcon:
-                                    Icon(Icons.location_on_outlined, size: 20),
+                              decoration: InputDecoration(
+                                labelText: S.t('District / Area'),
+                                hintText: FormExamples.hint('district'),
+                                hintStyle: FormExamples.style,
+                                prefixIcon: const Icon(
+                                    Icons.location_on_outlined,
+                                    size: 20),
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -798,8 +819,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                       enabled: !busy && !verified,
                       keyboardType: TextInputType.number,
                       maxLength: 6,
-                      decoration:
-                          const InputDecoration(hintText: 'Enter 6-digit OTP')),
+                      decoration: InputDecoration(
+                          labelText: VayalStrings.enterOtp,
+                          hintText: FormExamples.hint('otp'))),
                 ]),
                 actions: [
                   TextButton(

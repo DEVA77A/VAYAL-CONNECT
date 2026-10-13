@@ -18,6 +18,10 @@ os.environ.setdefault("RAZORPAY_KEY_SECRET", "rzp_secret_mock")
 os.environ.setdefault("RAZORPAY_WEBHOOK_SECRET", "rzp_webhook_mock")
 os.environ.setdefault("BREVO_API_KEY", "brevo_mock")
 os.environ.setdefault("GOVERNMENT_MARKET_API_KEY", "gov_mock")
+os.environ["GROQ_API_KEY"] = ""
+os.environ["GROQ_MARKET_ENABLED"] = "false"
+# Exercise mocked daily-run tests independently of the local scheduler switch.
+os.environ["MARKET_DAILY_REFRESH_ENABLED"] = "true"
 
 import pytest
 from unittest.mock import AsyncMock

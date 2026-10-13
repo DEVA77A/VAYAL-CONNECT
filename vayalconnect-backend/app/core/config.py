@@ -36,7 +36,33 @@ class Settings(BaseSettings):
     BREVO_SENDER_NAME: str = "Vayal Connect"
 
     # Government Market Price API
-    GOVERNMENT_MARKET_API_KEY: str = ""
+    GROQ_API_KEY: str = Field("", repr=False)
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    GROQ_MARKET_ENABLED: bool = False
+    GROQ_TIMEOUT_SECONDS: int = Field(60, ge=1, le=120)
+    GROQ_CONTEXT_TOKENS: int = Field(131072, ge=1024, le=131072)
+    GROQ_MAX_COMPLETION_TOKENS: int = Field(2048, ge=512, le=65536)
+    GROQ_REQUEST_TOKEN_BUDGET: int = Field(8000, ge=1024, le=131072)
+    MARKET_SOURCE_MAX_ROWS: int = Field(5000, ge=100, le=20000)
+    MARKET_SOURCE_URLS: str = "[]" # Operator-reviewed JSON feeds; explicit units required.
+    GOVERNMENT_MARKET_UNIT: str = "" # Deprecated; never applied to every OGD row.
+    GEMINI_API_KEY: str = Field("", repr=False)
+    GEMINI_MARKET_MODELS: str = "gemini-3.8-flash"
+    GEMINI_MARKET_TIMEOUT_SECONDS: int = Field(60, ge=1, le=60)
+    GEMINI_MARKET_TOTAL_TIMEOUT_SECONDS: int = Field(120, ge=5, le=120)
+    # Retained to accept old environment settings; discovery NEVER retries.
+    GEMINI_MARKET_RETRIES: int = Field(0, ge=0, le=2)
+    MARKET_CURRENT_MAX_DAYS: int = Field(0, ge=0, le=7)
+    MARKET_CACHE_MAX_DAYS: int = Field(7, ge=1, le=30)
+    MARKET_DAILY_REFRESH_ENABLED: bool = False
+    MARKET_STATEWIDE_ENABLED: bool = False
+    MARKET_SOURCE_VERIFIED: bool = False
+    MARKET_STATEWIDE_MIN_OBSERVATIONS: int = Field(3, ge=3, le=100)
+    # Do not activate until the documented endpoint and current data are verified.
+    # The scheduled/application market workflow never calls Gemini.
+    PYPRICING_ENABLED: bool = False
+    PYPRICING_RADIUS_KM: int = Field(60, ge=1, le=100)
+    GOVERNMENT_MARKET_API_KEY: str = Field("", repr=False)
     GOVERNMENT_MARKET_API_BASE_URL: str = (
         "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
     )

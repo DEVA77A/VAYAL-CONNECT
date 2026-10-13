@@ -159,8 +159,7 @@ async def test_transactional_commerce_and_address_ownership():
                 # Real product create/edit/deactivate contracts, including stock rollback and owner checks.
                 payload={'product_name':'Wheat','category':'Grains','quantity':4,'quantity_unit':'KG','quality_grade':'A',
                     'location':'Test district','market':'Test market','harvest_date':now.date().isoformat(),'selling_price_per_unit_paise':1001}
-                with patch('app.services.pricing_service.market_price_provider.get_market_price',AsyncMock(return_value=None)):
-                    response=await api.post('/api/v1/products/',json=payload,headers=headers('FARMER'))
+                response=await api.post('/api/v1/products/',json=payload,headers=headers('FARMER'))
                 assert response.status_code==201,response.text
                 created=response.json()['data']['product_id']
                 visible=await api.get('/api/v1/products/'+created,headers=headers('BUYER'))

@@ -5,11 +5,14 @@ Pricing policies, commission configs, and immutable pricing snapshots.
 """
 
 from app.core.transactions import collection
+from app.integrations.pypricing_market import commodity_names, canonical_commodity, normalized
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import date, datetime, timezone
 import re
+import hashlib
+import json
 
 
 class PricingRepository:
@@ -122,13 +125,15 @@ class PricingRepository:
             p_copy.pop("id", None)
             p_copy.pop("_id", None)
             p_copy["updated_at"] = now
-            if "created_at" not in p_copy:
-                p_copy["created_at"] = now
+            p_copy.pop("created_at", None)
+            p_copy = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in p_copy.items()}
 
             # Unique key by commodity, market, and arrival_date
             query: Dict[str, Any] = {
                 "state": p_copy.get("state", ""), "district": p_copy.get("district", ""),
                 "variety": p_copy.get("variety", ""), "grade": p_copy.get("grade", ""),
+                "source_url": p_copy.get("source_url"), "unit": p_copy.get("unit"),
+                "price_type": p_copy.get("price_type"),
                 "commodity": {"$regex": f"^{re.escape(p_copy.get('commodity', ''))}$", "$options": "i"},
                 "market": {"$regex": f"^{re.escape(p_copy.get('market', ''))}$", "$options": "i"},
             }
@@ -141,9 +146,23 @@ class PricingRepository:
                 else:
                     query["arrival_date"] = str(arr_val)
 
+            if p_copy.get("verification_status") == "verified":
+                identity = {k: p_copy.get(k) for k in ("commodity", "state", "district", "market",
+                    "variety", "unit", "price_type", "arrival_date", "source_url")}
+                if p_copy.get("verification_method") in ("retrieved_source_record", "statewide_source_median"):
+                    identity["commodity_id"] = p_copy.get("commodity_id")
+                    identity["grade"] = p_copy.get("grade")
+                    if p_copy.get("verification_method") == "statewide_source_median":
+                        identity["verification_method"] = "statewide_source_median"
+                if p_copy.get("verification_method") == "provider_reported_quote":
+                    identity["commodity"] = canonical_commodity(identity["commodity"])
+                    identity["market"] = normalized(identity["market"])
+                p_copy["discovery_key"] = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+                query = {"discovery_key": p_copy["discovery_key"]}
+
             await self.market_prices.update_one(
                 query,
-                {"$set": p_copy},
+                {"$set": p_copy, "$setOnInsert": {"created_at": now}},
                 upsert=True,
             )
             count += 1
@@ -178,12 +197,27 @@ class PricingRepository:
         district: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        category: Optional[str] = None,
+        commodity_id: Optional[str] = None,
+        scope: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        query: Dict[str, Any] = {}
+        # Legacy AI/provider records remain in history but are not eligible for
+        # current verified cache reads. Filter before pagination.
+        query: Dict[str, Any] = {"verification_status": "verified",
+                                 "verification_method": "statewide_source_median" if scope == "statewide"
+                                 else "retrieved_source_record" if scope == "market"
+                                 else {"$in": ["retrieved_source_record", "statewide_source_median"]}}
+        if commodity_id:
+            query["commodity_id"] = commodity_id
+        if category:
+            query["category"] = {"$regex": f"^{re.escape(category)}$", "$options": "i"}
         if commodity:
-            query["commodity"] = {"$regex": f"^{re.escape(commodity)}$", "$options": "i"}
+            names = commodity_names(commodity)
+            patterns = [r"\s+".join(re.escape(part) for part in name.split()) for name in names]
+            expression = {"$regex": "^(?:" + "|".join(patterns) + ")$", "$options": "i"}
+            query["$or"] = [{"commodity": expression}, {"crop_aliases": expression}]
         if market:
-            query["market"] = {"$regex": f"^{re.escape(market)}$", "$options": "i"}
+            query["market"] = {"$regex": f"^{re.escape(market)}(?:\\s|$)", "$options": "i"}
         if state:
             query["state"] = {"$regex": f"^{re.escape(state)} $".replace(" $", "$"), "$options": "i"}
         if district:

@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import '../models/market_price.dart';
 import '../theme/app_theme.dart';
+import '../utils/commerce_strings.dart';
 
-/// Card widget to display an official Government Mandi market price record.
+/// Source-verified market record with its original unit and provenance.
 class MarketPriceCard extends StatelessWidget {
   final MarketPriceItem item;
 
   const MarketPriceCard({
-    Key? key,
+    super.key,
     required this.item,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +29,14 @@ class MarketPriceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (item.referenceScope == 'statewide') ...[
+              Text(S.t(item.aggregationMethod ==
+                      'median_distinct_market_range_midpoint'
+                  ? 'Tamil Nadu Uzhavar Santhai reference — median of available market range midpoints'
+                  : 'Tamil Nadu statewide reference price — calculated from available market observations')),
+              Text(
+                  '${S.t('Eligible observations')}: ${item.observationCount ?? 0}'),
+            ],
             // Top Row: Commodity & Variety + Per-kg badge
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +68,7 @@ class MarketPriceCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Variety: ${item.variety.isNotEmpty ? item.variety : "Standard"} • Grade: ${item.grade.isNotEmpty ? item.grade : "FAQ"}',
+                        'Variety: ${item.variety.isNotEmpty ? item.variety : "Unknown"} • Grade: ${item.grade.isNotEmpty ? item.grade : "Unknown"}',
                         style: const TextStyle(
                           fontSize: 13,
                           color: AppTheme.textSecondary,
@@ -70,16 +79,17 @@ class MarketPriceCard extends StatelessWidget {
                 ),
                 // Per-Kg Price Highlight Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryGreen,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
                     children: [
-                      const Text(
-                        'PER KG',
-                        style: TextStyle(
+                      Text(
+                        item.unit.toUpperCase(),
+                        style: const TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.bold,
                           color: Colors.white70,
@@ -87,7 +97,7 @@ class MarketPriceCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        item.pricePerKgDisplay,
+                        item.priceDisplay,
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
@@ -115,7 +125,11 @@ class MarketPriceCard extends StatelessWidget {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '${item.market} Mandi, ${item.district}, ${item.state}',
+                    item.aggregationMethod ==
+                                'median_distinct_market_range_midpoint' ||
+                            item.quoteType == 'range_midpoint'
+                        ? '${item.market}, ${item.state} · Uzhavar Santhai'
+                        : '${item.market} Mandi, ${item.district}, ${item.state}',
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -146,7 +160,7 @@ class MarketPriceCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Modal Mandi Price',
+                        'Quoted market price',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -155,7 +169,7 @@ class MarketPriceCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${item.modalPriceDisplay} / ${item.unit}',
+                        '${item.priceDisplay} / ${item.unit}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -192,9 +206,10 @@ class MarketPriceCard extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // Footer: Arrival Date & Source
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // Wrap long source names on narrow phones.
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
               children: [
                 Row(
                   children: [
@@ -205,7 +220,7 @@ class MarketPriceCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'Arrival: ${item.arrivalDate ?? "Recent"}',
+                      'Observed: ${item.arrivalDate ?? "Unknown"}',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppTheme.textSecondary,
@@ -214,7 +229,8 @@ class MarketPriceCard extends StatelessWidget {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE8F5E9),
                     borderRadius: BorderRadius.circular(6),
@@ -233,6 +249,9 @@ class MarketPriceCard extends StatelessWidget {
                 ),
               ],
             ),
+            Text(
+                '${item.priceType} • ${item.verificationStatus}${item.stale ? " • Historical reference" : ""}'),
+            if (item.sourceUrl != null) SelectableText(item.sourceUrl!),
           ],
         ),
       ),

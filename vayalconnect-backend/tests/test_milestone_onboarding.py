@@ -1,5 +1,6 @@
 from tests.conftest import complete_farmer
 """Focused contracts and provenance checks. Provider responses are synthetic fixtures."""
+import json
 from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
@@ -8,15 +9,31 @@ from app.schemas.farmer import FarmerApplicationRequest
 from app.schemas.order import CreateOrderRequest
 from app.schemas.product import CreateProductRequest
 from app.services.pricing_service import PricingEngine
+from tests.market_fixtures import discovery
 from app.services.onboarding_service import OnboardingService
 from app.core.exceptions import MarketPriceUnavailableError, ValidationError, ConflictError
 from app.integrations.government_market import GovernmentMarketPriceProvider
+from app.integrations.market_evidence import SourceQuote, IST
+from app.integrations.groq_market import normalized_record
+from tests.test_statewide_market import reference_fixture
 
 
 def reference(**changes):
-    return {"commodity": "Paddy", "market": "Madurai", "modal_price_paise": 300000,
-            "modal_price_verified": True, "unit": "Quintal", "arrival_date": datetime.now(timezone.utc).date().isoformat(),
-            "source": "data.gov.in AGMARKNET", "retrieved_at": datetime.now(timezone.utc), **changes}
+    observed = changes.get("arrival_date")
+    try:
+        source_date = datetime.fromisoformat(observed).date().isoformat() if observed else datetime.now(IST).date().isoformat()
+        if source_date > datetime.now(IST).date().isoformat():
+            source_date = datetime.now(IST).date().isoformat()
+    except (ValueError, TypeError):
+        source_date = datetime.now(IST).date().isoformat()
+    query = {"commodity": "Paddy", "category": "Grains", "market": "Madurai",
+             "state": "Tamil Nadu", "district": "Madurai"}
+    source = SourceQuote.model_validate_json(json.dumps({"commodity": "Paddy", "market": "Madurai",
+        "state": "Tamil Nadu", "district": "Madurai", "unit": "quintal", "currency": "INR",
+        "price_paise": 300000, "modal_price_paise": 300000,
+        "observation_date": source_date, "source": "Synthetic test feed",
+        "source_url": "https://example.org/mandi"}), context={"history": True})
+    return {**reference_fixture(observed=source_date), **changes}
 
 
 @pytest.mark.asyncio
@@ -25,7 +42,7 @@ async def test_selected_price_is_never_replaced_by_unit_aware_reference(unit, co
     engine = PricingEngine(MagicMock())
     engine.pricing_repo.store_market_price = AsyncMock()
     engine.pricing_repo.get_active_commission = AsyncMock(return_value={"id": "configuration", "version": 2, "commission_percentage_bps": 1500})
-    with patch("app.services.pricing_service.market_price_provider.get_market_price", AsyncMock(return_value=reference())):
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup", AsyncMock(return_value=discovery([reference()]))):
         snapshot = await engine.calculate_pricing("Paddy", "Grains", 3, unit, "A", "Madurai", "Madurai", "farmer", selling_price_per_unit_paise=4321)
     assert snapshot["farmer_payout_per_unit_paise"] == 4321
     assert snapshot["reference_price_per_listing_unit_paise"] == converted
@@ -35,22 +52,24 @@ async def test_selected_price_is_never_replaced_by_unit_aware_reference(unit, co
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changes", [{"commodity": "Other"}, {"market": "Other"}, {"source": "unverified"}, {"arrival_date": None}, {"arrival_date": "2999-01-01"}, {"modal_price_paise": 0}, {"modal_price_verified": False}])
+@pytest.mark.parametrize("changes", [{"commodity": "Other"}, {"market": "Other"}, {"source": "unverified"}, {"arrival_date": None}, {"arrival_date": "2999-01-01"}, {"price_paise": 0}, {"verification_status": "unverified"}])
 async def test_unverifiable_reference_fails_closed(changes):
     engine = PricingEngine(MagicMock())
     engine.pricing_repo.get_latest_market_price = AsyncMock(return_value=None)
-    with patch("app.services.pricing_service.market_price_provider.get_market_price", AsyncMock(return_value=reference(**changes))):
-        with pytest.raises(MarketPriceUnavailableError): await engine.get_verified_reference("Paddy", "Madurai", "KG")
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup", AsyncMock(return_value=discovery([reference(**changes)]))):
+        result = await engine.get_verified_reference("Paddy", "Madurai", "KG")
+        assert not result["reference_price_available"]
 
 
 @pytest.mark.asyncio
 async def test_cached_historical_reference_is_explicit_and_count_units_cannot_use_weight_prices():
     engine = PricingEngine(MagicMock())
     engine.pricing_repo.get_latest_market_price = AsyncMock(return_value=reference(arrival_date=(datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat()))
-    with patch("app.services.pricing_service.market_price_provider.get_market_price", AsyncMock(return_value=None)):
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup", AsyncMock(return_value=discovery([reference(arrival_date=(datetime.now(timezone.utc).date() - timedelta(days=7)).isoformat(), stale=True)], live=False))):
         result = await engine.get_verified_reference("Paddy", "Madurai", "KG")
         assert result["reference_price_cached"] and result["reference_price_stale"]
-        with pytest.raises(ValidationError): await engine.get_verified_reference("Paddy", "Madurai", "PIECE")
+        count_result = await engine.get_verified_reference("Paddy", "Madurai", "PIECE")
+        assert count_result["reference_price_per_listing_unit_paise"] is None
 
 
 def test_missing_modal_is_not_invented():

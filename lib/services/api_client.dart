@@ -1,28 +1,53 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
 import '../config/api_config.dart';
 import '../utils/commerce_strings.dart';
 import 'session_manager.dart';
 
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  final String? code, requestId;
+  final String method, path;
+  ApiException(
+    this.message, {
+    this.statusCode,
+    this.code,
+    this.requestId,
+    required this.method,
+    required this.path,
+  });
+  @override
+  String toString() => message;
+}
+
 class ApiClient {
   final http.Client client;
   ApiClient({http.Client? client}) : client = client ?? http.Client();
-  Future<dynamic> request(String path,
-      {String method = 'GET', Map<String, dynamic>? body}) async {
-    final request =
-        http.Request(method, Uri.parse('${ApiConfig.baseUrl}$path'));
+  Future<dynamic> request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? body,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final request = http.Request(
+      method,
+      Uri.parse('${ApiConfig.baseUrl}$path'),
+    );
     request.headers.addAll({
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       if (SessionManager().accessToken != null)
-        'Authorization': 'Bearer ${SessionManager().accessToken}'
+        'Authorization': 'Bearer ${SessionManager().accessToken}',
     });
     if (body != null) request.body = jsonEncode(body);
     try {
-      final response =
-          await http.Response.fromStream(await client.send(request))
-              .timeout(const Duration(seconds: 20));
+      final response = await http.Response.fromStream(
+        await client.send(request),
+      ).timeout(timeout);
       final decoded = jsonDecode(response.body);
       if (decoded is! Map ||
           response.statusCode >= 400 ||
@@ -34,22 +59,30 @@ class ApiClient {
         }
         if (code == 'FARMER_NOT_APPROVED') {
           throw Exception(
-              S.t('Complete onboarding and obtain administrator approval.'));
+            S.t('Complete onboarding and obtain administrator approval.'),
+          );
         }
         if (code == 'PAYMENT_CREATING') {
           throw Exception(
-              S.t('Payment request in progress. Retry after one minute.'));
+            S.t('Payment request in progress. Retry after one minute.'),
+          );
         }
         if (code == 'ORDER_RESERVATION_EXPIRED') {
           throw Exception(
-              S.t('Stock reservation expired. Select the crop again.'));
+            S.t('Stock reservation expired. Select the crop again.'),
+          );
         }
         if (code == 'PRICE_CHANGED') {
           throw Exception(S.t('Price changed. Reload before ordering.'));
         }
         if (code == 'MARKET_SOURCE_UNAVAILABLE') {
-          throw Exception(
-              S.t('Official market source unavailable. Please retry later.'));
+          throw ApiException(
+            S.t('Market price unavailable'),
+            statusCode: response.statusCode,
+            code: 'MARKET_SOURCE_UNAVAILABLE',
+            method: method,
+            path: path,
+          );
         }
         if (response.statusCode == 422) {
           throw Exception(S.t('Check the required fields and values.'));

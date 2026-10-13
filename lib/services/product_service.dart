@@ -202,21 +202,15 @@ class ProductService {
   }
 
   Future<Map<String, dynamic>> fetchPriceReference(
-      {required String commodity,
-      required String market,
-      required String unit}) async {
+      {required String commodity, String? market, required String unit}) async {
     if (!kReleaseMode && SessionManager().isDemoMode) {
       throw Exception('Sign in to look up a verified reference.');
     }
-    final uri = Uri.parse('${ApiConfig.productsUrl}price-reference').replace(
-        queryParameters: {
-          'commodity': commodity,
-          'market': market,
-          'unit': unit
-        });
+    final uri = Uri.parse('${ApiConfig.productsUrl}price-reference')
+        .replace(queryParameters: {'commodity': commodity, 'unit': unit});
     final response = await _client
         .get(uri, headers: _headers())
-        .timeout(const Duration(seconds: 15));
+        .timeout(const Duration(seconds: 20));
     final decoded = jsonDecode(response.body);
     if (response.statusCode != 200 ||
         decoded is! Map ||

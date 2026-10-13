@@ -21,7 +21,9 @@ import logging
 
 from app.core.transactions import locked_transactional
 from app.repositories.pricing import PricingRepository
-from app.integrations.government_market import market_price_provider
+from app.integrations.statewide_market import market_price_provider
+from app.services.market_discovery import MarketDiscoveryService
+from app.schemas.market_price import MarketPriceItem, MarketPriceListResponse
 from app.core.exceptions import (
     MarketPriceUnavailableError, ValidationError, FinancialInconsistencyError,
 )
@@ -72,6 +74,7 @@ class PricingEngine:
         market: str,
         farmer_id: str,
         selling_price_per_unit_paise: Optional[int] = None,
+        state=None, district=None, variety=None,
     ) -> Dict[str, Any]:
         """
         Calculate complete pricing for a product.
@@ -81,7 +84,9 @@ class PricingEngine:
         """
         if selling_price_per_unit_paise is not None:
             try:
-                reference = await self.get_verified_reference(product_name, market, unit)
+                reference = await self.get_verified_reference(product_name, market, unit, category=category, state=state, district=district, variety=variety)
+                if not reference.get("reference_price_available"):
+                    reference.setdefault("government_reference_price_paise", 0)
             except (MarketPriceUnavailableError, ValidationError):
                 reference = {"government_reference_price_paise": 0, "reference_price_available": False,
                     "reference_price_message": "No compatible verified official reference available. Selling price is farmer-selected."}
@@ -96,6 +101,8 @@ class PricingEngine:
         # Historical-policy helpers still require the same verified, bounded reference.
         # New public listing creation always supplies a farmer-selected base price.
         reference = await self.get_verified_reference(product_name, market, unit)
+        if not reference.get("reference_price_available") or reference.get("reference_price_per_listing_unit_paise") is None:
+            raise MarketPriceUnavailableError()
         gov_ref_price_paise = reference["government_reference_price_paise"]
         price_unit = reference["reference_price_unit"]
         price_date = reference["reference_price_date"]
@@ -205,69 +212,62 @@ class PricingEngine:
         amounts = await self.selling_amounts(product["farmer_payout_per_unit_paise"])
         return {**product, **amounts, "commission_percentage": amounts["commission_percentage_bps"]}
 
-    async def get_verified_reference(self, commodity: str, market: str, unit: str) -> dict:
-        record = await market_price_provider.get_market_price(commodity=commodity, market=market, state=None)
-        cached = False
-        if not self._valid_reference(record, commodity, market):
-            record = await self.pricing_repo.get_latest_market_price(commodity=commodity, market=market)
-            cached = True
-        if not self._valid_reference(record, commodity, market):
-            raise MarketPriceUnavailableError()
-        retrieved = record.get("retrieved_at")
-        if isinstance(retrieved, str):
-            try: retrieved = datetime.fromisoformat(retrieved.replace("Z", "+00:00"))
-            except ValueError: retrieved = None
-        if not isinstance(retrieved, datetime):
-            raise MarketPriceUnavailableError()
-        retrieved = retrieved.replace(tzinfo=timezone.utc) if retrieved.tzinfo is None else retrieved
-        age = datetime.now(timezone.utc) - retrieved
-        if age < timedelta(0) or age > timedelta(days=7):
-            raise MarketPriceUnavailableError()
-        arrival = date.fromisoformat(str(record["arrival_date"])[:10])
-        raw_unit = record["unit"].upper().strip()
-        aliases = {"KILOGRAM": "KG", "QTL": "QUINTAL", "TONNE": "TON", "MT": "TON", "PIECES": "PIECE"}
-        raw_unit = aliases.get(raw_unit, raw_unit)
+    async def get_verified_reference(self, commodity: str, market: str, unit: str,
+                                     state=None, district=None, category=None, variety=None) -> dict:
+        result = await MarketDiscoveryService(self.db).lookup(commodity=commodity,
+            state="Tamil Nadu", category=category, variety=variety, limit=100, scope="statewide")
+        records = [r for r in result["records"] if r.get("reference_scope") == "statewide"
+                   and market_price_provider.matches(r, commodity, state="Tamil Nadu")]
+        if not records:
+            return {"reference_price_available": False, "reference_price_message": result["message"],
+                    "reference_records": []}
+        aliases = {"KILOGRAM": "KG", "QTL": "QUINTAL", "TONNE": "TON", "MT": "TON", "PIECES": "PIECE", "COUNT": "PIECE", "BUNCHES": "BUNCH", "BUNDLES": "BUNDLE"}
+        listing_unit = aliases.get(unit.upper().strip(), unit.upper().strip())
         factors = {"KG": 1, "QUINTAL": 100, "TON": 1000}
-        raw_price = record["modal_price_paise"]
-        if unit in factors and raw_unit in factors:
-            converted = int((Decimal(raw_price) * factors[unit] / factors[raw_unit]).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-        elif unit == raw_unit and unit in ("PIECE", "DOZEN"):
+        def compatibility(record):
+            source_unit = record["unit"].upper().strip()
+            source_unit = aliases.get(source_unit, source_unit)
+            return 0 if source_unit == listing_unit else 1 if source_unit in factors and listing_unit in factors else 2
+        trade_priority = {"mandi": 0, "wholesale": 1, "farm_gate": 2, "retail": 3, "unknown": 4}
+        records.sort(key=lambda r: (bool(r.get("stale")),
+            compatibility(r),
+            -date.fromisoformat(str(r["arrival_date"])[:10]).toordinal(),
+            trade_priority.get(r.get("price_type"), 4), r["market"], str(r.get("variety") or "")))
+        record = records[0]
+        raw_unit = record["unit"].upper().strip()
+        raw_unit = aliases.get(raw_unit, raw_unit)
+        raw_price = record["price_paise"]
+        converted = None
+        if listing_unit in factors and raw_unit in factors:
+            converted = int((Decimal(raw_price) * factors[listing_unit] / factors[raw_unit]).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        elif listing_unit == raw_unit:
             converted = raw_price
-        else:
-            raise ValidationError("Market reference unit cannot be compared with this listing unit.")
-        if not cached:
-            await self.pricing_repo.store_market_price(record)
-        return {"reference_price_available": True, "government_reference_price_paise": raw_price, "reference_price_per_listing_unit_paise": converted,
-                "reference_price_unit": record["unit"], "reference_listing_unit": unit,
-                "reference_price_date": arrival.isoformat(), "reference_price_source": record["source"],
-                "reference_price_cached": cached, "reference_price_stale": (datetime.now(timezone.utc).date() - arrival).days > 1,
-                "reference_price_retrieved_at": record.get("retrieved_at"),
+        return {"reference_price_available": True, "government_reference_price_paise": raw_price,
+                "reference_price_per_listing_unit_paise": converted, "reference_price_unit": record["unit"],
+                "reference_listing_unit": unit, "reference_price_date": record["arrival_date"],
+                "reference_price_source": record["source"], "reference_price_cached": not result["live"],
+                "reference_price_stale": record["stale"], "reference_price_retrieved_at": record.get("retrieved_at"),
                 "reference_commodity": record["commodity"], "reference_market": record["market"],
                 "reference_min_paise": record.get("min_price_paise"), "reference_max_paise": record.get("max_price_paise"),
-                "reference_state": record.get("state"), "reference_source_url": record.get("source_url")}
+                "reference_state": record.get("state"), "reference_district": record.get("district"),
+                "reference_source_url": record.get("source_url"), "reference_price_type": record.get("price_type"),
+                "reference_verification_status": record.get("verification_status"),
+                "reference_verification_method": record.get("verification_method"),
+                "reference_quote_type": record.get("quote_type", "unknown"),
+                "reference_currency": record.get("currency", "INR"),
+                "reference_scope": record.get("reference_scope"),
+                "reference_label": record.get("reference_label"),
+                "reference_aggregation_method": record.get("aggregation_method"),
+                "reference_market_type": record.get("market_type"),
+                "reference_observation_count": record.get("observation_count"),
+                "reference_observation_dates": record.get("observation_dates"),
+                "reference_records": MarketPriceListResponse(records=[MarketPriceItem(**r) for r in records],
+                    count=len(records), live=result["live"], source=result["source"]).model_dump(mode="json")["records"],
+                "reference_price_message": result["message"]}
 
     @staticmethod
     def _valid_reference(record, commodity, market):
-        if not isinstance(record, dict):
-            return False
-        if str(record.get("commodity", "")).strip().casefold() != commodity.strip().casefold() or str(record.get("market", "")).strip().casefold() != market.strip().casefold():
-            return False
-        if record.get("modal_price_verified") is not True:
-            return False
-        if record.get("source") != "data.gov.in AGMARKNET" or not record.get("unit"):
-            return False
-        price = record.get("modal_price_paise")
-        if type(price) is not int or price <= 0:
-            return False
-        minimum, maximum = record.get("min_price_paise"), record.get("max_price_paise")
-        if minimum is not None or maximum is not None:
-            if not all(type(v) is int and v > 0 for v in (minimum, maximum)) or not minimum <= price <= maximum:
-                return False
-        try:
-            arrival = date.fromisoformat(str(record.get("arrival_date"))[:10])
-            return arrival <= datetime.now(timezone.utc).date()
-        except (ValueError, TypeError):
-            return False
+        return market_price_provider.matches(record, commodity=commodity, market=market)
 
     async def create_snapshot(
         self, product_id: str, snapshot_data: Dict[str, Any]

@@ -1,3 +1,4 @@
+import '../utils/form_examples.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
@@ -157,8 +158,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                 content: TextField(
                     controller: controller,
                     maxLength: 500,
-                    decoration:
-                        InputDecoration(labelText: S.t('Cancellation reason'))),
+                    decoration: InputDecoration(
+                        labelText: S.t('Cancellation reason'),
+                        hintText: FormExamples.hint('cancellation'),
+                        hintStyle: FormExamples.style)),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(ctx, false),

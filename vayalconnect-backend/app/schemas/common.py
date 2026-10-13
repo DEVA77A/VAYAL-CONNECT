@@ -37,6 +37,9 @@ class QuantityUnit(str, Enum):
     TON = "TON"
     PIECE = "PIECE"
     DOZEN = "DOZEN"
+    BUNCH = "BUNCH"
+    BUNDLE = "BUNDLE"
+    COUNT = "COUNT"
 
 
 class QualityGrade(str, Enum):

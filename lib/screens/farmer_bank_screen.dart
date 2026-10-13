@@ -1,3 +1,4 @@
+import '../utils/form_examples.dart';
 import '../utils/commerce_strings.dart';
 import '../widgets/vayal_app_bar.dart';
 import '../utils/language_rebuild.dart';
@@ -94,7 +95,9 @@ class _FarmerBankScreenState extends State<FarmerBankScreen>
                                 ? TextInputType.number
                                 : TextInputType.text,
                             decoration: InputDecoration(
-                                labelText: S.t(e.key.replaceAll('_', ' '))),
+                                labelText: S.t(e.key.replaceAll('_', ' ')),
+                                hintText: FormExamples.hint(e.key),
+                                hintStyle: FormExamples.style),
                             validator: (v) {
                               final value = v?.trim() ?? '';
                               if (e.key == 'account_number') {

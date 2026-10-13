@@ -27,14 +27,20 @@ from app.utils.money import format_rupees, percentage_bps_to_display
 
 from app.repositories.farmers import FarmerRepository
 from app.api.v1.media import validate_owned_image
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
+from app.core.config import settings
 
 def reference_view(product):
-    fields = ("reference_price_available", "reference_price_message", "government_reference_price_paise", "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit", "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale", "reference_price_retrieved_at", "reference_commodity", "reference_market", "reference_min_paise", "reference_max_paise", "reference_state", "reference_source_url")
+    fields = ("reference_price_available", "reference_price_message", "government_reference_price_paise", "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit", "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale", "reference_price_retrieved_at", "reference_commodity", "reference_market", "reference_min_paise", "reference_max_paise", "reference_state", "reference_source_url", "reference_records", "reference_price_type", "reference_verification_status", "reference_district", "reference_verification_method", "reference_quote_type", "reference_currency")
     if product.get("pricing_mode") != "FARMER_SELECTED": return None
+    fields += ("reference_scope", "reference_label", "reference_aggregation_method", "reference_observation_count", "reference_observation_dates")
     result = {k: product.get(k) for k in fields}
     try:
-        result["reference_price_stale"] = (datetime.now(timezone.utc).date() - date.fromisoformat(str(product.get("reference_price_date"))[:10])).days > 1
+        today = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
+        result["reference_price_stale"] = bool(product.get("reference_price_stale")) or date.fromisoformat(str(product.get("reference_price_date"))[:10]) != today
+        result["reference_records"] = [{**record, "stale": bool(record.get("stale")) or
+            date.fromisoformat(str(record.get("arrival_date"))[:10]) != today}
+            for record in (product.get("reference_records") or [])]
     except (TypeError, ValueError):
         result["reference_price_stale"] = True
     return result
@@ -45,11 +51,15 @@ router = APIRouter(prefix="/products", tags=["Products"])
 
 @router.get("/price-reference", response_model=APIResponse)
 async def price_reference(request: Request, commodity: str = Query(..., min_length=2, max_length=200),
-                          market: str = Query(..., min_length=2, max_length=200),
-                          unit: str = Query(..., pattern="^(KG|QUINTAL|TON|PIECE|DOZEN)$"),
+                          market: str | None = Query(None, min_length=2, max_length=200),
+                          unit: str = Query(..., pattern="^(KG|QUINTAL|TON|PIECE|DOZEN|BUNCH|BUNDLE|COUNT)$"),
+                          state: str = Query("Tamil Nadu", min_length=2, max_length=100),
+                          district: str | None = Query(None, min_length=2, max_length=100),
+                          category: str | None = Query(None, max_length=100),
+                          variety: str | None = Query(None, max_length=100),
                           current_user: dict = Depends(get_current_farmer),
                           db: AsyncIOMotorDatabase = Depends(get_database)):
-    reference = await PricingEngine(db).get_verified_reference(commodity, market, unit)
+    reference = await PricingEngine(db).get_verified_reference(commodity, market, unit, state=state, district=district, category=category, variety=variety)
     return APIResponse(success=True, data=reference, request_id=get_request_id(request))
 
 
@@ -82,6 +92,7 @@ async def create_product(
         market=data.market,
         farmer_id=current_user["id"],
         selling_price_per_unit_paise=data.selling_price_per_unit_paise,
+        state=data.state, district=data.district, variety=data.variety,
     )
 
     # Build product document
@@ -90,6 +101,7 @@ async def create_product(
         "product_name": data.product_name,
         "description": data.description,
         "category": data.category,
+        "state": data.state, "district": data.district, "variety": data.variety,
         "quantity_available": data.quantity,
         "quantity_unit": data.quantity_unit.value,
         "quality_grade": data.quality_grade.value,
@@ -170,6 +182,7 @@ async def list_my_products(
             product_id=p["id"],
             product_name=p.get("product_name", ""),
             category=p.get("category", ""),
+            state=p.get("state"), district=p.get("district"), variety=p.get("variety"),
             quantity_available=p.get("quantity_available", 0),
             quantity_unit=p.get("quantity_unit", ""),
             quality_grade=p.get("quality_grade", ""),
@@ -315,6 +328,7 @@ async def get_product(
             product_id=product["id"],
             product_name=product.get("product_name", ""),
             category=product.get("category", ""),
+            state=product.get("state"), district=product.get("district"), variety=product.get("variety"),
             quantity_available=product.get("quantity_available", 0),
             quantity_unit=product.get("quantity_unit", ""),
             quality_grade=product.get("quality_grade", ""),

@@ -38,6 +38,63 @@ class S {
   }
 
   static const _ta = <String, String>{
+    'Tamil Nadu Uzhavar Santhai reference — median of available market range midpoints':
+        'தமிழ்நாடு உழவர் சந்தை குறிப்பு விலை — கிடைக்கும் சந்தை விலை வரம்புகளின் நடுப்புள்ளிகளின் இடைநிலை',
+    'median_distinct_market_range_midpoint':
+        'தனித்த சந்தை விலை வரம்பு நடுப்புள்ளிகளின் இடைநிலை',
+    'median_range_midpoint': 'விலை வரம்பு நடுப்புள்ளிகளின் இடைநிலை',
+    'range_midpoint': 'விலை வரம்பின் நடுப்புள்ளி',
+    'Full Name': 'முழுப் பெயர்',
+    'Email Address': 'மின்னஞ்சல் முகவரி',
+    'Age': 'வயது',
+    'Phone Number': 'கைபேசி எண்',
+    'Password': 'கடவுச்சொல்',
+    'District / Area': 'மாவட்டம் / பகுதி',
+    'Tamil Nadu statewide reference price — calculated from available market observations':
+        'தமிழ்நாடு மாநில அளவிலான குறிப்பு விலை — கிடைக்கும் சந்தைப் பதிவுகளிலிருந்து கணக்கிடப்பட்டது',
+    'Eligible observations': 'தகுதியான சந்தைப் பதிவுகள்',
+    'Aggregation method': 'கணக்கீட்டு முறை',
+    'median_distinct_market_modal':
+        'தனித்தனி சந்தைகளின் வழக்கமான விலைகளின் இடைநிலை',
+    'Enter crop name.': 'பயிரின் பெயரை உள்ளிடவும்.',
+    'First 50 matching records. Search by crop for more specific results.':
+        'முதல் 50 பதிவுகள். குறிப்பிட்ட முடிவுகளுக்கு பயிரின் பெயரால் தேடவும்.',
+    'Market price unavailable': 'சந்தை விலை கிடைக்கவில்லை',
+    'Stale market reference': 'பழைய சந்தை குறிப்பு விலை',
+    'Source-reported market reference': 'ஆதாரம் வழங்கிய சந்தை குறிப்பு விலை',
+    'Currency': 'நாணயம்',
+    'Price type': 'விலை வகை',
+    'unknown': 'தெரியவில்லை',
+    'Price lookup context': 'சந்தை விலை தேடல் விவரங்கள்',
+    'Flowers': 'பூக்கள்',
+    'Pulses and legumes': 'பருப்பு வகைகள்',
+    'Oilseeds': 'எண்ணெய் வித்துகள்',
+    'Plantation crops': 'தோட்டப் பயிர்கள்',
+    'Sugarcane': 'கரும்பு',
+    'Fodder': 'தீவனப் பயிர்கள்',
+    'Medicinal and aromatic plants': 'மருத்துவ மற்றும் நறுமணச் செடிகள்',
+    'Nursery and horticultural products':
+        'நாற்றங்கால் மற்றும் தோட்டக்கலைப் பொருட்கள்',
+    'Other agricultural products': 'பிற வேளாண் பொருட்கள்',
+    'Verified market reference': 'சரிபார்க்கப்பட்ட சந்தை விலை',
+    'Historical verified reference': 'முந்தைய சரிபார்க்கப்பட்ட சந்தை விலை',
+    'Quoted price': 'குறிப்பிடப்பட்ட விலை',
+    'Trade type': 'விற்பனை வகை',
+    'Verification': 'சரிபார்ப்பு',
+    'State for price lookup': 'விலை தேடலுக்கான மாநிலம்',
+    'District for price lookup': 'விலை தேடலுக்கான மாவட்டம்',
+    'Variety for price lookup': 'விலை தேடலுக்கான பயிர் ரகம்',
+    'Enter crop name and nearest market.':
+        'பயிரின் பெயர் மற்றும் அருகிலுள்ள சந்தையை உள்ளிடவும்.',
+    'Original unit preserved. No valid conversion to your listing unit.':
+        'அசல் அலகு பயன்படுத்தப்படுகிறது. உங்கள் விற்பனை அலகிற்கு மாற்ற முடியவில்லை.',
+    'Verified market prices are references. Farmers set their own selling price.':
+        'சரிபார்க்கப்பட்ட சந்தை விலைகள் குறிப்புக்கானவை. விவசாயிகள் தங்கள் விற்பனை விலையை நிர்ணயிக்கிறார்கள்.',
+    'Retrieved verified market records':
+        'சரிபார்க்கப்பட்ட சந்தை விவரங்கள் பெறப்பட்டன',
+    'Cached verified records': 'சேமிக்கப்பட்ட சரிபார்க்கப்பட்ட விவரங்கள்',
+    'No matching verified market prices found.':
+        'பொருத்தமான சரிபார்க்கப்பட்ட சந்தை விலைகள் கிடைக்கவில்லை.',
     'Difference from comparable reference':
         'ஒப்பிடக்கூடிய ஆதார விலையிலிருந்து வேறுபாடு',
     'Unable to save language preference. Please retry.':
@@ -78,6 +135,7 @@ class S {
     'Loading…': 'ஏற்றப்படுகிறது…',
     'Search crops': 'பயிர்களைத் தேடு',
     'Category': 'வகை',
+    'New crop category (optional)': 'புதிய பயிர் வகை (விருப்பம்)',
     'Grains': 'தானியங்கள்',
     'Vegetables': 'காய்கறிகள்',
     'Fruits': 'பழங்கள்',
@@ -216,6 +274,8 @@ class S {
         'விலை மாறியுள்ளது. ஆர்டர் செய்வதற்கு முன் புதுப்பிக்கவும்.',
     'Official market source unavailable. Please retry later.':
         'அரசு மண்டி தரவு கிடைக்கவில்லை. பின்னர் முயற்சிக்கவும்.',
+    'Verified cached price unavailable. Daily discovery runs at 06:00 IST.':
+        'சரிபார்க்கப்பட்ட சேமித்த விலை கிடைக்கவில்லை. தினமும் காலை 6:00 மணிக்கு விலை தேடல் நடைபெறும்.',
     'This action is unavailable for your account.':
         'உங்கள் கணக்கிற்கு இந்தச் செயல் அனுமதிக்கப்படவில்லை.',
     'Data changed. Reload before retrying.':

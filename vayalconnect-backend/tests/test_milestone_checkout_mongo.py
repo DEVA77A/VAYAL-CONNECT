@@ -15,6 +15,7 @@ from app.core.database import get_database
 from app.core.security import create_access_token
 from app.core.exceptions import ValidationError
 from tests.test_milestone_onboarding import reference
+from tests.market_fixtures import discovery
 
 
 @pytest.mark.skipif(os.environ.get("VAYALCONNECT_RUN_MONGO_TESTS") != "1", reason="Opt-in isolated local MongoDB")
@@ -36,7 +37,7 @@ async def test_farmer_application_pricing_fulfillment_and_security():
         await db.farmer_profiles.insert_one({"user_id": ids["FARMER"], "approval_status": "PENDING"})
         await db.commission_configs.insert_one({"status": "ACTIVE", "commission_percentage_bps": 1500, "version": 1})
         app.dependency_overrides[get_database] = lambda: db
-        with patch("app.core.security.settings.ENCRYPTION_KEY", Fernet.generate_key().decode()), patch("app.services.pricing_service.market_price_provider.get_market_price", AsyncMock(return_value=reference())), patch("app.services.payment_service.PaymentService.create_payment", AsyncMock(return_value={"razorpay_order_id": "synthetic-test-only"})):
+        with patch("app.core.security.settings.ENCRYPTION_KEY", Fernet.generate_key().decode()), patch("app.services.pricing_service.MarketDiscoveryService.lookup", AsyncMock(return_value=discovery([reference()]))), patch("app.services.payment_service.PaymentService.create_payment", AsyncMock(return_value={"razorpay_order_id": "synthetic-test-only"})):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://isolated-test") as api:
                 async def put(url, payload, role): return await api.put('/api/v1/'+url, json=payload, headers=headers(role))
                 async def post(url, payload, role): return await api.post('/api/v1/'+url, json=payload, headers=headers(role))

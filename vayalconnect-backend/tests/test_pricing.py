@@ -7,6 +7,8 @@ financial consistency, and role-filtered pricing projections.
 import pytest
 from unittest.mock import AsyncMock, patch
 from app.services.pricing_service import PricingEngine
+from tests.market_fixtures import discovery
+from tests.test_milestone_onboarding import reference
 from app.core.exceptions import FinancialInconsistencyError, MarketPriceUnavailableError
 
 
@@ -33,8 +35,9 @@ async def test_pricing_engine_calculation_success(mock_db):
         "retrieved_at": "2026-10-09T00:00:00Z",
     }
 
-    with patch("app.services.pricing_service.market_price_provider.get_market_price",
-               new=AsyncMock(return_value=mock_market_price)):
+    mock_market_price = reference()
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup",
+               new=AsyncMock(return_value=discovery([mock_market_price]))):
         with patch.object(engine.pricing_repo, "store_market_price", new=AsyncMock()):
             with patch.object(engine.pricing_repo, "get_active_policy", new=AsyncMock(return_value={
                 "id": "policy_123",
@@ -82,8 +85,8 @@ async def test_pricing_engine_calculation_success(mock_db):
 async def test_pricing_engine_unavailable_market_price_raises_error(mock_db):
     engine = PricingEngine(mock_db)
 
-    with patch("app.services.pricing_service.market_price_provider.get_market_price",
-               new=AsyncMock(return_value=None)):
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup",
+               new=AsyncMock(return_value=discovery([]))):
         with patch.object(engine.pricing_repo, "get_latest_market_price", new=AsyncMock(return_value=None)):
             with pytest.raises(MarketPriceUnavailableError):
                 await engine.calculate_pricing(
@@ -114,8 +117,9 @@ async def test_pricing_engine_rejects_negative_commission(mock_db):
         "retrieved_at": "2026-10-09T00:00:00Z",
     }
 
-    with patch("app.services.pricing_service.market_price_provider.get_market_price",
-               new=AsyncMock(return_value=mock_market_price)):
+    mock_market_price = reference()
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup",
+               new=AsyncMock(return_value=discovery([mock_market_price]))):
         with patch.object(engine.pricing_repo, "store_market_price", new=AsyncMock()):
             # Farmer payout higher than buyer price -> negative commission!
             with patch.object(engine.pricing_repo, "get_active_policy", new=AsyncMock(return_value={

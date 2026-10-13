@@ -49,11 +49,11 @@ void main() {
       final item = MarketPriceItem.fromJson(json);
 
       expect(item.commodity, 'Tomato');
-      expect(item.variety, 'Common');
-      expect(item.grade, 'FAQ');
+      expect(item.variety, 'Unknown');
+      expect(item.grade, 'Unknown');
       expect(item.modalPricePaise, 0);
-      expect(item.modalPriceDisplay, '₹0.00');
-      expect(item.unit, 'Quintal');
+      expect(item.modalPriceDisplay, 'Unavailable');
+      expect(item.unit, 'Unknown');
     });
   });
 

@@ -11,7 +11,8 @@ Tests:
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from datetime import date
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
 import httpx
 from fastapi.testclient import TestClient
 
@@ -23,6 +24,7 @@ from app.core.database import get_database
 @pytest.fixture
 def test_client():
     mock_db = AsyncMock()
+    mock_db.__getitem__.return_value.update_one = AsyncMock(return_value=SimpleNamespace(modified_count=1, upserted_id=None))
     app.dependency_overrides[get_database] = lambda: mock_db
     client = TestClient(app)
     yield client, mock_db
@@ -138,7 +140,7 @@ async def test_search_prices_connection_refused_handling():
         assert "unreachable" in res["message"].lower()
 
 
-def test_api_endpoint_market_prices_cached_fallback(test_client):
+def test_api_endpoint_legacy_ai_excerpt_is_not_verified_cache(test_client):
     client, mock_db = test_client
 
     # Upstream fails (live=False)
@@ -170,8 +172,10 @@ def test_api_endpoint_market_prices_cached_fallback(test_client):
         "price_per_kg_display": "₹22.00 / kg",
         "unit": "Quintal",
         "arrival_date": "2026-10-09",
-        "source": "data.gov.in AGMARKNET",
-        "retrieved_at": "2026-10-09T06:00:00Z",
+        "source": "example.org", "source_url": "https://example.org/mandi",
+        "verification_status": "verified", "verification_method": "grounding_and_source_excerpt",
+        "currency": "INR", "price_paise": 220000, "price_type": "mandi", "evidence": "Synthetic test fixture",
+        "retrieved_at": datetime.now(timezone.utc),
     }
 
     with patch("app.api.v1.market_prices.market_price_provider.search_prices",
@@ -179,14 +183,12 @@ def test_api_endpoint_market_prices_cached_fallback(test_client):
         with patch("app.repositories.pricing.PricingRepository.list_market_prices",
                    new=AsyncMock(return_value=[cached_record])):
             response = client.get("/api/v1/market-prices?commodity=Paddy&district=Madurai")
-            assert response.status_code == 200
+            assert response.status_code == 503
             data = response.json()
-            assert data["success"] is True
+            assert data["success"] is False
             assert data["data"]["live"] is False
-            assert data["data"]["count"] == 1
-            assert "cached" in data["data"]["source"].lower()
-            assert data["data"]["records"][0]["commodity"] == "Paddy"
-            assert data["data"]["records"][0]["price_per_kg_display"] == "₹22.00 / kg"
+            assert data["data"]["count"] == 0
+            assert data["data"]["records"] == []
 
 
 def test_api_endpoint_market_prices_empty_state(test_client):
@@ -212,16 +214,22 @@ def test_api_endpoint_market_prices_empty_state(test_client):
             assert data["data"]["live"] is False
             assert data["data"]["count"] == 0
             assert data["data"]["records"] == []
-            assert "unreachable" in data["data"]["message"].lower()
+            assert "cached price unavailable" in data["data"]["message"].lower()
 
 
 def test_api_endpoint_filter_options(test_client):
-    client, _ = test_client
+    client, db = test_client
+    async def registered():
+        yield {"product_name": "Paddy", "category": "Grains", "district": "Madurai"}
+        yield {"product_name": "Novel flower", "category": "New category"}
+    db["products"].find = lambda *args: registered()
     response = client.get("/api/v1/market-prices/filter-options")
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
     assert "Paddy" in data["data"]["commodities"]
+    assert "Novel flower" in data["data"]["commodities"]
+    assert "New category" in data["data"]["categories"]
     assert "Madurai" in data["data"]["districts"]
     assert data["data"]["default_state"] == "Tamil Nadu"
 

@@ -1,8 +1,10 @@
+import '../utils/form_examples.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 import '../services/api_client.dart';
 import '../services/session_manager.dart';
 import '../utils/commerce_strings.dart';
@@ -31,6 +33,10 @@ class _AddProductScreenState extends State<AddProductScreen>
       'selling_price',
       'location',
       'market',
+      'state',
+      'district',
+      'variety',
+      'new_category',
       'stock_adjustment'
     ])
       k: TextEditingController()
@@ -41,13 +47,25 @@ class _AddProductScreenState extends State<AddProductScreen>
   bool _busy = false;
   String? _error;
   Map<String, dynamic>? _reference;
+  Timer? _referenceTimer;
+  int _referenceRequest = 0;
+  final Set<String> _registeredCategories = {};
   bool get _editing => widget.product != null;
   @override
   void initState() {
     super.initState();
+    _fields['state']!.text = 'Tamil Nadu';
     final p = widget.product;
     if (p != null) {
-      for (final k in ['product_name', 'description', 'location', 'market']) {
+      for (final k in [
+        'product_name',
+        'description',
+        'location',
+        'market',
+        'state',
+        'district',
+        'variety'
+      ]) {
         _fields[k]!.text = p[k] as String? ?? '';
       }
       _fields['selling_price']!.text =
@@ -60,10 +78,26 @@ class _AddProductScreenState extends State<AddProductScreen>
       _status = p['status'] == 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
       _date = DateTime.tryParse(p['harvest_date'] ?? '') ?? DateTime.now();
     }
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final options =
+          await _api.request('/api/v1/market-prices/filter-options');
+      final categories = options['categories'];
+      if (mounted && categories is List) {
+        setState(
+            () => _registeredCategories.addAll(categories.whereType<String>()));
+      }
+    } catch (_) {
+      // Crop entry remains available when cached filter options cannot be read.
+    }
   }
 
   @override
   void dispose() {
+    _referenceTimer?.cancel();
     for (final c in _fields.values) {
       c.dispose();
     }
@@ -103,21 +137,62 @@ class _AddProductScreenState extends State<AddProductScreen>
     }
   }
 
-  Future<void> _lookup() async {
-    setState(() => _busy = true);
+  void _queueReference() {
+    _referenceTimer?.cancel();
+    _referenceRequest++;
+    final crop = _fields['product_name']!.text.trim().toLowerCase();
+    if (!const {
+      'tomato',
+      'தக்காளி',
+      'banana fruit',
+      'banana (fruit)',
+      'வாழைப்பழம்',
+      'jasmine',
+      'மல்லிகை',
+      'marigold',
+    }.contains(crop)) {
+      if (crop.isNotEmpty) _reference = {'reference_price_available': false};
+      return;
+    }
+    _referenceTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted && !_busy) _lookup(background: true);
+    });
+  }
+
+  Future<void> _lookup({bool background = false}) async {
+    final request = ++_referenceRequest;
+    if (_fields['product_name']!.text.trim().length < 2) {
+      setState(() => _error = S.t('Enter crop name.'));
+      return;
+    }
+    setState(() {
+      if (!background) _busy = true;
+      _error = null;
+      _reference = null;
+    });
     try {
       final uri =
           Uri(path: '/api/v1/products/price-reference', queryParameters: {
         'commodity': _fields['product_name']!.text.trim(),
-        'market': _fields['market']!.text.trim(),
-        'unit': _unit
+        'unit': _unit,
+        'category': _category,
+        if (_fields['variety']!.text.trim().isNotEmpty)
+          'variety': _fields['variety']!.text.trim(),
       });
+      // Backend reads MongoDB only. Upload registers crops for future daily runs.
       final r = await _api.request(uri.toString());
-      if (mounted) setState(() => _reference = Map<String, dynamic>.from(r));
+      if (mounted && request == _referenceRequest) {
+        setState(() => _reference = Map<String, dynamic>.from(r));
+      }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted && request == _referenceRequest) {
+        setState(() {
+          _reference = {'reference_price_available': false};
+          if (!background) _error = e.toString();
+        });
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && !background) setState(() => _busy = false);
     }
   }
 
@@ -148,12 +223,19 @@ class _AddProductScreenState extends State<AddProductScreen>
           'quantity': int.parse(_fields['quantity']!.text),
           'quantity_unit': _unit,
           'location': _fields['location']!.text.trim(),
-          'market': _fields['market']!.text.trim()
+          'market': _fields['market']!.text.trim(),
+          if (_fields['state']!.text.trim().isNotEmpty)
+            'state': _fields['state']!.text.trim(),
+          if (_fields['district']!.text.trim().isNotEmpty)
+            'district': _fields['district']!.text.trim(),
+          if (_fields['variety']!.text.trim().isNotEmpty)
+            'variety': _fields['variety']!.text.trim(),
         });
       }
       await _api.request(
           '/api/v1/products/${_editing ? widget.product!['product_id'] : ''}',
           method: _editing ? 'PUT' : 'POST',
+          timeout: const Duration(seconds: 150),
           body: body);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -169,14 +251,34 @@ class _AddProductScreenState extends State<AddProductScreen>
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: TextFormField(
               controller: _fields[key],
-              onChanged: key == 'selling_price' ? (_) => setState(() {}) : null,
+              onChanged: (value) => setState(() {
+                    if ([
+                      'product_name',
+                      'market',
+                      'state',
+                      'district',
+                      'variety'
+                    ].contains(key)) {
+                      _reference = null;
+                      _queueReference();
+                    }
+                  }),
               enabled: !_busy && editable,
               keyboardType: number
-                  ? const TextInputType.numberWithOptions(
-                      decimal: true, signed: true)
+                  ? TextInputType.numberWithOptions(
+                      decimal: key == 'selling_price',
+                      signed: key == 'stock_adjustment')
                   : TextInputType.text,
               maxLines: key == 'description' ? 3 : 1,
-              decoration: InputDecoration(labelText: S.t(label)),
+              textCapitalization: number
+                  ? TextCapitalization.none
+                  : key == 'description'
+                      ? TextCapitalization.sentences
+                      : TextCapitalization.words,
+              decoration: InputDecoration(
+                  labelText: S.t(label),
+                  hintText: FormExamples.hint(key),
+                  hintStyle: FormExamples.style),
               validator: (value) {
                 final v = value?.trim() ?? '';
                 if (key == 'selling_price' &&
@@ -199,7 +301,23 @@ class _AddProductScreenState extends State<AddProductScreen>
               }));
   @override
   Widget build(BuildContext context) {
-    final categories = {'Grains', 'Vegetables', 'Fruits', 'Spices', _category};
+    final categories = {
+      'Grains',
+      'Pulses and legumes',
+      'Vegetables',
+      'Fruits',
+      'Flowers',
+      'Spices',
+      'Oilseeds',
+      'Plantation crops',
+      'Sugarcane',
+      'Fodder',
+      'Medicinal and aromatic plants',
+      'Nursery and horticultural products',
+      'Other agricultural products',
+      ..._registeredCategories,
+      _category
+    };
     return Scaffold(
         appBar: VayalAppBar(
             title: S.t(_editing ? 'Edit' : 'Add crop'), showBack: true),
@@ -221,6 +339,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                       _field('description', 'Description'),
                       DropdownButtonFormField<String>(
                           value: _category,
+                          isExpanded: true,
                           decoration:
                               InputDecoration(labelText: S.t('Category')),
                           items: categories
@@ -229,7 +348,34 @@ class _AddProductScreenState extends State<AddProductScreen>
                               .toList(),
                           onChanged: _editing || _busy
                               ? null
-                              : (v) => setState(() => _category = v!)),
+                              : (v) => setState(() {
+                                    _category = v!;
+                                    _fields['new_category']!.clear();
+                                    _reference = null;
+                                    _queueReference();
+                                  })),
+                      if (!_editing)
+                        TextFormField(
+                          controller: _fields['new_category'],
+                          enabled: !_busy,
+                          maxLength: 100,
+                          decoration: InputDecoration(
+                              labelText: S.t('New crop category (optional)'),
+                              hintText: FormExamples.hint('new_category'),
+                              hintStyle: FormExamples.style),
+                          validator: (value) => value != null &&
+                                  value.trim().isNotEmpty &&
+                                  value.trim().length < 2
+                              ? S.t('Required')
+                              : null,
+                          onChanged: (value) => setState(() {
+                            if (value.trim().length >= 2) {
+                              _category = value.trim();
+                            }
+                            _reference = null;
+                            _queueReference();
+                          }),
+                        ),
                       if (!_editing)
                         _field('quantity', 'Quantity',
                             required: true, number: true),
@@ -241,20 +387,42 @@ class _AddProductScreenState extends State<AddProductScreen>
                       ],
                       DropdownButtonFormField<String>(
                           value: _unit,
-                          decoration: InputDecoration(labelText: S.t('Unit')),
-                          items: ['KG', 'QUINTAL', 'TON', 'PIECE', 'DOZEN']
+                          decoration: InputDecoration(
+                              labelText: S.t('Unit'),
+                              helperText: _unit.toLowerCase()),
+                          items: [
+                            'KG',
+                            'QUINTAL',
+                            'TON',
+                            'PIECE',
+                            'DOZEN',
+                            'BUNCH',
+                            'BUNDLE',
+                            'COUNT'
+                          ]
                               .map((u) =>
                                   DropdownMenuItem(value: u, child: Text(u)))
                               .toList(),
                           onChanged: _editing || _busy
                               ? null
-                              : (v) => setState(() => _unit = v!)),
+                              : (v) => setState(() {
+                                    _unit = v!;
+                                    _reference = null;
+                                    _queueReference();
+                                  })),
                       _field('selling_price', 'Your selling price',
                           required: true, number: true),
                       _field('location', 'Farm location',
                           required: true, editable: !_editing),
                       _field('market', 'Nearest mandi',
                           required: true, editable: !_editing),
+                      ExpansionTile(
+                          title: Text(S.t('Price lookup context')),
+                          children: [
+                            _field('state', 'State for price lookup'),
+                            _field('district', 'District for price lookup'),
+                            _field('variety', 'Variety for price lookup'),
+                          ]),
                       ListTile(
                           title: Text(S.t('Harvest date')),
                           subtitle:
@@ -290,7 +458,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                       if (_image != null) Text(S.t('Photograph saved')),
                       OutlinedButton(
                           onPressed: _busy ? null : _lookup,
-                          child: Text(S.t('Official reference'))),
+                          child: Text(S.t('Verified market reference'))),
                       if (_reference != null)
                         MarketReferenceView(
                             reference: _reference,

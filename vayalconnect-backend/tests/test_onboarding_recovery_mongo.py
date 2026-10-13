@@ -18,6 +18,7 @@ from app.services.auth_service import AuthService
 from app.services.onboarding_service import OnboardingService
 from tests.conftest import complete_farmer
 from tests.test_milestone_onboarding import reference
+from tests.market_fixtures import discovery
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(
     os.environ.get("VAYALCONNECT_RUN_MONGO_TESTS") != "1", reason="Opt-in isolated local MongoDB")]
@@ -134,7 +135,7 @@ async def test_missing_profile_submission_review_and_marketplace(workflow, bank_
     assert await db.farmer_profiles.find_one({"user_id": ids["OTHER"]}) == other_before
     assert await db.farmer_profiles.count_documents({"user_id": ids["FARMER"]}) == 1
 
-    with patch("app.services.pricing_service.market_price_provider.get_market_price", AsyncMock(return_value=reference())):
+    with patch("app.services.pricing_service.MarketDiscoveryService.lookup", AsyncMock(return_value=discovery([reference()]))):
         created = await publish()
     assert created.status_code == 201, created.text
     pid = created.json()["data"]["product_id"]

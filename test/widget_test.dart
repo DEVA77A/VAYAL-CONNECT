@@ -92,8 +92,8 @@ void main() {
     // Verify produce item appears from mock backend response
     await tester.ensureVisible(find.text('Paddy'));
     expect(find.text('Paddy'), findsOneWidget);
-    await tester.ensureVisible(find.text('Modal: ₹2400.00 / Quintal'));
-    expect(find.text('Modal: ₹2400.00 / Quintal'), findsOneWidget);
+    await tester.ensureVisible(find.text('Quoted price: ₹2,400.00 / Quintal'));
+    expect(find.text('Quoted price: ₹2,400.00 / Quintal'), findsOneWidget);
     expect(find.text('Source: data.gov.in AGMARKNET'), findsWidgets);
   });
 }
