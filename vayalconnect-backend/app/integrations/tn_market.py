@@ -1,4 +1,5 @@
-"""Official Uzhavar Santhai feed. No credentials, retries or generated prices."""
+"""Official Uzhavar Santhai feed with bounded transient retries; no generated prices."""
+
 import asyncio
 import json
 from datetime import datetime
@@ -25,8 +26,11 @@ CROPS = {
 def crop_mapping(query):
     # A supplied alias cannot override an explicitly different supported crop.
     names = [query.get("commodity"), *query.get("aliases", [])]
-    ids = {key for key, (_, aliases) in CROPS.items()
-           if any(normalized(name) in aliases for name in names if name)}
+    ids = {
+        key
+        for key, (_, aliases) in CROPS.items()
+        if any(normalized(name) in aliases for name in names if name)
+    }
     return next(iter(ids)) if len(ids) == 1 else None
 
 
@@ -39,14 +43,23 @@ def parse_records(data, crop, observed):
     url = BASE + observed.strftime("%d-%m-%Y") + "/" + str(crop)
     for market, row in data.items():
         try:
-            if not isinstance(market, str) or len(market.strip()) < 2 or not isinstance(row, dict):
+            if (
+                not isinstance(market, str)
+                or len(market.strip()) < 2
+                or not isinstance(row, dict)
+            ):
                 raise ValueError("Malformed market record")
             # Date/crop are bound by the official request; reject contradictory metadata.
-            if row.get("date", observed.strftime("%d-%m-%Y")) != observed.strftime("%d-%m-%Y"):
+            if row.get("date", observed.strftime("%d-%m-%Y")) != observed.strftime(
+                "%d-%m-%Y"
+            ):
                 raise ValueError("Wrong observation date")
             if str(row.get("crop_id", crop)) != str(crop):
                 raise ValueError("Wrong crop ID")
-            if row.get("observation_date", observed.isoformat()) != observed.isoformat():
+            if (
+                row.get("observation_date", observed.isoformat())
+                != observed.isoformat()
+            ):
                 raise ValueError("Wrong observation date")
             if row.get("currency", "INR") != "INR":
                 raise ValueError("Unexpected currency")
@@ -55,14 +68,28 @@ def parse_records(data, crop, observed):
             low, high = paise(row["min"]), paise(row["max"])
             if not 0 <= low <= high <= 10**12:
                 raise ValueError("Invalid price range")
-            midpoint = int((Decimal(low + high) / 2).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            midpoint = int(
+                (Decimal(low + high) / 2).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
             quote = SourceQuote(
-                commodity=CROPS[crop][0], market=market.strip(), district="Not provided",
-                state="Tamil Nadu", unit="kg", currency="INR", price_paise=midpoint,
-                min_price_paise=low, max_price_paise=high, observation_date=observed,
-                source=SOURCE, source_url=url, source_record_id=str(crop) + ":" + market.strip(),
-                original_min_value=str(row["min"]), original_max_value=str(row["max"]),
-                original_unit="kg", market_type="uzhavar_santhai", calculation_method=METHOD,
+                commodity=CROPS[crop][0],
+                market=market.strip(),
+                district="Not provided",
+                state="Tamil Nadu",
+                unit="kg",
+                currency="INR",
+                price_paise=midpoint,
+                min_price_paise=low,
+                max_price_paise=high,
+                observation_date=observed,
+                source=SOURCE,
+                source_url=url,
+                source_record_id=str(crop) + ":" + market.strip(),
+                original_min_value=str(row["min"]),
+                original_max_value=str(row["max"]),
+                original_unit="kg",
+                market_type="uzhavar_santhai",
+                calculation_method=METHOD,
                 unit_evidence_url="https://www.agrimark.tn.gov.in/",
             )
             quotes.append(quote)
@@ -75,28 +102,46 @@ class TamilNaduMarketRetriever:
     def __init__(self, transport=None):
         self.transport = transport
 
+    @staticmethod
+    async def _fetch(client, url):
+        # This POST is the department's read-only report request. Retry only
+        # transport/transient HTTP failures, never invalid evidence or 4xx auth.
+        for attempt in range(2):
+            try:
+                async with client.stream("POST", url, content=b"") as response:
+                    response.raise_for_status()
+                    content = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        content.extend(chunk)
+                        if len(content) > 2_000_000:
+                            raise ValueError("Response limit exceeded")
+                return json.loads(content)
+            except httpx.HTTPError as exc:
+                transient = not isinstance(
+                    exc, httpx.HTTPStatusError
+                ) or exc.response.status_code in (408, 429, 500, 502, 503, 504)
+                if attempt or not transient:
+                    raise
+                await asyncio.sleep(0.25)
+
     async def retrieve(self, queries, primary_only=True):
         ids = sorted({crop_mapping(q) for q in queries} - {None})
         diagnostics, quotes = [], []
         if any(crop_mapping(q) is None for q in queries):
             diagnostics.append("TN_UNSUPPORTED_CROP")
         observed = datetime.now(IST).date()
-        async with asyncio.timeout(120):
+        async with asyncio.timeout(240):
             # trust_env=False prevents forwarding proxy credentials/configuration.
-            async with httpx.AsyncClient(timeout=httpx.Timeout(25, connect=10),
-                    follow_redirects=False, trust_env=False,
-                    transport=self.transport or httpx.AsyncHTTPTransport(retries=0)) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(25, connect=10),
+                follow_redirects=False,
+                trust_env=False,
+                transport=self.transport or httpx.AsyncHTTPTransport(retries=0),
+            ) as client:
                 for crop in ids:
                     url = BASE + observed.strftime("%d-%m-%Y") + "/" + str(crop)
                     try:
-                        async with client.stream("POST", url, content=b"") as response:
-                            response.raise_for_status()
-                            content = bytearray()
-                            async for chunk in response.aiter_bytes():
-                                content.extend(chunk)
-                                if len(content) > 2_000_000:
-                                    raise ValueError("Response limit exceeded")
-                        data = json.loads(content)
+                        data = await self._fetch(client, url)
                         if len(data) > settings.MARKET_SOURCE_MAX_ROWS:
                             raise ValueError("Row limit exceeded")
                         batch, rejected = parse_records(data, crop, observed)

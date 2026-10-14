@@ -215,6 +215,9 @@ void main() {
     session(AppRole.farmer);
     Map<String, dynamic>? submitted;
     final api = ApiClient(client: MockClient((r) async {
+      if (r.url.path.endsWith('filter-options')) {
+        return envelope({'categories': []});
+      }
       expect(r.method, 'PUT');
       expect(r.url.path, '/api/v1/products/isolated-crop');
       submitted = Map<String, dynamic>.from(jsonDecode(r.body));
@@ -240,10 +243,17 @@ void main() {
     final price = find.widgetWithText(TextFormField, 'Your selling price');
     await tester.enterText(stock, '-2');
     await tester.enterText(price, '12.34');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
+    expect(submitted, isNotNull,
+        reason: tester
+            .widgetList<Text>(find.byType(Text))
+            .map((w) => w.data)
+            .join(' | '));
     expect(submitted?['stock_adjustment'], -2);
     expect(submitted?['selling_price_per_unit_paise'], 1234);
     expect(submitted!.containsKey('quantity'), isFalse);

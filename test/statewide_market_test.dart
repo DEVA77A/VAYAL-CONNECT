@@ -87,7 +87,8 @@ void main() {
         .pumpWidget(MaterialApp(home: MarketPricesScreen(service: service)));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.text(label), findsOneWidget);
+    expect(find.text('Tamil Nadu Uzhavar Santhai market observations'),
+        findsOneWidget);
     expect(find.text('Market price unavailable'), findsOneWidget);
     expect(requests, hasLength(1));
     service.dispose();

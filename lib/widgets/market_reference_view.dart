@@ -25,6 +25,8 @@ class MarketReferenceView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(S.t('Market price unavailable')),
+                    Text(S.t(
+                        'No current verified suggestion is available. Enter your own selling price.')),
                     if (r?['reference_price_message'] != null)
                       Text(S.t(r!['reference_price_message'] as String))
                   ])));

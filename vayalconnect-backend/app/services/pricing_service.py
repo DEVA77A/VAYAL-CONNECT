@@ -25,20 +25,25 @@ from app.integrations.statewide_market import market_price_provider
 from app.services.market_discovery import MarketDiscoveryService
 from app.schemas.market_price import MarketPriceItem, MarketPriceListResponse
 from app.core.exceptions import (
-    MarketPriceUnavailableError, ValidationError, FinancialInconsistencyError,
+    MarketPriceUnavailableError,
+    ValidationError,
+    FinancialInconsistencyError,
 )
 from app.utils.money import (
-    rupees_to_paise, format_rupees, calculate_percentage,
-    validate_financial_consistency, safe_multiply,
+    rupees_to_paise,
+    format_rupees,
+    calculate_percentage,
+    validate_financial_consistency,
+    safe_multiply,
     percentage_bps_to_display,
 )
 
 logger = logging.getLogger(__name__)
 
 # Default pricing policy (configurable by admin)
-DEFAULT_FARMER_PAYOUT_BPS = 7000   # 70% of gov price → farmer
-DEFAULT_BUYER_PRICE_BPS = 9000     # 90% of gov price → buyer pays
-DEFAULT_COMMISSION_BPS = 2000      # 20% of gov price → commission
+DEFAULT_FARMER_PAYOUT_BPS = 7000  # 70% of gov price → farmer
+DEFAULT_BUYER_PRICE_BPS = 9000  # 90% of gov price → buyer pays
+DEFAULT_COMMISSION_BPS = 2000  # 20% of gov price → commission
 
 
 class PricingEngine:
@@ -74,7 +79,9 @@ class PricingEngine:
         market: str,
         farmer_id: str,
         selling_price_per_unit_paise: Optional[int] = None,
-        state=None, district=None, variety=None,
+        state=None,
+        district=None,
+        variety=None,
     ) -> Dict[str, Any]:
         """
         Calculate complete pricing for a product.
@@ -84,24 +91,54 @@ class PricingEngine:
         """
         if selling_price_per_unit_paise is not None:
             try:
-                reference = await self.get_verified_reference(product_name, market, unit, category=category, state=state, district=district, variety=variety)
+                reference = await self.get_verified_reference(
+                    product_name,
+                    market,
+                    unit,
+                    category=category,
+                    state=state,
+                    district=district,
+                    variety=variety,
+                )
                 if not reference.get("reference_price_available"):
                     reference.setdefault("government_reference_price_paise", 0)
             except (MarketPriceUnavailableError, ValidationError):
-                reference = {"government_reference_price_paise": 0, "reference_price_available": False,
-                    "reference_price_message": "No compatible verified official reference available. Selling price is farmer-selected."}
+                reference = {
+                    "government_reference_price_paise": 0,
+                    "reference_price_available": False,
+                    "reference_price_message": "No compatible verified official reference available. Selling price is farmer-selected.",
+                }
             amounts = await self.selling_amounts(selling_price_per_unit_paise)
-            return {**reference, **amounts, "farmer_id": farmer_id, "pricing_mode": "FARMER_SELECTED",
-                    "pricing_policy_id": None, "pricing_policy_version": 0,
-                    "market": market, "location": location, "quality_grade": quality_grade, "quantity": quantity, "unit": unit,
-                    "farmer_total_payout_paise": safe_multiply(selling_price_per_unit_paise, quantity),
-                    "buyer_total_paise": safe_multiply(amounts["buyer_price_per_unit_paise"], quantity),
-                    "commission_total_paise": safe_multiply(amounts["commission_per_unit_paise"], quantity),
-                    "calculated_at": datetime.now(timezone.utc)}
+            return {
+                **reference,
+                **amounts,
+                "farmer_id": farmer_id,
+                "pricing_mode": "FARMER_SELECTED",
+                "pricing_policy_id": None,
+                "pricing_policy_version": 0,
+                "market": market,
+                "location": location,
+                "quality_grade": quality_grade,
+                "quantity": quantity,
+                "unit": unit,
+                "farmer_total_payout_paise": safe_multiply(
+                    selling_price_per_unit_paise, quantity
+                ),
+                "buyer_total_paise": safe_multiply(
+                    amounts["buyer_price_per_unit_paise"], quantity
+                ),
+                "commission_total_paise": safe_multiply(
+                    amounts["commission_per_unit_paise"], quantity
+                ),
+                "calculated_at": datetime.now(timezone.utc),
+            }
         # Historical-policy helpers still require the same verified, bounded reference.
         # New public listing creation always supplies a farmer-selected base price.
         reference = await self.get_verified_reference(product_name, market, unit)
-        if not reference.get("reference_price_available") or reference.get("reference_price_per_listing_unit_paise") is None:
+        if (
+            not reference.get("reference_price_available")
+            or reference.get("reference_price_per_listing_unit_paise") is None
+        ):
             raise MarketPriceUnavailableError()
         gov_ref_price_paise = reference["government_reference_price_paise"]
         price_unit = reference["reference_price_unit"]
@@ -117,8 +154,12 @@ class PricingEngine:
             policy_id = None
             policy_version = 0
         else:
-            farmer_payout_bps = policy.get("farmer_payout_percentage_bps", DEFAULT_FARMER_PAYOUT_BPS)
-            buyer_price_bps = policy.get("buyer_price_percentage_bps", DEFAULT_BUYER_PRICE_BPS)
+            farmer_payout_bps = policy.get(
+                "farmer_payout_percentage_bps", DEFAULT_FARMER_PAYOUT_BPS
+            )
+            buyer_price_bps = policy.get(
+                "buyer_price_percentage_bps", DEFAULT_BUYER_PRICE_BPS
+            )
             policy_id = policy["id"]
             policy_version = policy.get("version", 1)
 
@@ -138,7 +179,9 @@ class PricingEngine:
         # We need per-unit (KG) price
         gov_per_kg_paise = reference["reference_price_per_listing_unit_paise"]
 
-        farmer_payout_per_unit = calculate_percentage(gov_per_kg_paise, farmer_payout_bps)
+        farmer_payout_per_unit = calculate_percentage(
+            gov_per_kg_paise, farmer_payout_bps
+        )
         buyer_price_per_unit = calculate_percentage(gov_per_kg_paise, buyer_price_bps)
         commission_per_unit = buyer_price_per_unit - farmer_payout_per_unit
 
@@ -155,7 +198,9 @@ class PricingEngine:
         commission_total = safe_multiply(commission_per_unit, quantity)
 
         # Step 6: Validate financial consistency
-        if not validate_financial_consistency(buyer_total, farmer_total, commission_total):
+        if not validate_financial_consistency(
+            buyer_total, farmer_total, commission_total
+        ):
             raise FinancialInconsistencyError(
                 f"Financial inconsistency: buyer_total({buyer_total}) != "
                 f"farmer_payout({farmer_total}) + commission({commission_total})"
@@ -192,7 +237,9 @@ class PricingEngine:
 
     async def selling_amounts(self, selling_price: int) -> Dict[str, Any]:
         if type(selling_price) is not int or not 0 < selling_price <= 100_000_000:
-            raise ValidationError("Selling price must be positive integer paise, at most ₹1,000,000 per unit.")
+            raise ValidationError(
+                "Selling price must be positive integer paise, at most ₹1,000,000 per unit."
+            )
         if not self._commission_loaded:
             self._commission = await self.pricing_repo.get_active_commission()
             self._commission_loaded = True
@@ -201,69 +248,145 @@ class PricingEngine:
         if type(bps) is not int or not 0 <= bps <= 10000:
             raise FinancialInconsistencyError("Invalid commission configuration.")
         commission = calculate_percentage(selling_price, bps)
-        return {"farmer_payout_per_unit_paise": selling_price, "buyer_price_per_unit_paise": selling_price + commission,
-                "commission_per_unit_paise": commission, "commission_percentage_bps": bps,
-                "commission_config_id": config.get("id") if config else None,
-                "commission_config_version": config.get("version", 0) if config else 0}
+        return {
+            "farmer_payout_per_unit_paise": selling_price,
+            "buyer_price_per_unit_paise": selling_price + commission,
+            "commission_per_unit_paise": commission,
+            "commission_percentage_bps": bps,
+            "commission_config_id": config.get("id") if config else None,
+            "commission_config_version": config.get("version", 0) if config else 0,
+        }
 
     async def buyer_pricing(self, product: dict) -> dict:
         if not product.get("farmer_payout_per_unit_paise"):
             raise ValidationError("Listing has no valid farmer base price.")
         amounts = await self.selling_amounts(product["farmer_payout_per_unit_paise"])
-        return {**product, **amounts, "commission_percentage": amounts["commission_percentage_bps"]}
+        return {
+            **product,
+            **amounts,
+            "commission_percentage": amounts["commission_percentage_bps"],
+        }
 
-    async def get_verified_reference(self, commodity: str, market: str, unit: str,
-                                     state=None, district=None, category=None, variety=None) -> dict:
-        result = await MarketDiscoveryService(self.db).lookup(commodity=commodity,
-            state="Tamil Nadu", category=category, variety=variety, limit=100, scope="statewide")
-        records = [r for r in result["records"] if r.get("reference_scope") == "statewide"
-                   and market_price_provider.matches(r, commodity, state="Tamil Nadu")]
+    async def get_verified_reference(
+        self,
+        commodity: str,
+        market: str,
+        unit: str,
+        state=None,
+        district=None,
+        category=None,
+        variety=None,
+    ) -> dict:
+        result = await MarketDiscoveryService(self.db).lookup(
+            commodity=commodity,
+            state="Tamil Nadu",
+            variety=variety,
+            limit=100,
+            scope="statewide",
+        )
+        records = [
+            r
+            for r in result["records"]
+            if r.get("reference_scope") == "statewide"
+            and market_price_provider.matches(r, commodity, state="Tamil Nadu")
+        ]
         if not records:
-            return {"reference_price_available": False, "reference_price_message": result["message"],
-                    "reference_records": []}
-        aliases = {"KILOGRAM": "KG", "QTL": "QUINTAL", "TONNE": "TON", "MT": "TON", "PIECES": "PIECE", "COUNT": "PIECE", "BUNCHES": "BUNCH", "BUNDLES": "BUNDLE"}
+            return {
+                "reference_price_available": False,
+                "reference_price_message": result["message"],
+                "reference_records": [],
+            }
+        aliases = {
+            "KILOGRAM": "KG",
+            "QTL": "QUINTAL",
+            "TONNE": "TON",
+            "MT": "TON",
+            "PIECES": "PIECE",
+            "COUNT": "PIECE",
+            "BUNCHES": "BUNCH",
+            "BUNDLES": "BUNDLE",
+        }
         listing_unit = aliases.get(unit.upper().strip(), unit.upper().strip())
         factors = {"KG": 1, "QUINTAL": 100, "TON": 1000}
+
         def compatibility(record):
             source_unit = record["unit"].upper().strip()
             source_unit = aliases.get(source_unit, source_unit)
-            return 0 if source_unit == listing_unit else 1 if source_unit in factors and listing_unit in factors else 2
-        trade_priority = {"mandi": 0, "wholesale": 1, "farm_gate": 2, "retail": 3, "unknown": 4}
-        records.sort(key=lambda r: (bool(r.get("stale")),
-            compatibility(r),
-            -date.fromisoformat(str(r["arrival_date"])[:10]).toordinal(),
-            trade_priority.get(r.get("price_type"), 4), r["market"], str(r.get("variety") or "")))
+            return (
+                0
+                if source_unit == listing_unit
+                else 1
+                if source_unit in factors and listing_unit in factors
+                else 2
+            )
+
+        trade_priority = {
+            "mandi": 0,
+            "wholesale": 1,
+            "farm_gate": 2,
+            "retail": 3,
+            "unknown": 4,
+        }
+        records.sort(
+            key=lambda r: (
+                bool(r.get("stale")),
+                compatibility(r),
+                -date.fromisoformat(str(r["arrival_date"])[:10]).toordinal(),
+                trade_priority.get(r.get("price_type"), 4),
+                r["market"],
+                str(r.get("variety") or ""),
+            )
+        )
         record = records[0]
         raw_unit = record["unit"].upper().strip()
         raw_unit = aliases.get(raw_unit, raw_unit)
         raw_price = record["price_paise"]
         converted = None
         if listing_unit in factors and raw_unit in factors:
-            converted = int((Decimal(raw_price) * factors[listing_unit] / factors[raw_unit]).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            converted = int(
+                (
+                    Decimal(raw_price) * factors[listing_unit] / factors[raw_unit]
+                ).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            )
         elif listing_unit == raw_unit:
             converted = raw_price
-        return {"reference_price_available": True, "government_reference_price_paise": raw_price,
-                "reference_price_per_listing_unit_paise": converted, "reference_price_unit": record["unit"],
-                "reference_listing_unit": unit, "reference_price_date": record["arrival_date"],
-                "reference_price_source": record["source"], "reference_price_cached": not result["live"],
-                "reference_price_stale": record["stale"], "reference_price_retrieved_at": record.get("retrieved_at"),
-                "reference_commodity": record["commodity"], "reference_market": record["market"],
-                "reference_min_paise": record.get("min_price_paise"), "reference_max_paise": record.get("max_price_paise"),
-                "reference_state": record.get("state"), "reference_district": record.get("district"),
-                "reference_source_url": record.get("source_url"), "reference_price_type": record.get("price_type"),
-                "reference_verification_status": record.get("verification_status"),
-                "reference_verification_method": record.get("verification_method"),
-                "reference_quote_type": record.get("quote_type", "unknown"),
-                "reference_currency": record.get("currency", "INR"),
-                "reference_scope": record.get("reference_scope"),
-                "reference_label": record.get("reference_label"),
-                "reference_aggregation_method": record.get("aggregation_method"),
-                "reference_market_type": record.get("market_type"),
-                "reference_observation_count": record.get("observation_count"),
-                "reference_observation_dates": record.get("observation_dates"),
-                "reference_records": MarketPriceListResponse(records=[MarketPriceItem(**r) for r in records],
-                    count=len(records), live=result["live"], source=result["source"]).model_dump(mode="json")["records"],
-                "reference_price_message": result["message"]}
+        return {
+            "reference_price_available": True,
+            "government_reference_price_paise": raw_price,
+            "reference_price_per_listing_unit_paise": converted,
+            "reference_price_unit": record["unit"],
+            "reference_listing_unit": unit,
+            "reference_price_date": record["arrival_date"],
+            "reference_price_source": record["source"],
+            "reference_price_cached": not result["live"],
+            "reference_price_stale": record["stale"],
+            "reference_price_retrieved_at": record.get("retrieved_at"),
+            "reference_commodity": record["commodity"],
+            "reference_market": record["market"],
+            "reference_min_paise": record.get("min_price_paise"),
+            "reference_max_paise": record.get("max_price_paise"),
+            "reference_state": record.get("state"),
+            "reference_district": record.get("district"),
+            "reference_source_url": record.get("source_url"),
+            "reference_price_type": record.get("price_type"),
+            "reference_verification_status": record.get("verification_status"),
+            "reference_verification_method": record.get("verification_method"),
+            "reference_quote_type": record.get("quote_type", "unknown"),
+            "reference_currency": record.get("currency", "INR"),
+            "reference_scope": record.get("reference_scope"),
+            "reference_label": record.get("reference_label"),
+            "reference_aggregation_method": record.get("aggregation_method"),
+            "reference_market_type": record.get("market_type"),
+            "reference_observation_count": record.get("observation_count"),
+            "reference_observation_dates": record.get("observation_dates"),
+            "reference_records": MarketPriceListResponse(
+                records=[MarketPriceItem(**r) for r in records],
+                count=len(records),
+                live=result["live"],
+                source=result["source"],
+            ).model_dump(mode="json")["records"],
+            "reference_price_message": result["message"],
+        }
 
     @staticmethod
     def _valid_reference(record, commodity, market):
@@ -322,7 +445,9 @@ class CommissionService:
         if type(new_percentage_bps) is not int or not 0 <= new_percentage_bps <= 10000:
             raise ValidationError("Commission must be between 0% and 100%.")
         current = await self.pricing_repo.get_active_commission()
-        previous_bps = current["commission_percentage_bps"] if current else DEFAULT_COMMISSION_BPS
+        previous_bps = (
+            current["commission_percentage_bps"] if current else DEFAULT_COMMISSION_BPS
+        )
 
         # Supersede current
         if current:
