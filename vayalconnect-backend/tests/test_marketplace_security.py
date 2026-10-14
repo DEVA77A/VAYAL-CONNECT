@@ -123,6 +123,7 @@ async def test_validation_responses_never_echo_submitted_password():
     from app.main import create_app
     from app.core.database import get_database
     app=create_app();app.dependency_overrides[get_database]=lambda:AsyncMock()
+    app.state.database_ready = True  # This isolated API test intentionally omits lifespan.
     from tests.test_registration_contract import registration_payload
     payload=registration_payload();payload['password']='private-invalid-password-marker'
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://isolated-test') as client:

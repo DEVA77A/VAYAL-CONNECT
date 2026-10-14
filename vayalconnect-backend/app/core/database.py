@@ -20,6 +20,7 @@ class Database:
 
     client: Optional[AsyncIOMotorClient] = None
     db: Optional[AsyncIOMotorDatabase] = None
+    startup_phase: str = "not_started"
 
     async def connect(self):
         """Establish MongoDB connection."""
@@ -31,6 +32,8 @@ class Database:
             minPoolSize=10,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=10000,
+            socketTimeoutMS=30000,
+            waitQueueTimeoutMS=10000,
         )
         self.db = self.client[settings.MONGODB_DATABASE]
 
@@ -66,23 +69,23 @@ class Database:
         logger.info("Creating database indexes...")
 
         # Users
-        users = self.db["users"]
+        users = self._index_collection("users")
         await users.create_index("email", unique=True)
         await users.create_index("phone", unique=True)
         await users.create_index("role")
         await users.create_index("is_active")
 
         # Farmer Profiles
-        farmer_profiles = self.db["farmer_profiles"]
+        farmer_profiles = self._index_collection("farmer_profiles")
         await farmer_profiles.create_index("user_id", unique=True)
         await farmer_profiles.create_index("approval_status")
 
         # Buyer Profiles
-        buyer_profiles = self.db["buyer_profiles"]
+        buyer_profiles = self._index_collection("buyer_profiles")
         await buyer_profiles.create_index("user_id", unique=True)
 
         # Products
-        products = self.db["products"]
+        products = self._index_collection("products")
         await products.create_index("farmer_id")
         await products.create_index("product_name")
         await products.create_index("category")
@@ -91,7 +94,7 @@ class Database:
         await products.create_index("location")
 
         # Market Prices
-        market_prices = self.db["market_prices"]
+        market_prices = self._index_collection("market_prices")
         await market_prices.create_index(
             [("commodity", 1), ("market", 1), ("arrival_date", -1)]
         )
@@ -101,22 +104,22 @@ class Database:
         await market_prices.create_index("arrival_date")
 
         # Pricing Policies
-        pricing_policies = self.db["pricing_policies"]
+        pricing_policies = self._index_collection("pricing_policies")
         await pricing_policies.create_index("is_active")
 
         # Commission Configs
-        commission_configs = self.db["commission_configs"]
+        commission_configs = self._index_collection("commission_configs")
         await commission_configs.create_index("status")
         await commission_configs.create_index("effective_from")
 
         # Pricing Snapshots
-        pricing_snapshots = self.db["pricing_snapshots"]
+        pricing_snapshots = self._index_collection("pricing_snapshots")
         await pricing_snapshots.create_index("product_id")
         await pricing_snapshots.create_index("farmer_id")
         await pricing_snapshots.create_index("created_at")
 
         # Orders
-        orders = self.db["orders"]
+        orders = self._index_collection("orders")
         await orders.create_index("buyer_id")
         await orders.create_index("farmer_id")
         await orders.create_index("product_id")
@@ -131,26 +134,30 @@ class Database:
         # Backward-compatible grace period for legacy unpaid reservations.
         # Existing financial snapshots and order history remain unchanged.
         now = datetime.now(timezone.utc)
+        self._startup_phase("orders:legacy_reservation_migration")
         await orders.update_many({"order_status": "PENDING_PAYMENT", "payment_status": {"$in": ["PENDING", "FAILED"]},
             "reservation_expires_at": {"$exists": False}}, {"$set": {
                 "reservation_expires_at": now + timedelta(minutes=settings.ORDER_RESERVATION_MINUTES),
                 "reservation_migrated_at": now}})
 
         # Payments
-        payments = self.db["payments"]
+        payments = self._index_collection("payments")
         # Preserve history; unique indexes protect new concurrent operations.
         await payments.create_index("order_id", unique=True, name="payment_order_unique")
         await payments.create_index("buyer_id")
         await payments.create_index("razorpay_order_id", unique=True, name="gateway_order_unique", partialFilterExpression={"razorpay_order_id": {"$type": "string"}})
+        self._startup_phase("payments:inspect_gateway_index")
         indexes = await payments.index_information()
         if "razorpay_order_id_1" in indexes and not indexes["razorpay_order_id_1"].get("sparse"):
+            self._startup_phase("payments:replace_legacy_gateway_index")
             await payments.drop_index("razorpay_order_id_1")
+        self._startup_phase("payments:indexes")
         await payments.create_index("razorpay_payment_id", unique=True, name="gateway_payment_unique", partialFilterExpression={"razorpay_payment_id": {"$type": "string"}})
         await payments.create_index("payment_status")
         await payments.create_index("idempotency_key", unique=True, sparse=True)
 
         # Payouts
-        payouts = self.db["payouts"]
+        payouts = self._index_collection("payouts")
         await payouts.create_index("order_id", unique=True, name="payout_order_unique")
         await payouts.create_index("farmer_id")
         await payouts.create_index("status")
@@ -158,14 +165,14 @@ class Database:
         await payouts.create_index("idempotency_key", unique=True, sparse=True)
 
         # OTP Verifications
-        otp_verifications = self.db["otp_verifications"]
+        otp_verifications = self._index_collection("otp_verifications")
         await otp_verifications.create_index([("email", 1), ("purpose", 1)])
         await otp_verifications.create_index(
             "expires_at", expireAfterSeconds=0
         )  # TTL index
 
         # Refresh Tokens
-        refresh_tokens = self.db["refresh_tokens"]
+        refresh_tokens = self._index_collection("refresh_tokens")
         await refresh_tokens.create_index("user_id")
         await refresh_tokens.create_index("token_hash", unique=True)
         await refresh_tokens.create_index(
@@ -173,7 +180,7 @@ class Database:
         )  # TTL index
 
         # Audit Logs
-        audit_logs = self.db["audit_logs"]
+        audit_logs = self._index_collection("audit_logs")
         await audit_logs.create_index("actor_id")
         await audit_logs.create_index("action")
         await audit_logs.create_index("entity_type")
@@ -181,12 +188,21 @@ class Database:
         await audit_logs.create_index([("entity_type", 1), ("entity_id", 1)])
 
         # Admin Actions
-        admin_actions = self.db["admin_actions"]
+        admin_actions = self._index_collection("admin_actions")
         await admin_actions.create_index("admin_id")
         await admin_actions.create_index("action_type")
         await admin_actions.create_index("created_at")
 
+        self._startup_phase("complete")
         logger.info("All database indexes created successfully.")
+
+    def _startup_phase(self, phase):
+        self.startup_phase = phase
+        logger.info("Database initialization phase=%s", phase)
+
+    def _index_collection(self, name):
+        self._startup_phase(name + ":indexes")
+        return self.db[name]
 
 
 # Global database instance

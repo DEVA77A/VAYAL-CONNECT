@@ -35,6 +35,7 @@ from app.api.v1.settings import router as settings_router
 from app.api.v1.market_prices import router as market_prices_router
 
 logger = logging.getLogger(__name__)
+DATABASE_INITIALIZATION_TIMEOUT_SECONDS = 300
 
 
 @asynccontextmanager
@@ -45,9 +46,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting VayalConnect Backend v{settings.APP_VERSION}")
     logger.info(f"Environment: {settings.APP_ENV}")
 
-    await connect_db()
-    await create_indexes()
-    logger.info("Database connected and indexes created")
+    app.state.database_ready = False
+    app.state.database_initialization_failed = False
 
     async def reservation_worker():
         from app.services.order_service import OrderService
@@ -59,17 +59,35 @@ async def lifespan(app: FastAPI):
                 logger.warning("Reservation cleanup failed (%s)", type(exc).__name__)
             await asyncio.sleep(60)
 
-    task = asyncio.create_task(reservation_worker())
+    async def initialize_database():
+        try:
+            await asyncio.wait_for(create_indexes(), DATABASE_INITIALIZATION_TIMEOUT_SECONDS)
+        except Exception as exc:
+            from app.core.database import database
+            app.state.database_ready = False
+            app.state.database_initialization_failed = True
+            logger.error("Database initialization failed phase=%s category=%s code=%s; service remains unready",
+                database.startup_phase, type(exc).__name__, getattr(exc, "code", None))
+            return
+        app.state.database_ready = True
+        logger.info("Database connected and indexes created; service ready")
+        await reservation_worker()
+
+    task = None
     try:
+        await connect_db()
+        # Uvicorn binds after lifespan yields. Keep protected routes unready
+        # until all indexes and existing initialization operations succeed.
+        task = asyncio.create_task(initialize_database())
         yield
     finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-
-    # Shutdown
-    logger.info("Shutting down VayalConnect Backend")
-    await close_db()
+        app.state.database_ready = False
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        logger.info("Shutting down VayalConnect Backend")
+        await close_db()
 
 
 def create_app() -> FastAPI:
@@ -87,11 +105,25 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc" if settings.APP_ENV != "production" else None,
         lifespan=lifespan,
     )
+    app.state.database_ready = False
+    app.state.database_initialization_failed = False
 
     # ============================================================
     # Middleware
     # ============================================================
-    app.add_middleware(RequestIDMiddleware)
+    @app.middleware("http")
+    async def database_readiness(request: Request, call_next):
+        if request.url.path != "/health" and not getattr(app.state, "database_ready", False):
+            failed = getattr(app.state, "database_initialization_failed", False)
+            return JSONResponse(status_code=503, content={
+                "success": False, "data": None,
+                "error": {"code": "DATABASE_INITIALIZATION_FAILED" if failed else "SERVICE_INITIALIZING",
+                          "message": "Database initialization failed." if failed else "Service is starting. Please retry."},
+                "request_id": getattr(request.state, "request_id", None),
+            }, headers={"Retry-After": "5"})
+        return await call_next(request)
+
+    # Last registered runs first: request IDs and CORS wrap readiness rejections.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.ALLOWED_ORIGINS,
@@ -99,6 +131,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestIDMiddleware)
 
     # ============================================================
     # Global Exception Handler
@@ -168,9 +201,14 @@ def create_app() -> FastAPI:
     # ============================================================
     @app.get("/health")
     async def health_check():
+        if not getattr(app.state, "database_ready", False):
+            failed = getattr(app.state, "database_initialization_failed", False)
+            return JSONResponse(status_code=503, content={
+                "status": "unhealthy" if failed else "starting",
+                "database": "initialization_failed" if failed else "initializing",
+            })
         from app.core.database import database
         connected = await database.is_connected()
-        from fastapi.responses import JSONResponse
         if not connected:
             return JSONResponse(status_code=503, content={"status": "unhealthy", "database": "unavailable"})
         import os

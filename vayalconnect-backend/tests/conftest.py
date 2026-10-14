@@ -35,6 +35,16 @@ def mock_db():
 
 
 @pytest.fixture(autouse=True)
+def initialized_api_test_app(monkeypatch):
+    """API tests supply isolated DBs/mocks and intentionally omit lifespan.
+
+    Readiness tests use fresh create_app() instances with the production default.
+    """
+    from app.main import app
+    monkeypatch.setattr(app.state, "database_ready", True)
+
+
+@pytest.fixture(autouse=True)
 def unit_transaction_adapter(monkeypatch):
     """Unit mocks execute callbacks; real Motor databases retain real transactions.
 

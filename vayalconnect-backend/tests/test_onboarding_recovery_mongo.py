@@ -45,6 +45,7 @@ async def workflow():
         await db.farmer_profiles.insert_one(complete_farmer(user_id=ids["OTHER"], approval_status="REJECTED"))
         await db.commission_configs.insert_one({"status": "ACTIVE", "version": 1, "commission_percentage_bps": 1500})
         app.dependency_overrides[get_database] = lambda: db
+        app.state.database_ready = True  # The fixture initialized its disposable DB.
         def headers(role):
             # Deliberately claim ADMIN in a BUYER token: persisted role must win.
             return {"Authorization": "Bearer " + create_access_token({"sub": str(ids[role]),
