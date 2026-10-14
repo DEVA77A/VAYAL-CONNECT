@@ -49,6 +49,8 @@ class _AddProductScreenState extends State<AddProductScreen>
   Map<String, dynamic>? _reference;
   Timer? _referenceTimer;
   int _referenceRequest = 0;
+  bool _manualPrice = false;
+  bool _referenceLoading = false;
   final Set<String> _registeredCategories = {};
   bool get _editing => widget.product != null;
   @override
@@ -57,6 +59,7 @@ class _AddProductScreenState extends State<AddProductScreen>
     _fields['state']!.text = 'Tamil Nadu';
     final p = widget.product;
     if (p != null) {
+      _manualPrice = true;
       for (final k in [
         'product_name',
         'description',
@@ -79,6 +82,7 @@ class _AddProductScreenState extends State<AddProductScreen>
       _date = DateTime.tryParse(p['harvest_date'] ?? '') ?? DateTime.now();
     }
     _loadCategories();
+    if (_editing) _queueReference();
   }
 
   Future<void> _loadCategories() async {
@@ -140,6 +144,8 @@ class _AddProductScreenState extends State<AddProductScreen>
   void _queueReference() {
     _referenceTimer?.cancel();
     _referenceRequest++;
+    _referenceLoading = false;
+    if (!_manualPrice) _fields['selling_price']!.clear();
     final crop = _fields['product_name']!.text.trim().toLowerCase();
     if (!const {
       'tomato',
@@ -154,6 +160,7 @@ class _AddProductScreenState extends State<AddProductScreen>
       if (crop.isNotEmpty) _reference = {'reference_price_available': false};
       return;
     }
+    _referenceLoading = true;
     _referenceTimer = Timer(const Duration(milliseconds: 600), () {
       if (mounted && !_busy) _lookup(background: true);
     });
@@ -169,20 +176,34 @@ class _AddProductScreenState extends State<AddProductScreen>
       if (!background) _busy = true;
       _error = null;
       _reference = null;
+      _referenceLoading = true;
+      if (!_manualPrice) _fields['selling_price']!.clear();
     });
     try {
       final uri =
           Uri(path: '/api/v1/products/price-reference', queryParameters: {
         'commodity': _fields['product_name']!.text.trim(),
         'unit': _unit,
-        'category': _category,
         if (_fields['variety']!.text.trim().isNotEmpty)
           'variety': _fields['variety']!.text.trim(),
       });
       // Backend reads MongoDB only. Upload registers crops for future daily runs.
       final r = await _api.request(uri.toString());
       if (mounted && request == _referenceRequest) {
-        setState(() => _reference = Map<String, dynamic>.from(r));
+        setState(() {
+          _reference = Map<String, dynamic>.from(r);
+          final suggested = r['reference_price_per_listing_unit_paise'];
+          if (!_manualPrice &&
+              r['reference_price_available'] == true &&
+              r['reference_verification_status'] == 'verified' &&
+              r['reference_price_stale'] == false &&
+              suggested is int &&
+              suggested > 0 &&
+              suggested <= 100000000) {
+            _fields['selling_price']!.text =
+                (suggested / 100).toStringAsFixed(2);
+          }
+        });
       }
     } catch (e) {
       if (mounted && request == _referenceRequest) {
@@ -192,6 +213,9 @@ class _AddProductScreenState extends State<AddProductScreen>
         });
       }
     } finally {
+      if (mounted && request == _referenceRequest) {
+        setState(() => _referenceLoading = false);
+      }
       if (mounted && !background) setState(() => _busy = false);
     }
   }
@@ -252,6 +276,7 @@ class _AddProductScreenState extends State<AddProductScreen>
           child: TextFormField(
               controller: _fields[key],
               onChanged: (value) => setState(() {
+                    if (key == 'selling_price') _manualPrice = true;
                     if ([
                       'product_name',
                       'market',
@@ -412,6 +437,16 @@ class _AddProductScreenState extends State<AddProductScreen>
                                   })),
                       _field('selling_price', 'Your selling price',
                           required: true, number: true),
+                      if (_referenceLoading) ...[
+                        const LinearProgressIndicator(),
+                        Text(S.t('Loading verified price suggestion...')),
+                      ] else if (_reference != null)
+                        Text(S.t(!_manualPrice &&
+                                _fields['selling_price']!.text.isNotEmpty
+                            ? 'Verified suggestion filled in. You can change your selling price.'
+                            : _manualPrice
+                                ? 'Your entered selling price is preserved.'
+                                : 'No current verified suggestion is available. Enter your own selling price.')),
                       _field('location', 'Farm location',
                           required: true, editable: !_editing),
                       _field('market', 'Nearest mandi',

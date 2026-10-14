@@ -38,6 +38,26 @@ class S {
   }
 
   static const _ta = <String, String>{
+    'Loading verified price suggestion...':
+        'சரிபார்க்கப்பட்ட விலை பரிந்துரை ஏற்றப்படுகிறது...',
+    'Verified suggestion filled in. You can change your selling price.':
+        'சரிபார்க்கப்பட்ட பரிந்துரை நிரப்பப்பட்டது. உங்கள் விற்பனை விலையை மாற்றலாம்.',
+    'Your entered selling price is preserved.':
+        'நீங்கள் உள்ளிட்ட விற்பனை விலை மாற்றப்படவில்லை.',
+    'No current verified suggestion is available. Enter your own selling price.':
+        'தற்போதைய சரிபார்க்கப்பட்ட விலை பரிந்துரை இல்லை. உங்கள் விற்பனை விலையை உள்ளிடவும்.',
+    'No verified price is available for this crop and selection. Enter your own selling price.':
+        'இந்தப் பயிர் மற்றும் தேர்வுக்கு சரிபார்க்கப்பட்ட விலை இல்லை. உங்கள் விற்பனை விலையை உள்ளிடவும்.',
+    'Unable to load verified market prices. Please retry.':
+        'சரிபார்க்கப்பட்ட சந்தை விலைகளை ஏற்ற முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
+    'Tamil Nadu Uzhavar Santhai market observations':
+        'தமிழ்நாடு உழவர் சந்தை விலை பதிவுகள்',
+    'Verified cached reference; check observation date.':
+        'சேமிக்கப்பட்ட சரிபார்க்கப்பட்ட விலை; பதிவு தேதியைப் பார்க்கவும்.',
+    'Verified cached records from daily discovery; check observation dates.':
+        'தினசரி சேகரிப்பில் சேமிக்கப்பட்ட சரிபார்க்கப்பட்ட பதிவுகள்; பதிவு தேதிகளைப் பார்க்கவும்.',
+    'Current verified price unavailable; historical verified cache.':
+        'தற்போதைய சரிபார்க்கப்பட்ட விலை இல்லை; முந்தைய சரிபார்க்கப்பட்ட விலை காட்டப்படுகிறது.',
     'Tamil Nadu Uzhavar Santhai reference — median of available market range midpoints':
         'தமிழ்நாடு உழவர் சந்தை குறிப்பு விலை — கிடைக்கும் சந்தை விலை வரம்புகளின் நடுப்புள்ளிகளின் இடைநிலை',
     'median_distinct_market_range_midpoint':

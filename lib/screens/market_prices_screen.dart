@@ -21,6 +21,7 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
   MarketPriceListResponse? _data;
   bool _busy = true;
   String? _error;
+  int _request = 0;
   @override
   void initState() {
     super.initState();
@@ -35,6 +36,7 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
   }
 
   Future<void> _load() async {
+    final request = ++_request;
     setState(() {
       _busy = true;
       _error = null;
@@ -42,11 +44,14 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
     try {
       final d = await _service.fetchMarketPrices(
           commodity: _commodity.text, state: 'Tamil Nadu', limit: 50);
-      if (mounted) setState(() => _data = d);
+      if (mounted && request == _request) setState(() => _data = d);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted && request == _request) {
+        setState(() => _error =
+            S.t('Unable to load verified market prices. Please retry.'));
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && request == _request) setState(() => _busy = false);
     }
   }
 
@@ -58,11 +63,11 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
           child: ListView(padding: const EdgeInsets.all(16), children: [
             Text(S.t(
                 'Verified market prices are references. Farmers set their own selling price.')),
-            Text(S.t(
-                'Tamil Nadu statewide reference price — calculated from available market observations')),
+            Text(S.t('Tamil Nadu Uzhavar Santhai market observations')),
             const SizedBox(height: 12),
             TextField(
                 controller: _commodity,
+                onSubmitted: (_) => _load(),
                 decoration: InputDecoration(
                     labelText: S.t('Commodity'),
                     hintText: FormExamples.hint('product_name'),
@@ -75,11 +80,18 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
               Text(S.t(_data!.isLive
                   ? 'Retrieved verified market records'
                   : 'Cached verified records')),
-              if (_data!.message != null) Text(_data!.message!),
+              if (_data!.message != null) Text(S.t(_data!.message!)),
               if (_data!.records.isEmpty)
                 Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(S.t('Market price unavailable'))),
+                    child: Column(children: [
+                      Text(S.t('Market price unavailable')),
+                      Text(S.t(
+                          'No verified price is available for this crop and selection. Enter your own selling price.')),
+                      TextButton(
+                          onPressed: _busy ? null : _load,
+                          child: Text(S.t('Retry'))),
+                    ])),
               for (final r in _data!.records)
                 Card(
                     child: Padding(

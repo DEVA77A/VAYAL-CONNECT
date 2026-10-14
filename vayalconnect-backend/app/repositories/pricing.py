@@ -5,7 +5,11 @@ Pricing policies, commission configs, and immutable pricing snapshots.
 """
 
 from app.core.transactions import collection
-from app.integrations.pypricing_market import commodity_names, canonical_commodity, normalized
+from app.integrations.pypricing_market import (
+    commodity_names,
+    canonical_commodity,
+    normalized,
+)
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -51,8 +55,7 @@ class PricingRepository:
     async def update_policy(self, policy_id: str, update_data: Dict[str, Any]) -> bool:
         update_data["updated_at"] = datetime.now(timezone.utc)
         result = await self.policies.update_one(
-            {"_id": ObjectId(policy_id)},
-            {"$set": update_data}
+            {"_id": ObjectId(policy_id)}, {"$set": update_data}
         )
         return result.modified_count > 0
 
@@ -75,10 +78,12 @@ class PricingRepository:
         """Mark the current active commission as SUPERSEDED."""
         result = await self.commission_configs.update_many(
             {"status": "ACTIVE"},
-            {"$set": {
-                "status": "SUPERSEDED",
-                "effective_until": datetime.now(timezone.utc),
-            }}
+            {
+                "$set": {
+                    "status": "SUPERSEDED",
+                    "effective_until": datetime.now(timezone.utc),
+                }
+            },
         )
         return result.modified_count > 0
 
@@ -92,8 +97,17 @@ class PricingRepository:
 
     async def create_snapshot(self, snapshot_data: Dict[str, Any]) -> str:
         snapshot_data["created_at"] = datetime.now(timezone.utc)
-        for field in ["product_id", "farmer_id", "pricing_policy_id", "commission_config_id"]:
-            if field in snapshot_data and isinstance(snapshot_data[field], str) and ObjectId.is_valid(snapshot_data[field]):
+        for field in [
+            "product_id",
+            "farmer_id",
+            "pricing_policy_id",
+            "commission_config_id",
+        ]:
+            if (
+                field in snapshot_data
+                and isinstance(snapshot_data[field], str)
+                and ObjectId.is_valid(snapshot_data[field])
+            ):
                 snapshot_data[field] = ObjectId(snapshot_data[field])
         result = await self.snapshots.insert_one(snapshot_data)
         return str(result.inserted_id)
@@ -109,7 +123,12 @@ class PricingRepository:
     # ============================================================
 
     async def store_market_price(self, price_data: Dict[str, Any]) -> str:
-        price_data = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in price_data.items()}
+        price_data = {
+            k: v.isoformat()
+            if isinstance(v, date) and not isinstance(v, datetime)
+            else v
+            for k, v in price_data.items()
+        }
         price_data["created_at"] = datetime.now(timezone.utc)
         result = await self.market_prices.insert_one(price_data)
         return str(result.inserted_id)
@@ -118,6 +137,15 @@ class PricingRepository:
         """Upsert market price records to avoid duplicates."""
         if not prices:
             return 0
+        from app.integrations.statewide_market import matches
+        from pymongo.errors import DuplicateKeyError
+
+        for record in prices:
+            if record.get("verification_method") in (
+                "retrieved_source_record",
+                "statewide_source_median",
+            ) and not matches(record):
+                raise ValueError("Invalid verified market record; cache preserved")
         now = datetime.now(timezone.utc)
         count = 0
         for p in prices:
@@ -126,16 +154,30 @@ class PricingRepository:
             p_copy.pop("_id", None)
             p_copy["updated_at"] = now
             p_copy.pop("created_at", None)
-            p_copy = {k: v.isoformat() if isinstance(v, date) and not isinstance(v, datetime) else v for k, v in p_copy.items()}
+            p_copy = {
+                k: v.isoformat()
+                if isinstance(v, date) and not isinstance(v, datetime)
+                else v
+                for k, v in p_copy.items()
+            }
 
             # Unique key by commodity, market, and arrival_date
             query: Dict[str, Any] = {
-                "state": p_copy.get("state", ""), "district": p_copy.get("district", ""),
-                "variety": p_copy.get("variety", ""), "grade": p_copy.get("grade", ""),
-                "source_url": p_copy.get("source_url"), "unit": p_copy.get("unit"),
+                "state": p_copy.get("state", ""),
+                "district": p_copy.get("district", ""),
+                "variety": p_copy.get("variety", ""),
+                "grade": p_copy.get("grade", ""),
+                "source_url": p_copy.get("source_url"),
+                "unit": p_copy.get("unit"),
                 "price_type": p_copy.get("price_type"),
-                "commodity": {"$regex": f"^{re.escape(p_copy.get('commodity', ''))}$", "$options": "i"},
-                "market": {"$regex": f"^{re.escape(p_copy.get('market', ''))}$", "$options": "i"},
+                "commodity": {
+                    "$regex": f"^{re.escape(p_copy.get('commodity', ''))}$",
+                    "$options": "i",
+                },
+                "market": {
+                    "$regex": f"^{re.escape(p_copy.get('market', ''))}$",
+                    "$options": "i",
+                },
             }
             if p_copy.get("arrival_date"):
                 # Handle arrival_date as date or string
@@ -147,9 +189,24 @@ class PricingRepository:
                     query["arrival_date"] = str(arr_val)
 
             if p_copy.get("verification_status") == "verified":
-                identity = {k: p_copy.get(k) for k in ("commodity", "state", "district", "market",
-                    "variety", "unit", "price_type", "arrival_date", "source_url")}
-                if p_copy.get("verification_method") in ("retrieved_source_record", "statewide_source_median"):
+                identity = {
+                    k: p_copy.get(k)
+                    for k in (
+                        "commodity",
+                        "state",
+                        "district",
+                        "market",
+                        "variety",
+                        "unit",
+                        "price_type",
+                        "arrival_date",
+                        "source_url",
+                    )
+                }
+                if p_copy.get("verification_method") in (
+                    "retrieved_source_record",
+                    "statewide_source_median",
+                ):
                     identity["commodity_id"] = p_copy.get("commodity_id")
                     identity["grade"] = p_copy.get("grade")
                     if p_copy.get("verification_method") == "statewide_source_median":
@@ -157,14 +214,18 @@ class PricingRepository:
                 if p_copy.get("verification_method") == "provider_reported_quote":
                     identity["commodity"] = canonical_commodity(identity["commodity"])
                     identity["market"] = normalized(identity["market"])
-                p_copy["discovery_key"] = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+                p_copy["discovery_key"] = hashlib.sha256(
+                    json.dumps(identity, sort_keys=True).encode()
+                ).hexdigest()
                 query = {"discovery_key": p_copy["discovery_key"]}
 
-            await self.market_prices.update_one(
-                query,
-                {"$set": p_copy, "$setOnInsert": {"created_at": now}},
-                upsert=True,
-            )
+            update = {"$set": p_copy, "$setOnInsert": {"created_at": now}}
+            try:
+                await self.market_prices.update_one(query, update, upsert=True)
+            except DuplicateKeyError:
+                if "discovery_key" not in query:
+                    raise
+                await self.market_prices.update_one(query, update, upsert=False)
             count += 1
         return count
 
@@ -203,25 +264,40 @@ class PricingRepository:
     ) -> List[Dict[str, Any]]:
         # Legacy AI/provider records remain in history but are not eligible for
         # current verified cache reads. Filter before pagination.
-        query: Dict[str, Any] = {"verification_status": "verified",
-                                 "verification_method": "statewide_source_median" if scope == "statewide"
-                                 else "retrieved_source_record" if scope == "market"
-                                 else {"$in": ["retrieved_source_record", "statewide_source_median"]}}
+        query: Dict[str, Any] = {
+            "verification_status": "verified",
+            "verification_method": "statewide_source_median"
+            if scope == "statewide"
+            else "retrieved_source_record"
+            if scope == "market"
+            else {"$in": ["retrieved_source_record", "statewide_source_median"]},
+        }
         if commodity_id:
             query["commodity_id"] = commodity_id
         if category:
             query["category"] = {"$regex": f"^{re.escape(category)}$", "$options": "i"}
         if commodity:
             names = commodity_names(commodity)
-            patterns = [r"\s+".join(re.escape(part) for part in name.split()) for name in names]
+            patterns = [
+                r"\s+".join(re.escape(part) for part in name.split()) for name in names
+            ]
             expression = {"$regex": "^(?:" + "|".join(patterns) + ")$", "$options": "i"}
             query["$or"] = [{"commodity": expression}, {"crop_aliases": expression}]
         if market:
-            query["market"] = {"$regex": f"^{re.escape(market)}(?:\\s|$)", "$options": "i"}
+            query["market"] = {
+                "$regex": f"^{re.escape(market)}(?:\\s|$)",
+                "$options": "i",
+            }
         if state:
-            query["state"] = {"$regex": f"^{re.escape(state)} $".replace(" $", "$"), "$options": "i"}
+            query["state"] = {
+                "$regex": f"^{re.escape(state)} $".replace(" $", "$"),
+                "$options": "i",
+            }
         if district:
-            query["district"] = {"$regex": f"^{re.escape(district)} $".replace(" $", "$"), "$options": "i"}
+            query["district"] = {
+                "$regex": f"^{re.escape(district)} $".replace(" $", "$"),
+                "$options": "i",
+            }
         cursor = (
             self.market_prices.find(query)
             .sort([("arrival_date", -1), ("retrieved_at", -1)])
@@ -234,8 +310,13 @@ class PricingRepository:
         if doc is None:
             return None
         doc["id"] = str(doc.pop("_id"))
-        for field in ["product_id", "farmer_id", "pricing_policy_id",
-                       "commission_config_id", "created_by"]:
+        for field in [
+            "product_id",
+            "farmer_id",
+            "pricing_policy_id",
+            "commission_config_id",
+            "created_by",
+        ]:
             if field in doc and isinstance(doc[field], ObjectId):
                 doc[field] = str(doc[field])
         return doc

@@ -20,6 +20,7 @@ class MarketPriceService {
     final query = <String, String>{
       'limit': '$limit',
       'offset': '$offset',
+      'scope': 'market',
       if (commodity?.trim().isNotEmpty == true) 'commodity': commodity!.trim(),
       if (state?.trim().isNotEmpty == true) 'state': state!.trim(),
       if (district?.trim().isNotEmpty == true) 'district': district!.trim(),

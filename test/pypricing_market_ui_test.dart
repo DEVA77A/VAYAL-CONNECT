@@ -151,6 +151,9 @@ void main() {
       (tester) async {
     var referenceCalls = 0;
     final api = ApiClient(client: MockClient((request) async {
+      if (request.url.path.endsWith('filter-options')) {
+        return envelope({'categories': []});
+      }
       expect(request.method, 'GET');
       expect(request.url.path, '/api/v1/products/price-reference');
       referenceCalls++;
@@ -171,6 +174,7 @@ void main() {
     };
     await tester.pumpWidget(
         MaterialApp(home: AddProductScreen(product: product, api: api)));
+    await tester.pump(const Duration(milliseconds: 650));
     await tester.pumpAndSettle();
     final selling = find.widgetWithText(TextFormField, 'Your selling price');
     await tester.ensureVisible(selling);
@@ -178,7 +182,7 @@ void main() {
     await tester.ensureVisible(find.text('Verified market reference'));
     await tester.tap(find.text('Verified market reference'));
     await tester.pumpAndSettle();
-    expect(referenceCalls, 1);
+    expect(referenceCalls, 2);
     expect(tester.widget<TextFormField>(selling).controller!.text, '9.99');
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

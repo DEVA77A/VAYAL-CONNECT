@@ -16,7 +16,10 @@ from types import SimpleNamespace
 import httpx
 from fastapi.testclient import TestClient
 
-from app.integrations.government_market import GovernmentMarketPriceProvider, market_price_provider
+from app.integrations.government_market import (
+    GovernmentMarketPriceProvider,
+    market_price_provider,
+)
 from app.main import app
 from app.core.database import get_database
 
@@ -24,7 +27,9 @@ from app.core.database import get_database
 @pytest.fixture
 def test_client():
     mock_db = AsyncMock()
-    mock_db.__getitem__.return_value.update_one = AsyncMock(return_value=SimpleNamespace(modified_count=1, upserted_id=None))
+    mock_db.__getitem__.return_value.update_one = AsyncMock(
+        return_value=SimpleNamespace(modified_count=1, upserted_id=None)
+    )
     app.dependency_overrides[get_database] = lambda: mock_db
     client = TestClient(app)
     yield client, mock_db
@@ -123,7 +128,9 @@ async def test_search_prices_live_success():
 @pytest.mark.asyncio
 async def test_search_prices_timeout_handling():
     provider = GovernmentMarketPriceProvider()
-    with patch("httpx.AsyncClient.get", side_effect=httpx.TimeoutException("Read timed out")):
+    with patch(
+        "httpx.AsyncClient.get", side_effect=httpx.TimeoutException("Read timed out")
+    ):
         res = await provider.search_prices(commodity="Paddy")
         assert res["live"] is False
         assert res["count"] == 0
@@ -133,7 +140,9 @@ async def test_search_prices_timeout_handling():
 @pytest.mark.asyncio
 async def test_search_prices_connection_refused_handling():
     provider = GovernmentMarketPriceProvider()
-    with patch("httpx.AsyncClient.get", side_effect=httpx.ConnectError("Connection refused")):
+    with patch(
+        "httpx.AsyncClient.get", side_effect=httpx.ConnectError("Connection refused")
+    ):
         res = await provider.search_prices(commodity="Paddy")
         assert res["live"] is False
         assert res["count"] == 0
@@ -172,20 +181,31 @@ def test_api_endpoint_legacy_ai_excerpt_is_not_verified_cache(test_client):
         "price_per_kg_display": "₹22.00 / kg",
         "unit": "Quintal",
         "arrival_date": "2026-10-09",
-        "source": "example.org", "source_url": "https://example.org/mandi",
-        "verification_status": "verified", "verification_method": "grounding_and_source_excerpt",
-        "currency": "INR", "price_paise": 220000, "price_type": "mandi", "evidence": "Synthetic test fixture",
+        "source": "example.org",
+        "source_url": "https://example.org/mandi",
+        "verification_status": "verified",
+        "verification_method": "grounding_and_source_excerpt",
+        "currency": "INR",
+        "price_paise": 220000,
+        "price_type": "mandi",
+        "evidence": "Synthetic test fixture",
         "retrieved_at": datetime.now(timezone.utc),
     }
 
-    with patch("app.api.v1.market_prices.market_price_provider.search_prices",
-               new=AsyncMock(return_value=mock_live_fail)):
-        with patch("app.repositories.pricing.PricingRepository.list_market_prices",
-                   new=AsyncMock(return_value=[cached_record])):
-            response = client.get("/api/v1/market-prices?commodity=Paddy&district=Madurai")
-            assert response.status_code == 503
+    with patch(
+        "app.api.v1.market_prices.market_price_provider.search_prices",
+        new=AsyncMock(return_value=mock_live_fail),
+    ):
+        with patch(
+            "app.repositories.pricing.PricingRepository.list_market_prices",
+            new=AsyncMock(return_value=[cached_record]),
+        ):
+            response = client.get(
+                "/api/v1/market-prices?commodity=Paddy&district=Madurai"
+            )
+            assert response.status_code == 200
             data = response.json()
-            assert data["success"] is False
+            assert data["success"] is True
             assert data["data"]["live"] is False
             assert data["data"]["count"] == 0
             assert data["data"]["records"] == []
@@ -202,26 +222,32 @@ def test_api_endpoint_market_prices_empty_state(test_client):
         "message": "Government market API server is currently unreachable.",
     }
 
-    with patch("app.api.v1.market_prices.market_price_provider.search_prices",
-               new=AsyncMock(return_value=mock_live_fail)):
-        with patch("app.repositories.pricing.PricingRepository.list_market_prices",
-                   new=AsyncMock(return_value=[])):
+    with patch(
+        "app.api.v1.market_prices.market_price_provider.search_prices",
+        new=AsyncMock(return_value=mock_live_fail),
+    ):
+        with patch(
+            "app.repositories.pricing.PricingRepository.list_market_prices",
+            new=AsyncMock(return_value=[]),
+        ):
             response = client.get("/api/v1/market-prices?commodity=UnknownCrop")
-            assert response.status_code == 503
+            assert response.status_code == 200
             data = response.json()
-            assert data["success"] is False
-            assert data["error"]["code"] == "MARKET_SOURCE_UNAVAILABLE"
+            assert data["success"] is True
+            assert "error" not in data or data["error"] is None
             assert data["data"]["live"] is False
             assert data["data"]["count"] == 0
             assert data["data"]["records"] == []
-            assert "cached price unavailable" in data["data"]["message"].lower()
+            assert "No verified price" in data["data"]["message"]
 
 
 def test_api_endpoint_filter_options(test_client):
     client, db = test_client
+
     async def registered():
         yield {"product_name": "Paddy", "category": "Grains", "district": "Madurai"}
         yield {"product_name": "Novel flower", "category": "New category"}
+
     db["products"].find = lambda *args: registered()
     response = client.get("/api/v1/market-prices/filter-options")
     assert response.status_code == 200
@@ -245,7 +271,23 @@ def test_api_credentials_never_exposed(test_client):
 
 def test_api_excludes_unverified_legacy_cache(test_client):
     client, _ = test_client
-    legacy = {"commodity": "Paddy", "market": "Madurai", "modal_price_paise": 220000, "source": "data.gov.in AGMARKNET", "unit": "Quintal", "arrival_date": "2026-10-09"}
-    with patch("app.api.v1.market_prices.market_price_provider.search_prices", AsyncMock(return_value={"live": False, "records": []})), patch("app.repositories.pricing.PricingRepository.list_market_prices", AsyncMock(return_value=[legacy])):
+    legacy = {
+        "commodity": "Paddy",
+        "market": "Madurai",
+        "modal_price_paise": 220000,
+        "source": "data.gov.in AGMARKNET",
+        "unit": "Quintal",
+        "arrival_date": "2026-10-09",
+    }
+    with (
+        patch(
+            "app.api.v1.market_prices.market_price_provider.search_prices",
+            AsyncMock(return_value={"live": False, "records": []}),
+        ),
+        patch(
+            "app.repositories.pricing.PricingRepository.list_market_prices",
+            AsyncMock(return_value=[legacy]),
+        ),
+    ):
         result = client.get("/api/v1/market-prices").json()["data"]
         assert result["count"] == 0 and result["records"] == []
