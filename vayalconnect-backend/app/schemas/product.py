@@ -26,7 +26,7 @@ class CreateProductRequest(BaseModel):
     quantity: int = Field(..., gt=0, le=1_000_000)
     quantity_unit: QuantityUnit
     quality_grade: QualityGrade
-    image_url: Optional[str] = None
+    image_url: str = Field(..., min_length=5, description="Uploaded and validated crop photograph URL")
     location: str = Field(..., min_length=2, max_length=200)
     market: str = Field(..., min_length=2, max_length=200)
     harvest_date: date

@@ -1,3 +1,5 @@
+import '../widgets/marketplace_product_card.dart';
+import '../widgets/brand_widgets.dart';
 import '../utils/language_rebuild.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -82,99 +84,166 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Marketplace')),
-      body: RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(padding: const EdgeInsets.all(16), children: [
-            Text(
-                '${S.t('Welcome')}, ${SessionManager().currentUser?.name ?? ''}',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, children: [
-              ActionChip(
-                  label: Text(S.t('Orders')),
-                  avatar: const Icon(Icons.receipt_long),
-                  onPressed: () => _open(const OrdersScreen())),
-              ActionChip(
-                  label: Text(S.t('Addresses')),
-                  avatar: const Icon(Icons.location_on_outlined),
-                  onPressed: () => _open(const AddressesScreen())),
-              ActionChip(
-                  label: Text(S.t('Market prices')),
-                  onPressed: () => _open(const MarketPricesScreen())),
-              ActionChip(
-                  label: Text(S.t('Profile')),
-                  onPressed: () => _open(const ProfileScreen())),
-            ]),
-            const SizedBox(height: 16),
-            TextField(
-                controller: _search,
-                decoration: InputDecoration(
-                    labelText: S.t('Search crops'),
-                    prefixIcon: const Icon(Icons.search)),
-                onChanged: (_) {
-                  _debounce?.cancel();
-                  _debounce =
-                      Timer(const Duration(milliseconds: 400), () => _load());
-                }),
-            const SizedBox(height: 12),
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              DropdownButton<String>(
-                  isExpanded: true,
-                  value: _category,
-                  items: ['', 'Grains', 'Vegetables', 'Fruits', 'Spices']
-                      .map((v) => DropdownMenuItem(
-                          value: v,
-                          child: Text(S.t(v.isEmpty ? 'All crops' : v))))
-                      .toList(),
-                  onChanged: (v) {
-                    setState(() => _category = v!);
-                    _load();
-                  }),
-              DropdownButton<String>(
-                  isExpanded: true,
-                  value: _sort,
-                  items: {
-                    'newest': 'Newest',
-                    'price_asc': 'Price: low to high',
-                    'price_desc': 'Price: high to low'
-                  }
-                      .entries
-                      .map((e) => DropdownMenuItem(
-                          value: e.key,
-                          child: Text(S.t(e.value),
-                              maxLines: 1, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (v) {
-                    setState(() => _sort = v!);
-                    _load();
-                  }),
-            ]),
-            if (_busy) const LinearProgressIndicator(),
-            if (_error != null) ErrorPanel(_error!, () => _load()),
-            if (!_busy && _error == null && _items.isEmpty)
-              Card(
-                  child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(children: [
-                        const Icon(Icons.eco_outlined, size: 48),
-                        const SizedBox(height: 12),
-                        Text(S.t('No available crops match your search.'))
-                      ]))),
-            for (final product in _items)
-              Card(
-                  child: ListTile(
-                      contentPadding: const EdgeInsets.all(16),
-                      leading: const Icon(Icons.eco),
-                      title: Text(product.productName),
-                      subtitle: Text(
-                          '${product.farmerName ?? ''}\n${product.location}\n${product.quantityAvailable} ${product.quantityUnit} · ${S.money(product.buyerPricePerUnitPaise)} / ${product.quantityUnit}'),
-                      isThreeLine: true,
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () =>
-                          _open(ProductDetailsScreen(product: product)))),
-            if (_items.length < _total)
-              OutlinedButton(
-                  onPressed: _busy ? null : () => _load(more: true),
-                  child: Text(S.t('Load more'))),
-          ])));
+      body: PageBody(
+          maxWidth: 1120,
+          child: RefreshIndicator(
+              onRefresh: _load,
+              child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverPadding(
+                        padding: const EdgeInsets.all(16),
+                        sliver: SliverToBoxAdapter(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                              BrandHeading(
+                                  title:
+                                      '${S.t('Welcome')}, ${SessionManager().currentUser?.name ?? ''}',
+                                  icon: Icons.storefront_outlined),
+                              Wrap(spacing: 8, children: [
+                                ActionChip(
+                                    label: Text(S.t('Orders')),
+                                    avatar: const Icon(Icons.receipt_long),
+                                    onPressed: () =>
+                                        _open(const OrdersScreen())),
+                                ActionChip(
+                                    label: Text(S.t('Addresses')),
+                                    avatar:
+                                        const Icon(Icons.location_on_outlined),
+                                    onPressed: () =>
+                                        _open(const AddressesScreen())),
+                                ActionChip(
+                                    label: Text(S.t('Market prices')),
+                                    onPressed: () =>
+                                        _open(const MarketPricesScreen())),
+                                ActionChip(
+                                    label: Text(S.t('Profile')),
+                                    onPressed: () =>
+                                        _open(const ProfileScreen())),
+                              ]),
+                              const SizedBox(height: 16),
+                              TextField(
+                                  controller: _search,
+                                  decoration: InputDecoration(
+                                      labelText: S.t('Search crops'),
+                                      prefixIcon: const Icon(Icons.search)),
+                                  onChanged: (_) {
+                                    _debounce?.cancel();
+                                    _debounce = Timer(
+                                        const Duration(milliseconds: 400),
+                                        () => _load());
+                                  }),
+                              const SizedBox(height: 12),
+                              ResponsivePair(
+                                  first: DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                          labelText: S.t('Category')),
+                                      value: _category,
+                                      items: [
+                                        '',
+                                        'Grains',
+                                        'Vegetables',
+                                        'Fruits',
+                                        'Spices'
+                                      ]
+                                          .map((v) => DropdownMenuItem(
+                                              value: v,
+                                              child: Text(S.t(v.isEmpty
+                                                  ? 'All crops'
+                                                  : v))))
+                                          .toList(),
+                                      onChanged: (v) {
+                                        setState(() => _category = v!);
+                                        _load();
+                                      }),
+                                  second: DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      decoration: InputDecoration(
+                                          labelText: S.t('Price')),
+                                      value: _sort,
+                                      items: {
+                                        'newest': 'Newest',
+                                        'price_asc': 'Price: low to high',
+                                        'price_desc': 'Price: high to low'
+                                      }
+                                          .entries
+                                          .map((e) => DropdownMenuItem(
+                                              value: e.key,
+                                              child: Text(S.t(e.value),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis)))
+                                          .toList(),
+                                      onChanged: (v) {
+                                        setState(() => _sort = v!);
+                                        _load();
+                                      })),
+                              const SizedBox(height: 20),
+                              if (_busy) const LinearProgressIndicator(),
+                              if (_error != null)
+                                ErrorPanel(_error!, () => _load()),
+                              if (!_busy && _error == null && _items.isEmpty)
+                                const EmptyPanel(
+                                    'No available crops match your search.'),
+                            ]))),
+                    SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        sliver: SliverLayoutBuilder(
+                            builder: (context, constraints) {
+                          final largeText =
+                              MediaQuery.textScalerOf(context).scale(14) > 21;
+                          final columns = largeText
+                              ? 1
+                              : constraints.crossAxisExtent >= 1000
+                                  ? 3
+                                  : constraints.crossAxisExtent >= 640
+                                      ? 2
+                                      : 1;
+                          return SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                  (context, row) => Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            for (var col = 0;
+                                                col < columns;
+                                                col++) ...[
+                                              if (col > 0)
+                                                const SizedBox(width: 16),
+                                              Expanded(
+                                                  child: row * columns + col <
+                                                          _items.length
+                                                      ? MarketplaceProductCard(
+                                                          key: ValueKey(
+                                                              _items[row * columns + col]
+                                                                  .productId),
+                                                          product: _items[
+                                                              row * columns +
+                                                                  col],
+                                                          onTap: () => _open(
+                                                              ProductDetailsScreen(
+                                                                  product: _items[
+                                                                      row * columns +
+                                                                          col])))
+                                                      : const SizedBox()),
+                                            ]
+                                          ]),
+                                  childCount:
+                                      (_items.length / columns).ceil()));
+                        })),
+                    SliverPadding(
+                        padding: const EdgeInsets.all(16),
+                        sliver: SliverToBoxAdapter(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                              if (_items.length < _total)
+                                OutlinedButton(
+                                    onPressed:
+                                        _busy ? null : () => _load(more: true),
+                                    child: Text(S.t('Load more'))),
+                            ]))),
+                  ]))));
 }

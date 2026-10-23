@@ -1,3 +1,4 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/commerce_strings.dart';
 import '../utils/form_examples.dart';
 import 'package:flutter/foundation.dart' show kReleaseMode;
@@ -101,14 +102,14 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
   Future<AppRole?> _chooseRegistrationRole() => showDialog<AppRole>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Choose your account role'),
+          title: Text(S.t('Choose your account role')),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx, AppRole.farmer),
-                child: const Text('Farmer')),
+                child: Text(S.t('Farmer'))),
             TextButton(
                 onPressed: () => Navigator.pop(ctx, AppRole.buyer),
-                child: const Text('Buyer')),
+                child: Text(S.t('Buyer'))),
           ],
         ),
       );
@@ -196,7 +197,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(S.t('Cancel')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -242,179 +243,168 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            return ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.9),
+                child: SingleChildScrollView(
+                    child: Padding(
+                  padding: EdgeInsets.only(
+                    left: 20,
+                    right: 20,
+                    top: 20,
+                    bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.lock_reset,
-                              color: AppTheme.primaryGreen),
-                          const SizedBox(width: 8),
-                          Text(
-                            VayalStrings.resetPasswordTitle,
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                      SheetTitle(
+                          title: VayalStrings.resetPasswordTitle,
+                          icon: Icons.lock_reset,
+                          onClose: () => Navigator.pop(ctx)),
+                      const SizedBox(height: 6),
+                      Text(
+                        VayalStrings.resetPasswordSubtitle,
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.textSecondary),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(ctx),
+                      const SizedBox(height: 16),
+                      if (dialogError != null)
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFEBEE),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            S.message(dialogError!),
+                            style: const TextStyle(
+                                color: AppTheme.errorRed, fontSize: 12),
+                          ),
+                        ),
+                      TextField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        enabled: !otpSent,
+                        decoration: InputDecoration(
+                          labelText: VayalStrings.phoneOrEmail,
+                          prefixIcon:
+                              const Icon(Icons.email_outlined, size: 20),
+                        ),
+                      ),
+                      if (otpSent) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: otpController,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          decoration: InputDecoration(
+                            labelText: VayalStrings.enterOtp,
+                            prefixIcon: const Icon(Icons.security, size: 20),
+                            hintText: FormExamples.hint('otp'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: newPasswordController,
+                          obscureText: true,
+                          decoration: InputDecoration(
+                            labelText: VayalStrings.newPassword,
+                            prefixIcon:
+                                const Icon(Icons.lock_outline, size: 20),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      ElevatedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                final email = emailController.text.trim();
+                                if (email.isEmpty) {
+                                  setSheetState(() =>
+                                      dialogError = VayalStrings.emailRequired);
+                                  return;
+                                }
+
+                                setSheetState(() {
+                                  isSubmitting = true;
+                                  dialogError = null;
+                                });
+
+                                if (!otpSent) {
+                                  try {
+                                    await _authService.forgotPassword(email);
+                                    setSheetState(() {
+                                      otpSent = true;
+                                      isSubmitting = false;
+                                    });
+                                  } catch (e) {
+                                    setSheetState(() {
+                                      dialogError = e
+                                          .toString()
+                                          .replaceFirst('Exception: ', '');
+                                      isSubmitting = false;
+                                    });
+                                  }
+                                } else {
+                                  final otp = otpController.text.trim();
+                                  final newPass = newPasswordController.text;
+                                  if (otp.length < 6 || newPass.length < 8) {
+                                    setSheetState(() {
+                                      isSubmitting = false;
+                                      dialogError = S.t(
+                                          'Please enter a valid 6-digit OTP and 8+ char password.');
+                                    });
+                                    return;
+                                  }
+
+                                  try {
+                                    await _authService.resetPassword(
+                                      email: email,
+                                      otp: otp,
+                                      newPassword: newPass,
+                                    );
+                                    if (!context.mounted) return;
+                                    Navigator.pop(ctx);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(S.t(
+                                            'Password reset successfully! Please login.')),
+                                        backgroundColor: AppTheme.successGreen,
+                                      ),
+                                    );
+                                  } catch (e) {
+                                    setSheetState(() {
+                                      dialogError = e
+                                          .toString()
+                                          .replaceFirst('Exception: ', '');
+                                      isSubmitting = false;
+                                    });
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : Text(otpSent
+                                ? VayalStrings.resetPasswordBtn
+                                : VayalStrings.sendOtp),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    VayalStrings.resetPasswordSubtitle,
-                    style: const TextStyle(
-                        fontSize: 13, color: AppTheme.textSecondary),
-                  ),
-                  const SizedBox(height: 16),
-                  if (dialogError != null)
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFEBEE),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        dialogError!,
-                        style: const TextStyle(
-                            color: AppTheme.errorRed, fontSize: 12),
-                      ),
-                    ),
-                  TextField(
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    enabled: !otpSent,
-                    decoration: InputDecoration(
-                      labelText: VayalStrings.phoneOrEmail,
-                      prefixIcon: const Icon(Icons.email_outlined, size: 20),
-                    ),
-                  ),
-                  if (otpSent) ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: otpController,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      decoration: InputDecoration(
-                        labelText: VayalStrings.enterOtp,
-                        prefixIcon: const Icon(Icons.security, size: 20),
-                        hintText: FormExamples.hint('otp'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: newPasswordController,
-                      obscureText: true,
-                      decoration: InputDecoration(
-                        labelText: VayalStrings.newPassword,
-                        prefixIcon: const Icon(Icons.lock_outline, size: 20),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  ElevatedButton(
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            final email = emailController.text.trim();
-                            if (email.isEmpty) {
-                              setSheetState(() =>
-                                  dialogError = VayalStrings.emailRequired);
-                              return;
-                            }
-
-                            setSheetState(() {
-                              isSubmitting = true;
-                              dialogError = null;
-                            });
-
-                            if (!otpSent) {
-                              try {
-                                await _authService.forgotPassword(email);
-                                setSheetState(() {
-                                  otpSent = true;
-                                  isSubmitting = false;
-                                });
-                              } catch (e) {
-                                setSheetState(() {
-                                  dialogError = e
-                                      .toString()
-                                      .replaceFirst('Exception: ', '');
-                                  isSubmitting = false;
-                                });
-                              }
-                            } else {
-                              final otp = otpController.text.trim();
-                              final newPass = newPasswordController.text;
-                              if (otp.length < 6 || newPass.length < 8) {
-                                setSheetState(() {
-                                  isSubmitting = false;
-                                  dialogError =
-                                      'Please enter a valid 6-digit OTP and 8+ char password.';
-                                });
-                                return;
-                              }
-
-                              try {
-                                await _authService.resetPassword(
-                                  email: email,
-                                  otp: otp,
-                                  newPassword: newPass,
-                                );
-                                if (!context.mounted) return;
-                                Navigator.pop(ctx);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                        'Password reset successfully! Please login.'),
-                                    backgroundColor: AppTheme.successGreen,
-                                  ),
-                                );
-                              } catch (e) {
-                                setSheetState(() {
-                                  dialogError = e
-                                      .toString()
-                                      .replaceFirst('Exception: ', '');
-                                  isSubmitting = false;
-                                });
-                              }
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGreen,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: isSubmitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : Text(otpSent
-                            ? VayalStrings.resetPasswordBtn
-                            : VayalStrings.sendOtp),
-                  ),
-                ],
-              ),
-            );
+                )));
           },
         );
       },
@@ -458,27 +448,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
               ),
               child: Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.person_add_rounded,
-                              color: AppTheme.primaryGreen),
-                          const SizedBox(width: 8),
-                          Text(
-                            VayalStrings.register,
-                            style: const TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(ctx),
-                      ),
-                    ],
-                  ),
+                  SheetTitle(
+                      title: VayalStrings.register,
+                      icon: Icons.person_add_outlined,
+                      onClose: () => Navigator.pop(ctx)),
                   const Divider(),
                   Expanded(
                     child: SingleChildScrollView(
@@ -505,7 +478,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               enabled: !accountCreated && !isSubmitting,
                               controller: nameController,
                               validator: (v) => v == null || v.trim().length < 2
-                                  ? 'Enter valid name'
+                                  ? S.t('Enter valid name')
                                   : null,
                               decoration: InputDecoration(
                                 labelText: S.t('Full Name'),
@@ -516,49 +489,41 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               ),
                             ),
                             const SizedBox(height: 10),
-                            Row(
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: TextFormField(
-                                    enabled: !accountCreated && !isSubmitting,
-                                    controller: emailController,
-                                    keyboardType: TextInputType.emailAddress,
-                                    validator: (v) =>
-                                        v == null || !v.contains('@')
-                                            ? 'Valid email required'
-                                            : null,
-                                    decoration: InputDecoration(
-                                      labelText: S.t('Email Address'),
-                                      hintText: FormExamples.hint('email'),
-                                      hintStyle: FormExamples.style,
-                                      prefixIcon: const Icon(
-                                          Icons.email_outlined,
-                                          size: 20),
-                                    ),
+                                TextFormField(
+                                  enabled: !accountCreated && !isSubmitting,
+                                  controller: emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  validator: (v) =>
+                                      v == null || !v.contains('@')
+                                          ? S.t('Valid email required')
+                                          : null,
+                                  decoration: InputDecoration(
+                                    labelText: S.t('Email Address'),
+                                    hintText: FormExamples.hint('email'),
+                                    hintStyle: FormExamples.style,
+                                    prefixIcon: const Icon(Icons.email_outlined,
+                                        size: 20),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  flex: 2,
-                                  child: TextFormField(
-                                    enabled: !accountCreated && !isSubmitting,
-                                    controller: ageController,
-                                    keyboardType: TextInputType.number,
-                                    validator: (v) =>
-                                        (int.tryParse(v ?? '') ?? 0) < 18 ||
-                                                (int.tryParse(v ?? '') ?? 0) >
-                                                    120
-                                            ? '18-120'
-                                            : null,
-                                    decoration: InputDecoration(
-                                      labelText: S.t('Age'),
-                                      hintText: FormExamples.hint('age'),
-                                      hintStyle: FormExamples.style,
-                                      prefixIcon: const Icon(
-                                          Icons.cake_outlined,
-                                          size: 20),
-                                    ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  enabled: !accountCreated && !isSubmitting,
+                                  controller: ageController,
+                                  keyboardType: TextInputType.number,
+                                  validator: (v) =>
+                                      (int.tryParse(v ?? '') ?? 0) < 18 ||
+                                              (int.tryParse(v ?? '') ?? 0) > 120
+                                          ? '18-120'
+                                          : null,
+                                  decoration: InputDecoration(
+                                    labelText: S.t('Age'),
+                                    hintText: FormExamples.hint('age'),
+                                    hintStyle: FormExamples.style,
+                                    prefixIcon: const Icon(Icons.cake_outlined,
+                                        size: 20),
                                   ),
                                 ),
                               ],
@@ -573,8 +538,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 labelText: S.t('Phone Number'),
                                 hintText: FormExamples.hint('phone'),
                                 hintStyle: FormExamples.style,
-                                helperText:
-                                    '10 digits or +91 followed by 10 digits',
+                                helperText: S.t(
+                                    '10 digits or +91 followed by 10 digits'),
                                 prefixIcon:
                                     const Icon(Icons.phone_outlined, size: 20),
                               ),
@@ -588,7 +553,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                       v.length < 8 ||
                                       !RegExp(r'[A-Z]').hasMatch(v) ||
                                       !RegExp(r'[0-9]').hasMatch(v)
-                                  ? '8+ chars, uppercase letter and number'
+                                  ? S.t('8+ chars, uppercase letter and number')
                                   : null,
                               decoration: InputDecoration(
                                 labelText: S.t('Password'),
@@ -650,7 +615,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               enabled: !accountCreated && !isSubmitting,
                               controller: addressController,
                               validator: (v) => v == null || v.trim().length < 5
-                                  ? 'Address required'
+                                  ? S.t('Address required')
                                   : null,
                               decoration: InputDecoration(
                                 labelText: S.t('Address'),
@@ -665,7 +630,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               enabled: !accountCreated && !isSubmitting,
                               controller: locationController,
                               validator: (v) => v == null || v.trim().length < 2
-                                  ? 'District required'
+                                  ? S.t('District required')
                                   : null,
                               decoration: InputDecoration(
                                 labelText: S.t('District / Area'),
@@ -677,32 +642,33 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               ),
                             ),
                             const SizedBox(height: 12),
-                            const Text(
-                              'Select Account Role:',
-                              style: TextStyle(
+                            Text(
+                              S.t('Select Account Role:'),
+                              style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.textSecondary),
                             ),
                             const SizedBox(height: 6),
-                            Row(
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
                               children: [
-                                Expanded(
-                                  child: ChoiceChip(
-                                    label: const Text('🌾 Farmer'),
-                                    selected: selectedRole == AppRole.farmer,
-                                    onSelected: (_) => setSheetState(
-                                        () => selectedRole = AppRole.farmer),
-                                  ),
+                                ChoiceChip(
+                                  avatar:
+                                      const Icon(Icons.agriculture_outlined),
+                                  label: Text(S.t('Farmer')),
+                                  selected: selectedRole == AppRole.farmer,
+                                  onSelected: (_) => setSheetState(
+                                      () => selectedRole = AppRole.farmer),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: ChoiceChip(
-                                    label: const Text('🛒 Buyer'),
-                                    selected: selectedRole == AppRole.buyer,
-                                    onSelected: (_) => setSheetState(
-                                        () => selectedRole = AppRole.buyer),
-                                  ),
+                                ChoiceChip(
+                                  avatar:
+                                      const Icon(Icons.shopping_bag_outlined),
+                                  label: Text(S.t('Buyer')),
+                                  selected: selectedRole == AppRole.buyer,
+                                  onSelected: (_) => setSheetState(
+                                      () => selectedRole = AppRole.buyer),
                                 ),
                               ],
                             ),
@@ -807,12 +773,13 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
           builder: (ctx, update) => AlertDialog(
-                title: const Text('Email OTP Verification'),
+                title: Text(S.t('Email OTP Verification')),
+                scrollable: true,
                 content: Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(
-                      'Email provider accepted the OTP email for $email. Check your inbox and spam folder. Delivery may take a few minutes.'),
+                      '${S.t('Email provider accepted the OTP email.')}\n$email\n${S.t('Check your inbox and spam folder. Delivery may take a few minutes.')}'),
                   if (error != null)
-                    Text(error!,
+                    Text(S.message(error!),
                         style: const TextStyle(color: AppTheme.errorRed)),
                   TextField(
                       controller: otpController,
@@ -826,14 +793,14 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                 actions: [
                   TextButton(
                       onPressed: busy ? null : () => Navigator.pop(ctx),
-                      child: const Text('Cancel')),
+                      child: Text(S.t('Cancel'))),
                   TextButton(
                       onPressed: busy || verified
                           ? null
                           : () async {
                               if (DateTime.now().isBefore(resendAfter)) {
-                                update(() => error =
-                                    'Please wait 60 seconds between OTP requests.');
+                                update(() => error = S.t(
+                                    'Please wait 60 seconds between OTP requests.'));
                                 return;
                               }
                               update(() {
@@ -854,7 +821,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 if (ctx.mounted) update(() => busy = false);
                               }
                             },
-                      child: const Text('Resend OTP')),
+                      child: Text(S.t('Resend OTP'))),
                   ElevatedButton(
                       onPressed: busy
                           ? null
@@ -862,8 +829,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               if (!verified &&
                                   !RegExp(r'^\d{6}$')
                                       .hasMatch(otpController.text.trim())) {
-                                update(
-                                    () => error = 'Enter a valid 6-digit OTP.');
+                                update(() =>
+                                    error = S.t('Enter a valid 6-digit OTP.'));
                                 return;
                               }
                               update(() {
@@ -874,8 +841,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 if (!verified) {
                                   if (!await _authService.verifyOtp(
                                       email, otpController.text.trim())) {
-                                    throw Exception(
-                                        'Email verification was not confirmed.');
+                                    throw Exception(S.t(
+                                        'Email verification was not confirmed.'));
                                   }
                                   verified = true;
                                 }
@@ -902,10 +869,10 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               }
                             },
                       child: Text(busy
-                          ? 'Please wait...'
+                          ? S.t('Please wait...')
                           : verified
-                              ? 'Continue'
-                              : 'Verify')),
+                              ? S.t('Continue')
+                              : S.t('Verify'))),
                 ],
               )),
     );
@@ -919,33 +886,17 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
-        return Padding(
+        return SingleChildScrollView(
+            child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.preview_rounded,
-                          color: AppTheme.accentGold),
-                      const SizedBox(width: 8),
-                      Text(
-                        VayalStrings.offlineDemoPreview,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
+              SheetTitle(
+                  title: VayalStrings.offlineDemoPreview,
+                  icon: Icons.preview_outlined,
+                  onClose: () => Navigator.pop(ctx)),
               const SizedBox(height: 4),
               Text(
                 VayalStrings.offlineDemoSubtitle,
@@ -953,80 +904,76 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                     fontSize: 13, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 18),
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _enterDemoMode(AppRole.farmer);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: AppTheme.primaryGreen),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('🌾', style: TextStyle(fontSize: 20)),
-                          SizedBox(height: 4),
-                          Text('Farmer',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
-                      ),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _enterDemoMode(AppRole.farmer);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: AppTheme.primaryGreen),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.agriculture_outlined, size: 24),
+                        const SizedBox(height: 4),
+                        Text(S.t('Farmer'),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _enterDemoMode(AppRole.buyer);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: AppTheme.primaryGreen),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('🛒', style: TextStyle(fontSize: 20)),
-                          SizedBox(height: 4),
-                          Text('Buyer',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
-                      ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _enterDemoMode(AppRole.buyer);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: AppTheme.primaryGreen),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.shopping_bag_outlined, size: 24),
+                        const SizedBox(height: 4),
+                        Text(S.t('Buyer'),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _enterDemoMode(AppRole.admin);
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        side: const BorderSide(color: AppTheme.primaryGreen),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('🛡️', style: TextStyle(fontSize: 20)),
-                          SizedBox(height: 4),
-                          Text('Admin',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
-                      ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _enterDemoMode(AppRole.admin);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: AppTheme.primaryGreen),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.admin_panel_settings_outlined,
+                            size: 24),
+                        const SizedBox(height: 4),
+                        Text(S.t('Admin'),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
+                      ],
                     ),
                   ),
                 ],
@@ -1034,7 +981,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
               const SizedBox(height: 12),
             ],
           ),
-        );
+        ));
       },
     );
   }
@@ -1045,7 +992,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundWarm,
-      body: SafeArea(
+      body: PageBody(child: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
@@ -1057,96 +1004,38 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Top Compact Bar: Attribution Badge + Actions
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          // Left Network Badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: AppTheme.softGreen,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.eco,
-                                    color: AppTheme.primaryGreen, size: 16),
-                                const SizedBox(width: 6),
-                                Text(
-                                  VayalStrings.governmentAttribution,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primaryGreen,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Right Controls: Server IP & Language Toggle
-                          Row(
-                            children: [
-                              // Server configuration is limited to development builds.
-                              if (!kReleaseMode)
-                                InkWell(
-                                  onTap: _showServerConfigDialog,
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                          color: AppTheme.cardBorder),
-                                    ),
-                                    child: const Row(
-                                      children: [
-                                        Icon(Icons.dns_rounded,
-                                            size: 13,
-                                            color: AppTheme.primaryGreen),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'IP',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppTheme.primaryGreen,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              const SizedBox(width: 6),
-                              // Language Selector
+                      // Top Actions Bar: Server IP (Dev Only) & Language Toggle
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            // Server configuration is limited to development builds.
+                            if (!kReleaseMode)
                               InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    session.toggleLanguage();
-                                  });
-                                },
+                                onTap: _showServerConfigDialog,
                                 borderRadius: BorderRadius.circular(16),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 4),
+                                      horizontal: 9, vertical: 5),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(16),
-                                    border:
-                                        Border.all(color: AppTheme.cardBorder),
+                                    border: Border.all(
+                                        color: AppTheme.cardBorder),
                                   ),
-                                  child: Row(
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(Icons.language,
-                                          size: 14,
+                                      Icon(Icons.dns_rounded,
+                                          size: 13,
                                           color: AppTheme.primaryGreen),
-                                      const SizedBox(width: 4),
+                                      SizedBox(width: 4),
                                       Text(
-                                        session.isTamil ? 'English' : 'தமிழ்',
-                                        style: const TextStyle(
+                                        'IP',
+                                        style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
                                           color: AppTheme.primaryGreen,
@@ -1156,49 +1045,91 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Brand Hero Section (Compact)
-                      Center(
-                        child: Column(
-                          children: [
-                            const VayalLogo(),
-                            const SizedBox(height: 12),
-                            Text(
-                              VayalStrings.appName,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              VayalStrings.tagline,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: AppTheme.textSecondary,
+                            // Language Selector Pill
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  session.toggleLanguage();
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: AppTheme.cardBorder),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.02),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.language,
+                                        size: 14,
+                                        color: AppTheme.primaryGreen),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      session.isTamil ? 'English' : 'தமிழ்',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
+
+                      // Brand Hero Section
+                      Center(
+                        child: Column(
+                          children: [
+                            const VayalLogo(width: 96, height: 96),
+                            const SizedBox(height: 14),
+                            Text(
+                              VayalStrings.appName,
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              VayalStrings.tagline,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.textSecondary,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
 
                       // Error Banner
                       if (_errorMessage?.contains('Email not verified') == true)
                         TextButton(
                             onPressed: _isLoading ? null : _resumeVerification,
-                            child: const Text('Verify email / Resend OTP')),
+                            child: Text(S.t('Verify email / Resend OTP'))),
                       if (_errorMessage != null)
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -1217,7 +1148,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _errorMessage!,
+                                  S.message(_errorMessage!),
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: AppTheme.errorRed,
@@ -1232,16 +1163,18 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
 
                       // Direct Login Form Card
                       Container(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 22, vertical: 24),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppTheme.cardBorder),
+                          borderRadius: BorderRadius.circular(20),
+                          border:
+                              Border.all(color: AppTheme.cardBorder, width: 1.2),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.03),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                              color: Colors.black.withOpacity(0.035),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                         ),
@@ -1324,55 +1257,82 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 12),
 
                               // Remember Me & Forgot Password Row
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: Checkbox(
-                                          value: _rememberMe,
-                                          activeColor: AppTheme.primaryGreen,
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(4)),
-                                          onChanged: (val) => setState(
-                                              () => _rememberMe = val ?? true),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        VayalStrings.rememberMe,
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            color: AppTheme.textSecondary),
-                                      ),
-                                    ],
-                                  ),
-                                  TextButton(
+                              Builder(
+                                builder: (context) {
+                                  final isLargeText =
+                                      MediaQuery.textScalerOf(context).scale(14) > 18 ||
+                                      MediaQuery.sizeOf(context).width < 340;
+                                  final checkboxWidget = SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: Checkbox(
+                                      value: _rememberMe,
+                                      activeColor: AppTheme.primaryGreen,
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(4)),
+                                      onChanged: (val) => setState(
+                                          () => _rememberMe = val ?? true),
+                                    ),
+                                  );
+
+                                  final rememberTextWidget = Text(
+                                    VayalStrings.rememberMe,
+                                    style: const TextStyle(
+                                        fontSize: 12.5,
+                                        color: AppTheme.textSecondary),
+                                  );
+
+                                  final forgotButton = TextButton(
                                     onPressed: _showForgotPasswordSheet,
                                     style: TextButton.styleFrom(
-                                      padding: EdgeInsets.zero,
-                                      minimumSize: Size.zero,
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 4, vertical: 4),
+                                      minimumSize: const Size(48, 36),
                                       tapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
                                     ),
                                     child: Text(
                                       VayalStrings.forgotPassword,
                                       style: const TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 12.5,
                                         fontWeight: FontWeight.w600,
                                         color: AppTheme.primaryGreen,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  );
+
+                                  if (isLargeText) {
+                                    return Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            checkboxWidget,
+                                            const SizedBox(width: 8),
+                                            Expanded(child: rememberTextWidget),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        forgotButton,
+                                      ],
+                                    );
+                                  }
+
+                                  return Row(
+                                    children: [
+                                      checkboxWidget,
+                                      const SizedBox(width: 8),
+                                      Expanded(child: rememberTextWidget),
+                                      const SizedBox(width: 8),
+                                      forgotButton,
+                                    ],
+                                  );
+                                },
                               ),
 
                               const SizedBox(height: 18),
@@ -1384,7 +1344,9 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   backgroundColor: AppTheme.primaryGreen,
                                   foregroundColor: Colors.white,
                                   disabledBackgroundColor:
-                                      AppTheme.primaryGreen.withOpacity(0.6),
+                                      AppTheme.primaryGreen.withOpacity(0.55),
+                                  minimumSize:
+                                      const Size(double.infinity, 50),
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 14),
                                   shape: RoundedRectangleBorder(
@@ -1406,14 +1368,16 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          Text(
+                                          Flexible(
+                                              child: Text(
                                             VayalStrings.login,
+                                            textAlign: TextAlign.center,
                                             style: const TextStyle(
                                               fontSize: 15,
                                               fontWeight: FontWeight.bold,
                                               letterSpacing: 0.3,
                                             ),
-                                          ),
+                                          )),
                                           const SizedBox(width: 8),
                                           const Icon(
                                               Icons.arrow_forward_rounded,
@@ -1431,10 +1395,16 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 6),
+                                        horizontal: 10, vertical: 8),
                                     child: RichText(
+                                      textAlign: TextAlign.center,
                                       text: TextSpan(
                                         style: const TextStyle(
+                                            fontFamily: 'Roboto',
+                                            fontFamilyFallback: [
+                                              'Noto Sans Tamil',
+                                              'Nirmala UI'
+                                            ],
                                             fontSize: 13,
                                             color: AppTheme.textSecondary),
                                         children: [
@@ -1487,42 +1457,6 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
-
-                      const SizedBox(height: 10),
-
-                      // Unobtrusive Kisan Support Helpline
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppTheme.cardBorder),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.support_agent_rounded,
-                                size: 20, color: AppTheme.primaryGreen),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                VayalStrings.kisanHelplineTitle,
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary),
-                              ),
-                            ),
-                            Text(
-                              VayalStrings.kisanHelplineNumber,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primaryGreen,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                       const SizedBox(height: 6),
                     ],
                   ),
@@ -1531,7 +1465,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
             );
           },
         ),
-      ),
+      )),
     );
   }
 }

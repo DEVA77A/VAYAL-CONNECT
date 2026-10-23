@@ -44,7 +44,11 @@ void main() {
       submitted = Map<String, dynamic>.from(jsonDecode(r.body));
       return response({'message': 'saved'});
     }));
-    await tester.pumpWidget(MaterialApp(home: AddProductScreen(api: api)));
+    await tester.pumpWidget(MaterialApp(
+        home: AddProductScreen(
+            api: api,
+            initialImageUrl:
+                'https://vayal-connect.onrender.com/api/v1/media/tomato.jpg')));
     await tester.pumpAndSettle();
     await tester.enterText(field('Crop name'), 'Tomato');
     await tester.pump(const Duration(milliseconds: 650));

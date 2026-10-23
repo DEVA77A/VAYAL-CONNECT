@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/product_models.dart';
 import '../theme/app_theme.dart';
+import '../utils/commerce_strings.dart';
+import 'brand_widgets.dart';
 
 /// Reusable Produce Card matching Stitch Design System
 class ProduceCard extends StatelessWidget {
@@ -28,17 +30,18 @@ class ProduceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isBuyer = buyerItem != null;
-    final title = isBuyer ? buyerItem!.productName : farmerItem!.productName;
+    final title = isBuyer ? S.crop(buyerItem!.productName) : S.crop(farmerItem!.productName);
     final location = isBuyer ? buyerItem!.location : farmerItem!.location;
     final grade = isBuyer ? buyerItem!.qualityGrade : farmerItem!.qualityGrade;
     final qty = isBuyer
-        ? '${buyerItem!.quantityAvailable} ${buyerItem!.quantityUnit}'
-        : '${farmerItem!.quantityAvailable} ${farmerItem!.quantityUnit}';
+        ? '${buyerItem!.quantityAvailable} ${S.t(buyerItem!.quantityUnit)}'
+        : '${farmerItem!.quantityAvailable} ${S.t(farmerItem!.quantityUnit)}';
     final priceDisplay = isBuyer
         ? buyerItem!.buyerPricePerUnitDisplay
         : farmerItem!.farmerPayoutPerUnitDisplay;
     final priceLabel = isBuyer ? 'நேரடி விலை (Price)' : 'பட்டுவாடா (Payout)';
-    final harvestDate = isBuyer ? buyerItem!.harvestDate : farmerItem!.harvestDate;
+    final harvestDate =
+        isBuyer ? buyerItem!.harvestDate : farmerItem!.harvestDate;
     final secondaryInfo = isBuyer
         ? 'விவசாயி: ${buyerItem!.farmerName ?? "சரிபார்க்கப்பட்டது"}'
         : 'சந்தை: ${farmerItem!.market}';
@@ -68,18 +71,16 @@ class ProduceCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softGreen,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.grass_rounded,
-                    color: AppTheme.primaryGreen,
-                    size: 24,
-                  ),
-                ),
+                ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                        width: 64,
+                        height: 64,
+                        child: CropImage(
+                            isBuyer
+                                ? buyerItem!.imageUrl
+                                : farmerItem!.imageUrl,
+                            semanticLabel: title))),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -97,7 +98,8 @@ class ProduceCard extends StatelessWidget {
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: AppTheme.backgroundLight,
                               borderRadius: BorderRadius.circular(4),
@@ -130,7 +132,8 @@ class ProduceCard extends StatelessWidget {
                 ),
                 // Status Pill
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: AppTheme.softGreen,
                     borderRadius: BorderRadius.circular(6),
@@ -138,7 +141,8 @@ class ProduceCard extends StatelessWidget {
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.verified, size: 12, color: AppTheme.primaryGreen),
+                      Icon(Icons.verified,
+                          size: 12, color: AppTheme.primaryGreen),
                       SizedBox(width: 3),
                       Text(
                         'VERIFIED',
@@ -161,22 +165,26 @@ class ProduceCard extends StatelessWidget {
             // Metadata: Location & Secondary Info
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 15, color: AppTheme.textSecondary),
+                const Icon(Icons.location_on_outlined,
+                    size: 15, color: AppTheme.textSecondary),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     location,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textSecondary),
                   ),
                 ),
                 if (harvestDate != null) ...[
-                  const Icon(Icons.event_available_outlined, size: 15, color: AppTheme.textSecondary),
+                  const Icon(Icons.event_available_outlined,
+                      size: 15, color: AppTheme.textSecondary),
                   const SizedBox(width: 4),
                   Text(
                     harvestDate,
-                    style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    style: const TextStyle(
+                        fontSize: 11, color: AppTheme.textSecondary),
                   ),
                 ],
               ],
@@ -221,13 +229,20 @@ class ProduceCard extends StatelessWidget {
                     isBuyer ? Icons.shopping_cart_checkout : Icons.edit_note,
                     size: 16,
                   ),
-                  label: Text(isBuyer ? 'முன்பதிவு செய் • Order' : 'திருத்து • Edit'),
+                  label: Text(
+                      isBuyer ? 'முன்பதிவு செய் • Order' : 'திருத்து • Edit'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isBuyer ? AppTheme.primaryGreen : Colors.white,
-                    foregroundColor: isBuyer ? Colors.white : AppTheme.primaryGreen,
-                    side: isBuyer ? null : const BorderSide(color: AppTheme.primaryGreen),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                    backgroundColor:
+                        isBuyer ? AppTheme.primaryGreen : Colors.white,
+                    foregroundColor:
+                        isBuyer ? Colors.white : AppTheme.primaryGreen,
+                    side: isBuyer
+                        ? null
+                        : const BorderSide(color: AppTheme.primaryGreen),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],

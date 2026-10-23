@@ -37,7 +37,73 @@ class S {
     return value;
   }
 
+  static String crop(String? name) {
+    if (name == null || name.trim().isEmpty) return '';
+    final raw = name.trim();
+    if (!VayalStrings.isTamil) {
+      if (raw.contains('·')) {
+        final parts = raw.split('·');
+        if (parts.isNotEmpty && parts[0].trim().isNotEmpty) {
+          return parts[0].trim();
+        }
+      }
+      return raw;
+    }
+    // Tamil selection
+    if (raw.contains('·')) {
+      final parts = raw.split('·');
+      if (parts.length >= 2 && parts[1].trim().isNotEmpty) {
+        return parts[1].trim();
+      }
+    }
+    final key = raw.toLowerCase();
+    if (_crops.containsKey(key)) return _crops[key]!;
+    for (final entry in _crops.entries) {
+      if (key == entry.key || key.startsWith(entry.key) || key.contains(entry.key)) {
+        return entry.value;
+      }
+    }
+    return raw;
+  }
+
   static const _ta = <String, String>{
+    'Check your inbox and spam folder. Delivery may take a few minutes.':
+        'உங்கள் இன்பாக்ஸ் மற்றும் ஸ்பேம் கோப்புறையைப் பார்க்கவும். மின்னஞ்சல் வர சில நிமிடங்கள் ஆகலாம்.',
+    'Email provider accepted the OTP email.':
+        'OTP மின்னஞ்சலை அனுப்பும் சேவை ஏற்றுக்கொண்டது.',
+    'Email verification was not confirmed.':
+        'மின்னஞ்சல் சரிபார்ப்பு உறுதிசெய்யப்படவில்லை.',
+    'Enter a valid 6-digit OTP.': 'சரியான 6 இலக்க OTP உள்ளிடவும்.',
+    'Please wait 60 seconds between OTP requests.':
+        'OTP கோரிக்கைகளுக்கு இடையில் 60 விநாடிகள் காத்திருக்கவும்.',
+    'Password reset successfully! Please login.':
+        'கடவுச்சொல் மாற்றப்பட்டது! உள்நுழையவும்.',
+    'Please enter a valid 6-digit OTP and 8+ char password.':
+        'சரியான 6 இலக்க OTP மற்றும் குறைந்தது 8 எழுத்துக் கடவுச்சொல்லை உள்ளிடவும்.',
+    '10 digits or +91 followed by 10 digits':
+        '10 இலக்கங்கள் அல்லது +91 உடன் 10 இலக்கங்கள்',
+    'District required': 'மாவட்டம் தேவை',
+    'Address required': 'முகவரி தேவை',
+    '8+ chars, uppercase letter and number':
+        '8 அல்லது அதற்கு மேற்பட்ட எழுத்துகள், ஆங்கிலப் பெரிய எழுத்து மற்றும் எண் தேவை',
+    'Valid email required': 'சரியான மின்னஞ்சல் தேவை',
+    'Enter valid name': 'சரியான பெயரை உள்ளிடவும்',
+    'Select Account Role:': 'கணக்கு வகையைத் தேர்ந்தெடுக்கவும்:',
+    'Verify email / Resend OTP': 'மின்னஞ்சலைச் சரிபார் / OTP மீண்டும் அனுப்பு',
+    'Please wait...': 'காத்திருக்கவும்...',
+    'Continue': 'தொடர்க',
+    'Verify': 'சரிபார்',
+    'Resend OTP': 'OTP மீண்டும் அனுப்பு',
+    'Email OTP Verification': 'மின்னஞ்சல் OTP சரிபார்ப்பு',
+    'Choose your account role': 'உங்கள் கணக்கு வகையைத் தேர்ந்தெடுக்கவும்',
+    'Crop photograph unavailable': 'பயிரின் புகைப்படம் கிடைக்கவில்லை',
+    'Order summary': 'ஆர்டர் சுருக்கம்',
+    'Payment breakdown': 'கட்டண விவரங்கள்',
+    'Delivery information': 'விநியோக விவரங்கள்',
+    'Order status': 'ஆர்டர் நிலை',
+    'Payment status': 'கட்டண நிலை',
+    'Order ID': 'ஆர்டர் எண்',
+    'Price': 'விலை',
     'Loading verified price suggestion...':
         'சரிபார்க்கப்பட்ட விலை பரிந்துரை ஏற்றப்படுகிறது...',
     'Verified suggestion filled in. You can change your selling price.':
@@ -437,5 +503,146 @@ class S {
         'பட்டுவாடா ஆய்வுக்கு நிறைவடைந்து பணம் பெறப்பட்ட ஆர்டர்கள் தேவை.',
     'Approve payout': 'பட்டுவாடாவை அனுமதிக்கவும்',
     'Reject payout': 'பட்டுவாடாவை நிராகரிக்கவும்',
+    'Crop Image — Required': 'பயிரின் படம் — கட்டாயம்',
+    'Upload Crop Image': 'பயிரின் படத்தைப் பதிவேற்றவும்',
+    'Take Photo': 'புகைப்படம் எடுக்கவும்',
+    'Choose from Gallery': 'கேலரியிலிருந்து தேர்ந்தெடுக்கவும்',
+    'Image Preview': 'பட முன்னோட்டம்',
+    'Replace Image': 'படத்தை மாற்றவும்',
+    'Remove Image': 'படத்தை நீக்கவும்',
+    'Crop image is required before publishing': 'வெளியிடுவதற்கு முன் பயிரின் படம் கட்டாயம் தேவை',
+    'Crop image is required.': 'பயிரின் படம் கட்டாயம் தேவை.',
+    'Please upload a genuine photograph of your crop.': 'உங்கள் பயிரின் உண்மையான புகைப்படத்தைப் பதிவேற்றவும்.',
+    'Please select a valid crop image': 'தயவுசெய்து சரியான பயிர் புகைப்படத்தைத் தேர்ந்தெடுக்கவும்',
+    'Validating image with AI...': 'படத்தை AI மூலம் சரிபார்க்கிறது...',
+    'Image uploading and AI verification in progress...': 'படம் பதிவேற்றம் மற்றும் AI சரிபார்ப்பு நடைபெறுகிறது...',
+    'Image verified successfully': 'படம் வெற்றிகரமாகச் சரிபார்க்கப்பட்டது',
+    'Verified crop image': 'சரிபார்க்கப்பட்ட பயிரின் படம்',
+    'Crop image verified': 'பயிரின் படம் சரிபார்க்கப்பட்டது',
+    'Please enter crop name before selecting image':
+        'படத்தைத் தேர்ந்தெடுப்பதற்கு முன் பயிர் பெயரை உள்ளிடவும்',
+    'Crop changed — re-validation required':
+        'பயிர் மாற்றப்பட்டது — மீண்டும் சரிபார்ப்பு தேவை',
+    'Image verified for': 'படம் சரிபார்க்கப்பட்டது:',
+    'Quantity available': 'கிடைக்கும் அளவு',
+    'Available quantity': 'கிடைக்கும் அளவு',
+    'Selling price': 'விற்பனை விலை',
+    'Quality grade': 'தரம்',
+    'Grade': 'தரம்',
+    'District': 'மாவட்டம்',
+    'Variety': 'ரகம்',
+    'Location': 'இடம்',
+    'Buy now': 'இப்போது வாங்கவும்',
+    'Add to cart': 'கூடையில் சேர்க்கவும்',
+    'Cart': 'கூடை',
+    'Total': 'மொத்தம்',
+    'Total price': 'மொத்த விலை',
+    'Delivery available': 'விநியோகம் உள்ளது',
+    'Direct pickup': 'நேரடி சேகரிப்பு',
+    'Direct farm pickup': 'பண்ணையில் நேரடி சேகரிப்பு',
+    'Sold out': 'விற்றுத் தீர்ந்தது',
+    'In stock': 'கையிருப்பில் உள்ளது',
+    'Pulses': 'பருப்பு வகைகள்',
+    'Cash Crops': 'பணப்பயிர்கள்',
+    'All Categories': 'அனைத்து வகைகள்',
+    'Browse produce': 'விளைபொருட்களைப் பார்க்கவும்',
+    'My listings': 'என் விளைபொருட்கள்',
+    'Edit crop': 'பயிரைத் திருத்தவும்',
+    'KG': 'கிலோ',
+    'QUINTAL': 'குவிண்டால்',
+    'TON': 'டன்',
+    'PIECE': 'எண்ணிக்கை',
+    'DOZEN': 'டஜன்',
+    'BUNCH': 'கொத்து',
+    'BUNDLE': 'கட்டு',
+    'COUNT': 'எண்ணிக்கை',
+  };
+
+  static const _crops = <String, String>{
+    'tomato': 'தக்காளி',
+    'wheat': 'கோதுமை',
+    'banana': 'வாழைப்பழம்',
+    'banana fruit': 'வாழைப்பழம்',
+    'banana (fruit)': 'வாழைப்பழம்',
+    'rice': 'அரிசி',
+    'paddy': 'நெல்',
+    'onion': 'வெங்காயம்',
+    'big onion': 'பெரிய வெங்காயம்',
+    'small onion': 'சின்ன வெங்காயம்',
+    'shallots': 'சின்ன வெங்காயம்',
+    'potato': 'உருளைக்கிழங்கு',
+    'brinjal': 'கத்தரிக்காய்',
+    'eggplant': 'கத்தரிக்காய்',
+    'chilli': 'மிளகாய்',
+    'green chilli': 'பச்சை மிளகாய்',
+    'red chilli': 'காய்ந்த மிளகாய்',
+    'coconut': 'தேங்காய்',
+    'maize': 'மக்காச்சோளம்',
+    'corn': 'மக்காச்சோளம்',
+    'jasmine': 'மல்லிகை',
+    'marigold': 'சாமந்தி',
+    'turmeric': 'மஞ்சள்',
+    'garlic': 'பூண்டு',
+    'ginger': 'இஞ்சி',
+    'lady finger': 'வெண்டைக்காய்',
+    'ladies finger': 'வெண்டைக்காய்',
+    'okra': 'வெண்டைக்காய்',
+    'bhendi': 'வெண்டைக்காய்',
+    'drumstick': 'முருங்கைக்காய்',
+    'moringa': 'முருங்கைக்காய்',
+    'cabbage': 'முட்டைக்கோஸ்',
+    'cauliflower': 'காலிஃபிளவர்',
+    'carrot': 'கேரட்',
+    'beetroot': 'பீட்ரூட்',
+    'cucumber': 'வெள்ளரிக்காய்',
+    'bitter gourd': 'பாகற்காய்',
+    'bottle gourd': 'சுரைக்காய்',
+    'snake gourd': 'புடலங்காய்',
+    'ridge gourd': 'பீர்க்கங்காய்',
+    'pumpkin': 'பூசணிக்காய்',
+    'ash gourd': 'சாம்பல் பூசணி',
+    'radish': 'முள்ளங்கி',
+    'coriander': 'கொத்தமல்லி',
+    'mint': 'புதினா',
+    'curry leaves': 'கறிவேப்பிலை',
+    'tapioca': 'மரவள்ளிக்கிழங்கு',
+    'cassava': 'மரவள்ளிக்கிழங்கு',
+    'groundnut': 'நிலக்கடலை',
+    'peanut': 'நிலக்கடலை',
+    'sugarcane': 'கரும்பு',
+    'cotton': 'பருத்தி',
+    'mango': 'மாம்பழம்',
+    'papaya': 'பப்பாளி',
+    'guava': 'கொய்யா',
+    'pomegranate': 'மாதுளை',
+    'watermelon': 'தர்பூசணி',
+    'lemon': 'எலுமிச்சை',
+    'lime': 'எலுமிச்சை',
+    'rose': 'ரோஜா',
+    'chrysanthemum': 'செவ்வந்தி',
+    'ragi': 'கேழ்வரகு',
+    'finger millet': 'கேழ்வரகு',
+    'kambu': 'கம்பு',
+    'pearl millet': 'கம்பு',
+    'bajra': 'கம்பு',
+    'cholam': 'சோளம்',
+    'sorghum': 'சோளம்',
+    'jowar': 'சோளம்',
+    'moong dal': 'பாசிப்பயறு',
+    'green gram': 'பாசிப்பயறு',
+    'urad dal': 'உளுந்து',
+    'black gram': 'உளுந்து',
+    'toor dal': 'துவரை',
+    'red gram': 'துவரை',
+    'chana': 'கொண்டைக்கடலை',
+    'bengal gram': 'கொண்டைக்கடலை',
+    'sesame': 'எள்',
+    'gingelly': 'எள்',
+    'fenugreek': 'வெந்தயம்',
+    'mustard': 'கடுகு',
+    'pepper': 'மிளகு',
+    'black pepper': 'மிளகு',
+    'cardamom': 'ஏலக்காய்',
+    'cloves': 'கிராம்பு',
   };
 }

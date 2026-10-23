@@ -1,42 +1,48 @@
-"""Read-only official market-provider check. Never prints credentials or invents rates."""
+"""Read-only cache probe. Never calls Gemini or creates daily reservations."""
 import argparse
 import asyncio
 import json
-from pathlib import Path
-import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from motor.motor_asyncio import AsyncIOMotorClient
+from app.core.config import settings
+from app.integrations.groq_market import market_price_provider
+from app.repositories.pricing import PricingRepository
+from app.services.market_discovery import MarketDiscoveryService
+from datetime import datetime, timezone, timedelta
 
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env-file", type=Path)
     parser.add_argument("--commodity", default="Tomato")
     parser.add_argument("--state", default="Tamil Nadu")
+    parser.add_argument("--district")
+    parser.add_argument("--market")
     args = parser.parse_args()
-    if args.env_file:
-        from dotenv import load_dotenv
-        load_dotenv(args.env_file, override=True)
-    from app.integrations.government_market import market_price_provider
-    from app.services.pricing_service import PricingEngine
-    from urllib.parse import urlparse
-    if urlparse(market_price_provider.base_url).hostname != "api.data.gov.in":
-        print(json.dumps({"available": False, "message": "Official api.data.gov.in endpoint is required for this probe."}))
-        return
-    result = await market_price_provider.search_prices(commodity=args.commodity, state=args.state, limit=5)
-    if not result.get("live"):
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as diagnostic:
-                await diagnostic.get("https://api.data.gov.in/")
-        except httpx.RequestError as exc:
-            description = str(exc).upper()
-            reason = "TLS certificate verification failed" if "CERTIFICATE_VERIFY_FAILED" in description else "DNS resolution failed" if "GETADDRINFO" in description or "NAME RESOLUTION" in description else "Public host connection unavailable"
-            print(json.dumps({"public_host_diagnostic": reason, "error_type": type(exc).__name__}))
-    valid = [r for r in result.get("records", []) if PricingEngine._valid_reference(r, args.commodity, r.get("market", ""))]
-    print(json.dumps({"available": bool(valid) and result.get("live", False), "message": result.get("message"),
-                      "verified_record_count": len(valid),
-                      "records": [{k: str(r.get(k)) for k in ("commodity", "market", "unit", "arrival_date", "source")} for r in valid]}))
+    client = AsyncIOMotorClient(settings.MONGODB_URI)
+    try:
+        db = client[settings.MONGODB_DATABASE]
+        records = await PricingRepository(db).list_market_prices(commodity=args.commodity,
+            state=args.state, district=args.district, market=args.market, limit=100)
+        now = datetime.now(timezone.utc)
+        valid = []
+        for r in records:
+            if not market_price_provider.matches(r, args.commodity, args.market, args.state, args.district):
+                continue
+            try:
+                stamp = r["retrieved_at"]
+                if isinstance(stamp, str):
+                    stamp = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                if stamp.tzinfo is None:
+                    stamp = stamp.replace(tzinfo=timezone.utc)
+                if timedelta(0) <= now - stamp <= timedelta(days=settings.MARKET_CACHE_MAX_DAYS):
+                    valid.append(r)
+            except (KeyError, AttributeError, TypeError, ValueError):
+                continue
+        print(json.dumps({"available": bool(valid), "cache_only": True,
+            "verified_record_count": len(valid),
+            "records": [{**{k: str(r.get(k)) for k in ("commodity", "market", "unit", "arrival_date", "source")},
+                "stale": not MarketDiscoveryService._current(r, now)} for r in valid]}))
+    finally:
+        client.close()
 
 
 if __name__ == "__main__":

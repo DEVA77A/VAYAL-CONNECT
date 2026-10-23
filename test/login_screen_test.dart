@@ -10,7 +10,8 @@ void main() {
     SessionManager().setLanguage(false);
   });
 
-  testWidgets('Login screen opens directly in English by default', (WidgetTester tester) async {
+  testWidgets('Login screen opens directly in English by default',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: AuthGatewayScreen(),
@@ -28,7 +29,8 @@ void main() {
     expect(find.text('தமிழ்'), findsOneWidget); // Toggle shows Tamil option
   });
 
-  testWidgets('Language switcher toggles between English and Tamil', (WidgetTester tester) async {
+  testWidgets('Language switcher toggles between English and Tamil',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: AuthGatewayScreen(),
@@ -58,7 +60,8 @@ void main() {
     expect(find.text('Login'), findsOneWidget);
   });
 
-  testWidgets('Form validation fails when credentials are empty', (WidgetTester tester) async {
+  testWidgets('Form validation fails when credentials are empty',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: AuthGatewayScreen(),
@@ -66,7 +69,9 @@ void main() {
     );
     await tester.pump();
 
-    // Tap Login button with empty fields
+    // Scroll to the redesigned form action before validating empty fields.
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Login'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Login'));
     await tester.pump();
 
@@ -74,7 +79,8 @@ void main() {
     expect(find.text(VayalStrings.emailRequired), findsOneWidget);
   });
 
-  testWidgets('Password visibility toggle toggles obscureText', (WidgetTester tester) async {
+  testWidgets('Password visibility toggle toggles obscureText',
+      (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: AuthGatewayScreen(),

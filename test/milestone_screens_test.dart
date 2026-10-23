@@ -108,6 +108,8 @@ void main() {
     final options = tester.widget<DropdownButtonFormField<String>>(
         find.byType(DropdownButtonFormField<String>));
     expect(options.initialValue, 'PICKUP');
+    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     expect(find.text('Pickup'), findsWidgets);
@@ -117,6 +119,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Pickup address: 10 Pickup farm road'), findsOneWidget);
     final orderButton = find.text('Place order');
+    await tester
+        .ensureVisible(find.widgetWithText(ElevatedButton, 'Place order'));
+    await tester.pumpAndSettle();
     await tester.tap(orderButton);
     await tester.pumpAndSettle();
     expect(find.text('Order recorded. Payment pending.'), findsOneWidget);
@@ -146,9 +151,13 @@ void main() {
     await tester.pumpAndSettle();
     final selector = find.byType(DropdownButtonFormField<String>);
     await tester.ensureVisible(selector);
+    await tester.pumpAndSettle();
     await tester.tap(selector);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delivery').last);
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.widgetWithText(ElevatedButton, 'Place order'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Place order'));
     await tester.pumpAndSettle();
@@ -166,11 +175,16 @@ void main() {
           'coordinates': {'latitude': 9.94, 'longitude': 78.14}
         })));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delivery').last);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Place order'));
+    await tester.pumpAndSettle();
+    await tester
+        .ensureVisible(find.widgetWithText(ElevatedButton, 'Place order'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Place order'));
     await tester.pumpAndSettle();

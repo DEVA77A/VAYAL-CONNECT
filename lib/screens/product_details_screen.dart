@@ -1,3 +1,4 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import '../models/product_models.dart';
@@ -7,8 +8,6 @@ import '../utils/commerce_strings.dart';
 import '../widgets/commerce_widgets.dart';
 import '../widgets/market_reference_view.dart';
 import '../widgets/vayal_app_bar.dart';
-import '../config/api_config.dart';
-import '../services/session_manager.dart';
 import 'addresses_screen.dart';
 import 'orders_screen.dart';
 
@@ -109,40 +108,32 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
     final p = widget.product;
     return Scaffold(
         appBar: VayalAppBar(title: S.t('Checkout'), showBack: true),
-        body: ListView(padding: const EdgeInsets.all(16), children: [
+        body: PageBody(
+            child: ListView(padding: const EdgeInsets.all(16), children: [
           if (_busy) const LinearProgressIndicator(),
           if (_error != null) ErrorPanel(_error!, _order),
-          if (p.imageUrl != null)
-            ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                    p.imageUrl!.startsWith('/')
-                        ? '${ApiConfig.baseUrl}${p.imageUrl}'
-                        : p.imageUrl!,
-                    height: 200,
-                    fit: BoxFit.cover,
-                    headers: p.imageUrl!.startsWith('/api/v1/media/')
-                        ? {
-                            'Authorization':
-                                'Bearer ${SessionManager().accessToken}'
-                          }
-                        : const {},
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.agriculture, size: 100))),
+          ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: AspectRatio(
+                  aspectRatio: 1.6,
+                  child: CropImage(p.imageUrl, semanticLabel: S.crop(p.productName)))),
+          const SizedBox(height: 16),
           Card(
               child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(p.productName,
+                        Text(S.crop(p.productName),
                             style: Theme.of(context).textTheme.headlineSmall),
                         Text(p.description),
                         detailLine('Farmer', p.farmerName),
                         detailLine('Farm location', p.location),
                         detailLine('Harvest date', p.harvestDate),
                         detailLine('Available stock',
-                            '${p.quantityAvailable} ${p.quantityUnit}'),
+                            '${p.quantityAvailable} ${S.t(p.quantityUnit)}'),
+                        const FormSection('Quantity',
+                            icon: Icons.inventory_2_outlined),
                         TextFormField(
                             initialValue: '1',
                             keyboardType: TextInputType.number,
@@ -162,8 +153,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                                   ? S.t('Enter a valid quantity.')
                                   : null;
                             }),
+                        const FormSection('Buyer total',
+                            icon: Icons.receipt_long_outlined),
                         detailLine('Farmer base price',
-                            '${S.money(p.farmerBasePricePaise * _quantity)} / $_quantity ${p.quantityUnit}'),
+                            '${S.money(p.farmerBasePricePaise * _quantity)} / $_quantity ${S.t(p.quantityUnit)}'),
                         detailLine('Platform commission',
                             '${S.money(p.commissionPerUnitPaise * _quantity)} (${p.commissionPercentageBps / 100}%)'),
                         detailLine('Delivery charge', S.money(0)),
@@ -173,7 +166,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                             'Buyer total = farmer base + platform commission + delivery charge.')),
                         Text(S.t(
                             'Farmer receives the full base price. Commission is added for buyers.')),
+                        const SizedBox(height: 20),
                         DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            itemHeight: null,
                             value: _method,
                             decoration:
                                 InputDecoration(labelText: S.t('Delivery')),
@@ -221,6 +217,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
           MarketReferenceView(
               reference: p.marketReference,
               sellingPricePaise: p.farmerBasePricePaise),
-        ]));
+        ])));
   }
 }

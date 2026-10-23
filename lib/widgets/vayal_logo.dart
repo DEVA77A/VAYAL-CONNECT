@@ -1,15 +1,49 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
-/// Original approved brand artwork; never replaced by a generated logo.
+/// Approved artwork presented in an elegant circular frame with a subtle brand border.
 class VayalLogo extends StatelessWidget {
   final double width;
   final double height;
-  const VayalLogo({super.key, this.width = 160, this.height = 160});
+  final bool showBorder;
+
+  const VayalLogo({
+    super.key,
+    this.width = 110,
+    this.height = 110,
+    this.showBorder = true,
+  });
+
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(12),
-    child: Image.asset('assets/branding/vayalconnect-logo.jpeg',
-      width: width, height: height, fit: BoxFit.contain,
-      semanticLabel: 'VayalConnect logo'),
-  );
+  Widget build(BuildContext context) => Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: showBorder
+              ? Border.all(
+                  color: AppTheme.primaryLightGreen.withOpacity(0.4),
+                  width: 1.5,
+                )
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primaryGreen.withOpacity(0.07),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: Padding(
+            padding: EdgeInsets.all(width * 0.04),
+            child: Image.asset(
+              'assets/branding/vayalconnect-logo.jpeg',
+              fit: BoxFit.contain,
+              semanticLabel: 'VayalConnect logo',
+            ),
+          ),
+        ),
+      );
 }

@@ -1,3 +1,4 @@
+import '../theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import '../utils/commerce_strings.dart';
 import 'commerce_widgets.dart';
@@ -19,6 +20,7 @@ class MarketReferenceView extends StatelessWidget {
         !amount.isFinite ||
         amount <= 0) {
       return Card(
+          color: AppTheme.surfaceCream,
           child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -32,6 +34,7 @@ class MarketReferenceView extends StatelessWidget {
                   ])));
     }
     return Card(
+        color: AppTheme.softGreen,
         child: Padding(
             padding: const EdgeInsets.all(16),
             child:

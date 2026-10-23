@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/session_manager.dart';
+import '../utils/localization.dart';
 import '../theme/app_theme.dart';
 import '../widgets/vayal_logo.dart';
 import 'auth_gateway_screen.dart';
@@ -10,13 +11,14 @@ import '../models/auth_models.dart';
 
 /// Splash & Brand Entry Screen
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
@@ -26,21 +28,25 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 650),
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.65, curve: Curves.easeIn)),
+      CurvedAnimation(
+          parent: _controller,
+          curve: const Interval(0.0, 0.65, curve: Curves.easeIn)),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.85, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.0, 0.65, curve: Curves.easeOutBack)),
+    _scaleAnimation = Tween<double>(begin: 0.96, end: 1.0).animate(
+      CurvedAnimation(
+          parent: _controller,
+          curve: const Interval(0.0, 0.65, curve: Curves.easeOutCubic)),
     );
 
     _controller.forward();
 
     // Auto navigate after short splash
-    Future.delayed(const Duration(milliseconds: 2200), () {
+    Future.delayed(const Duration(milliseconds: 900), () {
       if (!mounted) return;
       _navigateToNext();
     });
@@ -69,10 +75,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (_, __, ___) => target,
-        transitionsBuilder: (_, animation, __, child) {
+        transitionsBuilder: (context, animation, __, child) {
+          if (MediaQuery.disableAnimationsOf(context)) return child;
           return FadeTransition(opacity: animation, child: child);
         },
-        transitionDuration: const Duration(milliseconds: 500),
+        transitionDuration: AppTheme.motionStandard,
       ),
     );
   }
@@ -85,93 +92,46 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Scaffold(
-      backgroundColor: AppTheme.primaryGreen,
+      backgroundColor: AppTheme.deepGreen,
       body: SafeArea(
-        child: Center(
-          child: AnimatedBuilder(
+          child: Center(
+              child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: AnimatedBuilder(
             animation: _controller,
-            builder: (context, child) {
-              return Opacity(
-                opacity: _fadeAnimation.value,
-                child: Transform.scale(
-                  scale: _scaleAnimation.value,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Agricultural Sprout & Paddy Emblem
-                      const VayalLogo(width: 200, height: 200),
-                      const SizedBox(height: 24),
-
-                      // Brand Name
-                      const Text(
-                        'வயல் Connect',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-
-                      // English Sub-brand
-                      const Text(
-                        'VAYALCONNECT',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.accentGold,
-                          letterSpacing: 3.5,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Official Tagline
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Text(
-                          '\"நம்ம வயல், நேரடி CONNECT\"',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 60),
-
-                      // Loading indicator & Government verification tag
-                      const SizedBox(
-                        width: 28,
-                        height: 28,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'AGMARKNET • தமிழ்நாடு வேளாண் சந்தை',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white.withOpacity(0.7),
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
+            builder: (context, _) => Opacity(
+                  opacity: reducedMotion ? 1 : _fadeAnimation.value,
+                  child: Transform.scale(
+                      scale: reducedMotion ? 1 : _scaleAnimation.value,
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const VayalLogo(width: 240, height: 240),
+                        const SizedBox(height: 32),
+                        Text(VayalStrings.appName,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                fontSize: 30,
+                                height: 1.3,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white)),
+                        const SizedBox(height: 12),
+                        Text(VayalStrings.tagline,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                fontSize: 15,
+                                height: 1.5,
+                                color: Color(0xFFDDEBDF))),
+                        const SizedBox(height: 32),
+                        Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                                color: AppTheme.earthBrown,
+                                borderRadius: BorderRadius.circular(4))),
+                      ])),
+                )),
+      ))),
     );
   }
 }

@@ -202,6 +202,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Save'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Save'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(writes, 0);
@@ -234,7 +236,8 @@ void main() {
       'quality_grade': 'A',
       'farmer_payout_per_unit_paise': 1001,
       'status': 'ACTIVE',
-      'harvest_date': '2026-10-11'
+      'harvest_date': '2026-10-11',
+      'image_url': 'https://vayal-connect.onrender.com/api/v1/media/wheat.jpg'
     };
     await tester.pumpWidget(
         MaterialApp(home: AddProductScreen(product: product, api: api)));
@@ -246,6 +249,8 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
@@ -292,6 +297,8 @@ void main() {
     final street = find.widgetWithText(TextFormField, 'Street');
     await tester.enterText(street, 'Another street');
     await tester.ensureVisible(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Save'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();

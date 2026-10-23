@@ -5,7 +5,7 @@ import 'vayal_logo.dart';
 import '../models/auth_models.dart';
 import '../utils/commerce_strings.dart';
 
-/// Reusable Top App Bar matching Stitch Design System
+/// Reusable Top App Bar
 ///
 /// Features:
 /// - Brand logo & bilingual title ('வயல் Connect')
@@ -29,7 +29,7 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize => Size.fromHeight(subtitle == null ? 88 : 104);
 
   @override
   Widget build(BuildContext context) {
@@ -40,24 +40,28 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
     switch (session.activeRole) {
       case AppRole.farmer:
         roleName = session.isTamil ? 'விவசாயி' : 'Farmer';
-        roleBadgeColor = AppTheme.accentGold;
+        roleBadgeColor = AppTheme.surfaceCream;
         break;
       case AppRole.buyer:
         roleName = session.isTamil ? 'வாங்குபவர்' : 'Buyer';
-        roleBadgeColor = Colors.lightBlueAccent;
+        roleBadgeColor = AppTheme.softGreen;
         break;
       case AppRole.admin:
         roleName = session.isTamil ? 'நிர்வாகி' : 'Admin';
-        roleBadgeColor = Colors.amberAccent;
+        roleBadgeColor = AppTheme.surfaceCream;
         break;
     }
 
     return AppBar(
-      backgroundColor: AppTheme.primaryGreen,
+      toolbarHeight: preferredSize.height,
+      titleSpacing: 16,
+      backgroundColor: AppTheme.deepGreen,
       elevation: 0,
       automaticallyImplyLeading: false,
+      leadingWidth: 48,
       leading: showBack
           ? IconButton(
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
               icon: const Icon(Icons.arrow_back_ios_new, size: 20),
               onPressed: () => Navigator.of(context).maybePop(),
             )
@@ -68,56 +72,41 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
         children: [
           Row(
             children: [
-              const VayalLogo(width: 36, height: 36),
-              const SizedBox(width: 6),
-              Expanded(
-                  child: Text(
-                title ?? (session.isTamil ? 'வயல் Connect' : 'VayalConnect'),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 0.2,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              )),
-              if (showRoleBadge) ...[
+              if (!showBack &&
+                  MediaQuery.textScalerOf(context).scale(14) < 21) ...[
+                const VayalLogo(width: 36, height: 36),
                 const SizedBox(width: 8),
-                Flexible(
-                    child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: roleBadgeColor.withOpacity(0.6), width: 1),
-                  ),
-                  child: Text(
-                    roleName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: roleBadgeColor,
-                    ),
-                  ),
-                )),
               ],
+              Expanded(
+                  child: Tooltip(
+                      message: title ?? 'VayalConnect',
+                      child: Text(
+                        title ??
+                            (session.isTamil ? 'வயல் Connect' : 'VayalConnect'),
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.2,
+                        ),
+                        maxLines:
+                            MediaQuery.textScalerOf(context).scale(14) > 21
+                                ? 1
+                                : 2,
+                        overflow: TextOverflow.ellipsis,
+                      ))),
             ],
           ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 1),
+          if (showRoleBadge || subtitle != null) ...[
+            const SizedBox(height: 4),
             Text(
-              subtitle!,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Colors.white70,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
+                [if (showRoleBadge) roleName, if (subtitle != null) subtitle!]
+                    .join(' · '),
+                maxLines:
+                    MediaQuery.textScalerOf(context).scale(14) > 21 ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12, color: roleBadgeColor, height: 1.3)),
           ],
         ],
       ),

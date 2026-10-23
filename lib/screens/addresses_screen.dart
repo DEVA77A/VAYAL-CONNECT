@@ -1,3 +1,4 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
@@ -63,74 +64,85 @@ class _AddressesScreenState extends State<AddressesScreen>
           onPressed: () => _edit(),
           icon: const Icon(Icons.add),
           label: Text(S.t('Add address'))),
-      body: RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-              children: [
-                if (_busy) const LinearProgressIndicator(),
-                if (_error != null) ErrorPanel(_error!, _load),
-                if (!_busy && _items.isEmpty && _error == null)
-                  Text(S.t('No records yet.')),
-                for (final item in _items)
-                  Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Card(
-                          child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(item['recipient_name'],
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium),
-                                    Text([
-                                      item['building'],
-                                      item['street'],
-                                      item['locality'],
-                                      item['city'],
-                                      item['state'],
-                                      item['postal_code']
-                                    ].join(', ')),
-                                    Text(item['phone']),
-                                    if (item['is_default'] == true)
-                                      Text(S.t('Default address')),
-                                    Wrap(spacing: 8, children: [
-                                      TextButton(
-                                          onPressed: () => _edit(
-                                              Map<String, dynamic>.from(item)),
-                                          child: Text(S.t('Edit'))),
-                                      if (widget.select)
-                                        ElevatedButton(
-                                            onPressed: () {
-                                              if (item['coordinates'] == null) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(SnackBar(
-                                                        content: Text(S.t(
-                                                            'Coordinates required for delivery estimate.'))));
-                                                _edit(Map<String, dynamic>.from(
-                                                    item));
-                                                return;
-                                              }
-                                              final data =
+      body: PageBody(
+          child: RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                  children: [
+                    BrandHeading(
+                        title:
+                            S.t(widget.select ? 'Select address' : 'Addresses'),
+                        icon: Icons.location_on_outlined),
+                    if (_busy) const LinearProgressIndicator(),
+                    if (_error != null) ErrorPanel(_error!, _load),
+                    if (!_busy && _items.isEmpty && _error == null)
+                      const EmptyPanel('No records yet.',
+                          icon: Icons.location_on_outlined),
+                    for (final item in _items)
+                      Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Card(
+                              child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(item['recipient_name'],
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium),
+                                        Text([
+                                          item['building'],
+                                          item['street'],
+                                          item['locality'],
+                                          item['city'],
+                                          item['state'],
+                                          item['postal_code']
+                                        ].join(', ')),
+                                        Text(item['phone']),
+                                        if (item['is_default'] == true)
+                                          Text(S.t('Default address')),
+                                        Wrap(spacing: 8, children: [
+                                          TextButton(
+                                              onPressed: () => _edit(
                                                   Map<String, dynamic>.from(
-                                                      item)
-                                                    ..remove('id')
-                                                    ..remove('is_default');
-                                              data['address'] = [
-                                                item['building'],
-                                                item['street'],
-                                                item['locality'],
-                                                item['city'],
-                                                item['state']
-                                              ].join(', ');
-                                              Navigator.pop(context, data);
-                                            },
-                                            child: Text(S.t('Select address'))),
-                                    ]),
-                                  ])))),
-              ])));
+                                                      item)),
+                                              child: Text(S.t('Edit'))),
+                                          if (widget.select)
+                                            ElevatedButton(
+                                                onPressed: () {
+                                                  if (item['coordinates'] ==
+                                                      null) {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(SnackBar(
+                                                            content: Text(S.t(
+                                                                'Coordinates required for delivery estimate.'))));
+                                                    _edit(Map<String,
+                                                        dynamic>.from(item));
+                                                    return;
+                                                  }
+                                                  final data =
+                                                      Map<String, dynamic>.from(
+                                                          item)
+                                                        ..remove('id')
+                                                        ..remove('is_default');
+                                                  data['address'] = [
+                                                    item['building'],
+                                                    item['street'],
+                                                    item['locality'],
+                                                    item['city'],
+                                                    item['state']
+                                                  ].join(', ');
+                                                  Navigator.pop(context, data);
+                                                },
+                                                child: Text(
+                                                    S.t('Select address'))),
+                                        ]),
+                                      ])))),
+                  ]))));
 }
 
 class AddressEditorScreen extends StatefulWidget {
@@ -242,88 +254,96 @@ class _AddressEditorScreenState extends State<AddressEditorScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Addresses'), showBack: true),
-      body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-              key: _form,
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_busy) const LinearProgressIndicator(),
-                    if (_error != null)
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                    for (final e in _fields.entries)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: TextFormField(
-                              controller: e.value,
-                              enabled: !_busy,
-                              decoration: InputDecoration(
-                                  labelText: S.t(_labels[e.key]!)),
-                              keyboardType:
-                                  ['phone', 'postal_code'].contains(e.key)
-                                      ? TextInputType.number
-                                      : TextInputType.text,
-                              onChanged: e.key == 'instructions' ||
-                                      e.key == 'recipient_name' ||
-                                      e.key == 'phone'
+      body: PageBody(
+          child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                  key: _form,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const FormSection('Addresses',
+                            icon: Icons.location_on_outlined),
+                        if (_busy) const LinearProgressIndicator(),
+                        if (_error != null)
+                          Text(_error!,
+                              style: const TextStyle(color: Colors.red)),
+                        for (final e in _fields.entries)
+                          Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: TextFormField(
+                                  controller: e.value,
+                                  enabled: !_busy,
+                                  decoration: InputDecoration(
+                                      labelText: S.t(_labels[e.key]!)),
+                                  keyboardType:
+                                      ['phone', 'postal_code'].contains(e.key)
+                                          ? TextInputType.number
+                                          : TextInputType.text,
+                                  onChanged: e.key == 'instructions' ||
+                                          e.key == 'recipient_name' ||
+                                          e.key == 'phone'
+                                      ? null
+                                      : (_) =>
+                                          setState(() => _coordinates = null),
+                                  validator: (v) {
+                                    if (e.key == 'instructions') return null;
+                                    final text = v?.trim() ?? '';
+                                    if (e.key == 'phone' &&
+                                        !RegExp(r'^[6-9][0-9]{9}$')
+                                            .hasMatch(text)) {
+                                      return S.t('Enter valid details.');
+                                    }
+                                    if (e.key == 'postal_code' &&
+                                        !RegExp(r'^[1-9][0-9]{5}$')
+                                            .hasMatch(text)) {
+                                      return S.t('Enter valid details.');
+                                    }
+                                    if (text.length <
+                                        (e.key == 'building' ? 1 : 2)) {
+                                      return S.t('Required');
+                                    }
+                                    return null;
+                                  })),
+                        SwitchListTile(
+                            title: Text(S.t('Default address')),
+                            value: _default,
+                            onChanged: _busy
+                                ? null
+                                : (v) => setState(() => _default = v)),
+                        OutlinedButton.icon(
+                            onPressed: _busy ? null : _locate,
+                            icon: const Icon(Icons.my_location),
+                            label: Text(S.t('Save destination coordinates'))),
+                        if (_coordinates != null)
+                          Text(
+                              '${_coordinates!['latitude']}, ${_coordinates!['longitude']}'),
+                        ElevatedButton(
+                            onPressed: _busy ? null : _save,
+                            child: Text(S.t('Save'))),
+                        if (widget.address != null)
+                          TextButton(
+                              onPressed: _busy
                                   ? null
-                                  : (_) => setState(() => _coordinates = null),
-                              validator: (v) {
-                                if (e.key == 'instructions') return null;
-                                final text = v?.trim() ?? '';
-                                if (e.key == 'phone' &&
-                                    !RegExp(r'^[6-9][0-9]{9}$')
-                                        .hasMatch(text)) {
-                                  return S.t('Enter valid details.');
-                                }
-                                if (e.key == 'postal_code' &&
-                                    !RegExp(r'^[1-9][0-9]{5}$')
-                                        .hasMatch(text)) {
-                                  return S.t('Enter valid details.');
-                                }
-                                if (text.length <
-                                    (e.key == 'building' ? 1 : 2)) {
-                                  return S.t('Required');
-                                }
-                                return null;
-                              })),
-                    SwitchListTile(
-                        title: Text(S.t('Default address')),
-                        value: _default,
-                        onChanged:
-                            _busy ? null : (v) => setState(() => _default = v)),
-                    OutlinedButton.icon(
-                        onPressed: _busy ? null : _locate,
-                        icon: const Icon(Icons.my_location),
-                        label: Text(S.t('Save destination coordinates'))),
-                    if (_coordinates != null)
-                      Text(
-                          '${_coordinates!['latitude']}, ${_coordinates!['longitude']}'),
-                    ElevatedButton(
-                        onPressed: _busy ? null : _save,
-                        child: Text(S.t('Save'))),
-                    if (widget.address != null)
-                      TextButton(
-                          onPressed: _busy
-                              ? null
-                              : () async {
-                                  setState(() => _busy = true);
-                                  try {
-                                    await _api.request(
-                                        '/api/v1/buyers/me/addresses/${widget.address!['id']}',
-                                        method: 'DELETE');
-                                    if (context.mounted) {
-                                      Navigator.pop(context, true);
-                                    }
-                                  } catch (e) {
-                                    if (mounted) {
-                                      setState(() => _error = e.toString());
-                                    }
-                                  } finally {
-                                    if (mounted) setState(() => _busy = false);
-                                  }
-                                },
-                          child: Text(S.t('Delete'))),
-                  ]))));
+                                  : () async {
+                                      setState(() => _busy = true);
+                                      try {
+                                        await _api.request(
+                                            '/api/v1/buyers/me/addresses/${widget.address!['id']}',
+                                            method: 'DELETE');
+                                        if (context.mounted) {
+                                          Navigator.pop(context, true);
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          setState(() => _error = e.toString());
+                                        }
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() => _busy = false);
+                                        }
+                                      }
+                                    },
+                              child: Text(S.t('Delete'))),
+                      ])))));
 }

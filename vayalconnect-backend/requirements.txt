@@ -47,3 +47,6 @@ structlog==24.4.0
 
 # Crop photographs: strip EXIF and resize before persistence
 Pillow>=11.3.0,<13
+
+# Official Google Gemini SDK (grounded discovery only)
+google-genai==1.75.0

@@ -1,8 +1,10 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/location_service.dart';
 import '../utils/commerce_strings.dart';
+import '../widgets/vayal_app_bar.dart';
 
 class LocationGateScreen extends StatefulWidget {
   final Widget home;
@@ -56,38 +58,43 @@ class _LocationGateScreenState extends State<LocationGateScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-      appBar: AppBar(title: Text(S.t('Location required'))),
-      body: Center(
-          child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.location_on_outlined, size: 64),
-                const SizedBox(height: 20),
-                Text(
-                    S.t('Location supports farm discovery and distance estimates. Allow foreground location to continue. GPS does not replace a delivery address.'),
-                    textAlign: TextAlign.center),
-                const SizedBox(height: 20),
-                if (_state != null && _state != LocationState.available)
-                  Text(S.t(switch (_state!) {
-                    LocationState.disabled =>
-                      'Turn on location services, then retry.',
-                    LocationState.permanentlyDenied =>
-                      'Enable location permission in app settings.',
-                    LocationState.denied =>
-                      'Permission denied. Retry when ready.',
-                    _ => 'Unable to obtain coordinates. Please retry.',
-                  })),
-                if (_error != null) Text(_error!),
-                if (_busy)
-                  const CircularProgressIndicator()
-                else
-                  ElevatedButton(
-                      onPressed: _allow, child: Text(S.t('Allow location'))),
-                if (_state == LocationState.permanentlyDenied ||
-                    _state == LocationState.disabled)
-                  TextButton(
-                      onPressed: () => LocationService.openSettings(
-                          services: _state == LocationState.disabled),
-                      child: Text(S.t('Open settings'))),
-              ]))));
+      appBar:
+          VayalAppBar(title: S.t('Location required'), showRoleBadge: false),
+      body: PageBody(
+          child: Center(
+              child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    BrandHeading(
+                        title: S.t('Location required'),
+                        icon: Icons.location_on_outlined),
+                    const SizedBox(height: 20),
+                    Text(
+                        S.t('Location supports farm discovery and distance estimates. Allow foreground location to continue. GPS does not replace a delivery address.'),
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 20),
+                    if (_state != null && _state != LocationState.available)
+                      Text(S.t(switch (_state!) {
+                        LocationState.disabled =>
+                          'Turn on location services, then retry.',
+                        LocationState.permanentlyDenied =>
+                          'Enable location permission in app settings.',
+                        LocationState.denied =>
+                          'Permission denied. Retry when ready.',
+                        _ => 'Unable to obtain coordinates. Please retry.',
+                      })),
+                    if (_error != null) Text(_error!),
+                    if (_busy)
+                      const CircularProgressIndicator()
+                    else
+                      ElevatedButton(
+                          onPressed: _allow,
+                          child: Text(S.t('Allow location'))),
+                    if (_state == LocationState.permanentlyDenied ||
+                        _state == LocationState.disabled)
+                      TextButton(
+                          onPressed: () => LocationService.openSettings(
+                              services: _state == LocationState.disabled),
+                          child: Text(S.t('Open settings'))),
+                  ])))));
 }

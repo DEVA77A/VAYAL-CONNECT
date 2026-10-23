@@ -1,3 +1,4 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/form_examples.dart';
 import '../utils/commerce_strings.dart';
 import '../widgets/vayal_app_bar.dart';
@@ -65,60 +66,67 @@ class _FarmerBankScreenState extends State<FarmerBankScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: VayalAppBar(title: S.t('Bank payout details'), showBack: true),
-        body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-                key: _form,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(S.t(
-                        'Enter your own bank details. Saving resets verification. Full account numbers are never displayed.')),
-                    if (_busy) const LinearProgressIndicator(),
-                    if (_error != null)
-                      Text(_error!, style: const TextStyle(color: Colors.red)),
-                    for (final e in _fields.entries)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: TextFormField(
-                            controller: e.value,
-                            enabled: !_busy,
-                            obscureText: e.key == 'account_number',
-                            maxLength: e.key == 'account_number'
-                                ? 20
-                                : e.key == 'ifsc'
-                                    ? 11
-                                    : e.key == 'upi_id'
-                                        ? 100
-                                        : 200,
-                            keyboardType: e.key == 'account_number'
-                                ? TextInputType.number
-                                : TextInputType.text,
-                            decoration: InputDecoration(
-                                labelText: S.t(e.key.replaceAll('_', ' ')),
-                                hintText: FormExamples.hint(e.key),
-                                hintStyle: FormExamples.style),
-                            validator: (v) {
-                              final value = v?.trim() ?? '';
-                              if (e.key == 'account_number') {
-                                return RegExp(r'^[0-9]{8,20}$').hasMatch(value)
-                                    ? null
-                                    : S.t('Enter 8–20 digits.');
-                              }
-                              if (e.key == 'ifsc') {
-                                return RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$')
-                                        .hasMatch(value.toUpperCase())
-                                    ? null
-                                    : S.t('Enter a valid IFSC.');
-                              }
-                              if (e.key == 'upi_id') return null;
-                              return value.length < 2 ? S.t('Required') : null;
-                            },
-                          )),
-                    ElevatedButton(
-                        onPressed: _busy ? null : _save,
-                        child: Text(S.t('Save bank details'))),
-                  ],
-                ))),
+        body: PageBody(
+            child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                    key: _form,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const FormSection('Bank payout details',
+                            icon: Icons.account_balance_outlined),
+                        Text(S.t(
+                            'Enter your own bank details. Saving resets verification. Full account numbers are never displayed.')),
+                        if (_busy) const LinearProgressIndicator(),
+                        if (_error != null)
+                          Text(_error!,
+                              style: const TextStyle(color: Colors.red)),
+                        for (final e in _fields.entries)
+                          Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: TextFormField(
+                                controller: e.value,
+                                enabled: !_busy,
+                                obscureText: e.key == 'account_number',
+                                maxLength: e.key == 'account_number'
+                                    ? 20
+                                    : e.key == 'ifsc'
+                                        ? 11
+                                        : e.key == 'upi_id'
+                                            ? 100
+                                            : 200,
+                                keyboardType: e.key == 'account_number'
+                                    ? TextInputType.number
+                                    : TextInputType.text,
+                                decoration: InputDecoration(
+                                    labelText: S.t(e.key.replaceAll('_', ' ')),
+                                    hintText: FormExamples.hint(e.key),
+                                    hintStyle: FormExamples.style),
+                                validator: (v) {
+                                  final value = v?.trim() ?? '';
+                                  if (e.key == 'account_number') {
+                                    return RegExp(r'^[0-9]{8,20}$')
+                                            .hasMatch(value)
+                                        ? null
+                                        : S.t('Enter 8–20 digits.');
+                                  }
+                                  if (e.key == 'ifsc') {
+                                    return RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$')
+                                            .hasMatch(value.toUpperCase())
+                                        ? null
+                                        : S.t('Enter a valid IFSC.');
+                                  }
+                                  if (e.key == 'upi_id') return null;
+                                  return value.length < 2
+                                      ? S.t('Required')
+                                      : null;
+                                },
+                              )),
+                        ElevatedButton(
+                            onPressed: _busy ? null : _save,
+                            child: Text(S.t('Save bank details'))),
+                      ],
+                    )))),
       );
 }

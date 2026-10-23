@@ -28,6 +28,8 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+**/build/
+android/build/
 
 # Symbol processing related
 crash_symbol_dump

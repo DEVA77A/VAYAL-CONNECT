@@ -6,6 +6,7 @@ No secrets hardcoded. No defaults for sensitive values.
 """
 
 from typing import List, Optional
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field, model_validator
 import hashlib
@@ -133,7 +134,8 @@ class Settings(BaseSettings):
         return self.APP_ENV == "development"
 
     class Config:
-        env_file = ".env"
+        # Resolve this backend's environment independently of the caller's cwd.
+        env_file = str(Path(__file__).resolve().parents[2] / ".env")
         env_file_encoding = "utf-8"
         case_sensitive = True
         hide_input_in_errors = True

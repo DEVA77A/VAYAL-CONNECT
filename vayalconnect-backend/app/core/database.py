@@ -102,6 +102,15 @@ class Database:
         await market_prices.create_index("retrieved_at")
         await market_prices.create_index("commodity")
         await market_prices.create_index("arrival_date")
+        await market_prices.create_index([("reference_scope", 1), ("state", 1),
+            ("verification_status", 1), ("commodity_id", 1), ("arrival_date", -1)])
+        await market_prices.create_index("discovery_key", unique=True, sparse=True)
+        await market_prices.create_index([("commodity_id", 1), ("arrival_date", -1)])
+        await market_prices.create_index([("verification_status", 1), ("verification_method", 1),
+                                          ("commodity_id", 1), ("arrival_date", -1)])
+        await market_prices.create_index([("category", 1), ("state", 1), ("district", 1), ("market", 1), ("arrival_date", -1)])
+        await self._index_collection("market_watchlist").create_index("requested_at")
+        await self._index_collection("market_daily_runs").create_index("finished_at", expireAfterSeconds=7776000)
 
         # Pricing Policies
         pricing_policies = self._index_collection("pricing_policies")

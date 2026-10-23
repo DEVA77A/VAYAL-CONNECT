@@ -1,3 +1,4 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/form_examples.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
@@ -12,11 +13,14 @@ import '../utils/money_input.dart';
 import '../config/api_config.dart';
 import '../widgets/vayal_app_bar.dart';
 import '../widgets/market_reference_view.dart';
+import '../theme/app_theme.dart';
 
 class AddProductScreen extends StatefulWidget {
   final Map<String, dynamic>? product;
   final ApiClient? api;
-  const AddProductScreen({super.key, this.product, this.api});
+  final String? initialImageUrl;
+  const AddProductScreen(
+      {super.key, this.product, this.api, this.initialImageUrl});
   @override
   State<AddProductScreen> createState() => _AddProductScreenState();
 }
@@ -41,9 +45,29 @@ class _AddProductScreenState extends State<AddProductScreen>
     ])
       k: TextEditingController()
   };
+  late final _focusNodes = {
+    for (final k in [
+      'product_name',
+      'description',
+      'quantity',
+      'selling_price',
+      'location',
+      'market',
+      'state',
+      'district',
+      'variety',
+      'new_category',
+      'stock_adjustment'
+    ])
+      k: FocusNode()
+  };
   String _category = 'Grains', _unit = 'KG', _grade = 'A', _status = 'ACTIVE';
   DateTime _date = DateTime.now();
   String? _image;
+  String? _imageError;
+  bool _imageUploading = false;
+  bool _imageVerified = false;
+  String? _validatedCropName;
   bool _busy = false;
   String? _error;
   Map<String, dynamic>? _reference;
@@ -78,8 +102,14 @@ class _AddProductScreenState extends State<AddProductScreen>
       _category = p['category'];
       _grade = p['quality_grade'];
       _image = p['image_url'];
+      _imageVerified = _image != null && _image!.isNotEmpty;
+      _validatedCropName = p['product_name'] as String?;
       _status = p['status'] == 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
       _date = DateTime.tryParse(p['harvest_date'] ?? '') ?? DateTime.now();
+    } else if (widget.initialImageUrl != null) {
+      _image = widget.initialImageUrl;
+      _imageVerified = true;
+      _validatedCropName = _fields['product_name']?.text;
     }
     _loadCategories();
     if (_editing) _queueReference();
@@ -102,6 +132,9 @@ class _AddProductScreenState extends State<AddProductScreen>
   @override
   void dispose() {
     _referenceTimer?.cancel();
+    for (final f in _focusNodes.values) {
+      f.dispose();
+    }
     for (final c in _fields.values) {
       c.dispose();
     }
@@ -109,36 +142,374 @@ class _AddProductScreenState extends State<AddProductScreen>
     super.dispose();
   }
 
-  Future<void> _photo() async {
-    setState(() => _busy = true);
+  Future<void> _pickImage(ImageSource source) async {
+    final cropName = _fields['product_name']!.text.trim();
+    if (cropName.isEmpty) {
+      _focusNodes['product_name']?.requestFocus();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(S.t('Please enter crop name before selecting image')),
+          backgroundColor: AppTheme.earthBrown,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      maxWidth: 1600,
+      maxHeight: 1600,
+      imageQuality: 82,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() {
+      _imageUploading = true;
+      _imageError = null;
+      _error = null;
+    });
+
     final client = http.Client();
     try {
-      final picked = await ImagePicker().pickImage(
-          source: ImageSource.gallery,
-          maxWidth: 1600,
-          maxHeight: 1600,
-          imageQuality: 82);
-      if (picked == null || !mounted) return;
       final req = http.MultipartRequest(
-          'POST', Uri.parse('${ApiConfig.baseUrl}/api/v1/media'));
+        'POST',
+        Uri.parse('${ApiConfig.baseUrl}/api/v1/media'),
+      );
       req.headers['Authorization'] = 'Bearer ${SessionManager().accessToken}';
+      req.fields['crop_name'] = cropName;
+      final bytes = await picked.readAsBytes();
       req.files.add(http.MultipartFile.fromBytes(
-          'file', await picked.readAsBytes(),
-          filename: 'crop.jpg'));
-      final response = await http.Response.fromStream(await client.send(req))
-          .timeout(const Duration(seconds: 30));
-      if (response.statusCode != 201) {
-        throw Exception(S.t('Unable to complete this request. Please retry.'));
-      }
-      if (mounted) {
-        setState(() => _image = jsonDecode(response.body)['data']['image_url']);
+        'file',
+        bytes,
+        filename: picked.name.isNotEmpty ? picked.name : 'crop.jpg',
+      ));
+
+      final streamed =
+          await client.send(req).timeout(const Duration(seconds: 45));
+      final response = await http.Response.fromStream(streamed);
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _image = data['data']?['image_url'] ?? data['image_url'];
+            _imageVerified = true;
+            _validatedCropName = cropName;
+            _imageError = null;
+          });
+        }
+      } else {
+        String msg = S.t('Unable to complete this request. Please retry.');
+        try {
+          final errJson = jsonDecode(response.body);
+          if (errJson['detail'] != null) {
+            msg = errJson['detail'].toString();
+          } else if (errJson['message'] != null) {
+            msg = errJson['message'].toString();
+          }
+        } catch (_) {}
+        if (mounted) {
+          setState(() {
+            _image = null;
+            _imageVerified = false;
+            _imageError = msg;
+          });
+        }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() {
+          _image = null;
+          _imageVerified = false;
+          _imageError = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
     } finally {
       client.close();
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _imageUploading = false);
     }
+  }
+
+  void _showImageSourceDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                S.t('Upload Crop Image'),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined,
+                    color: AppTheme.primaryGreen),
+                title: Text(S.t('Take Photo')),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined,
+                    color: AppTheme.primaryGreen),
+                title: Text(S.t('Choose from Gallery')),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCropImageSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _imageError != null
+              ? Colors.red.shade400
+              : (_image == null
+                  ? Colors.orange.shade300
+                  : AppTheme.primaryGreen.withOpacity(0.5)),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_camera_rounded,
+                  color: AppTheme.primaryGreen),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  S.t('Crop Image — Required'),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _image != null && _imageVerified
+                      ? AppTheme.softGreen
+                      : (_image != null && !_imageVerified
+                          ? const Color(0xFFFFF3E0)
+                          : Colors.orange.shade50),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _image != null && _imageVerified
+                        ? AppTheme.primaryGreen
+                        : (_image != null && !_imageVerified
+                            ? AppTheme.warningOrange
+                            : Colors.orange),
+                  ),
+                ),
+                child: Text(
+                  _image != null && _imageVerified
+                      ? '✓ ${S.t('Image verified successfully')}'
+                      : (_image != null && !_imageVerified
+                          ? S.t('Crop changed — re-validation required')
+                          : S.t('Required')),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _image != null && _imageVerified
+                        ? AppTheme.primaryDarkGreen
+                        : (_image != null && !_imageVerified
+                            ? AppTheme.warningOrange
+                            : Colors.orange.shade800),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            S.t('Please upload a genuine photograph of your crop.'),
+            style:
+                const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (_imageUploading) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Column(
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
+                    S.t('Validating image with AI...'),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_image != null && _image!.isNotEmpty) ...[
+            Text(
+              S.t('Image Preview'),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: CropImage(
+                  _image,
+                  fit: BoxFit.cover,
+                  semanticLabel: _fields['product_name']!.text,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy || _imageUploading
+                        ? null
+                        : _showImageSourceDialog,
+                    icon: const Icon(Icons.cached_rounded, size: 18),
+                    label: Text(S.t('Replace Image')),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: _busy || _imageUploading
+                      ? null
+                      : () => setState(() {
+                            _image = null;
+                            _imageError = null;
+                          }),
+                  tooltip: S.t('Remove Image'),
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: Colors.red),
+                ),
+              ],
+            ),
+          ] else ...[
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundWarm,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.grey.shade300,
+                  style: BorderStyle.solid,
+                ),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.add_photo_alternate_outlined,
+                      size: 48, color: AppTheme.primaryGreen),
+                  const SizedBox(height: 8),
+                  Text(
+                    S.t('Upload Crop Image'),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _busy || _imageUploading
+                            ? null
+                            : () => _pickImage(ImageSource.camera),
+                        icon:
+                            const Icon(Icons.camera_alt_rounded, size: 18),
+                        label: Text(S.t('Take Photo')),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _busy || _imageUploading
+                            ? null
+                            : () => _pickImage(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library_rounded,
+                            size: 18),
+                        label: Text(S.t('Choose from Gallery')),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_imageError != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline,
+                      color: Colors.red, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _imageError!,
+                      style: TextStyle(
+                        color: Colors.red.shade900,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   void _queueReference() {
@@ -221,7 +592,23 @@ class _AddProductScreenState extends State<AddProductScreen>
   }
 
   Future<void> _save() async {
-    if (!_form.currentState!.validate()) return;
+    final formValid = _form.currentState!.validate();
+    final hasImage = _image != null && _image!.trim().isNotEmpty;
+    if (!hasImage || _imageError != null) {
+      setState(() {
+        _imageError = S.t('Crop image is required before publishing');
+      });
+      _focusNodes['product_name']?.unfocus();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(S.t('Crop image is required before publishing')),
+          backgroundColor: AppTheme.errorRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    if (!formValid) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -233,7 +620,7 @@ class _AddProductScreenState extends State<AddProductScreen>
         'description': _fields['description']!.text.trim(),
         'harvest_date': _date.toIso8601String().substring(0, 10),
         'quality_grade': _grade,
-        if (_image != null) 'image_url': _image
+        'image_url': _image!,
       };
       if (_editing) {
         body.addAll({
@@ -263,7 +650,16 @@ class _AddProductScreenState extends State<AddProductScreen>
           body: body);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (mounted) {
+        setState(() {
+          _error = msg;
+          if (msg.toLowerCase().contains('image') || msg.contains('படம்')) {
+            _imageError = msg;
+            _imageVerified = false;
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -272,22 +668,30 @@ class _AddProductScreenState extends State<AddProductScreen>
   Widget _field(String key, String label,
           {bool required = false, bool number = false, bool editable = true}) =>
       Padding(
+          key: ValueKey('field_padding_$key'),
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: TextFormField(
+              key: ValueKey('field_input_$key'),
               controller: _fields[key],
-              onChanged: (value) => setState(() {
-                    if (key == 'selling_price') _manualPrice = true;
-                    if ([
-                      'product_name',
-                      'market',
-                      'state',
-                      'district',
-                      'variety'
-                    ].contains(key)) {
-                      _reference = null;
-                      _queueReference();
-                    }
-                  }),
+              focusNode: _focusNodes[key],
+              onChanged: (value) {
+                if (key == 'selling_price') {
+                  _manualPrice = true;
+                } else if (key == 'product_name') {
+                  final cur = _fields['product_name']!.text.trim();
+                  if (_validatedCropName != null &&
+                      cur.toLowerCase() != _validatedCropName!.toLowerCase()) {
+                    setState(() {
+                      _imageVerified = false;
+                    });
+                  }
+                  _reference = null;
+                  _queueReference();
+                } else if (key == 'variety') {
+                  _reference = null;
+                  _queueReference();
+                }
+              },
               enabled: !_busy && editable,
               keyboardType: number
                   ? TextInputType.numberWithOptions(
@@ -346,162 +750,200 @@ class _AddProductScreenState extends State<AddProductScreen>
     return Scaffold(
         appBar: VayalAppBar(
             title: S.t(_editing ? 'Edit' : 'Add crop'), showBack: true),
-        body: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Form(
-                key: _form,
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (_busy) const LinearProgressIndicator(),
-                      if (_error != null)
-                        Text(_error!,
-                            style: const TextStyle(color: Colors.red)),
-                      Text(S.t(
-                          'Farmer receives the full base price. Commission is added for buyers.')),
-                      _field('product_name', 'Crop name',
-                          required: true, editable: !_editing),
-                      _field('description', 'Description'),
-                      DropdownButtonFormField<String>(
-                          value: _category,
-                          isExpanded: true,
-                          decoration:
-                              InputDecoration(labelText: S.t('Category')),
-                          items: categories
-                              .map((c) => DropdownMenuItem(
-                                  value: c, child: Text(S.t(c))))
-                              .toList(),
-                          onChanged: _editing || _busy
-                              ? null
-                              : (v) => setState(() {
-                                    _category = v!;
-                                    _fields['new_category']!.clear();
-                                    _reference = null;
-                                    _queueReference();
-                                  })),
-                      if (!_editing)
-                        TextFormField(
-                          controller: _fields['new_category'],
-                          enabled: !_busy,
-                          maxLength: 100,
-                          decoration: InputDecoration(
-                              labelText: S.t('New crop category (optional)'),
-                              hintText: FormExamples.hint('new_category'),
-                              hintStyle: FormExamples.style),
-                          validator: (value) => value != null &&
-                                  value.trim().isNotEmpty &&
-                                  value.trim().length < 2
-                              ? S.t('Required')
-                              : null,
-                          onChanged: (value) => setState(() {
-                            if (value.trim().length >= 2) {
-                              _category = value.trim();
-                            }
-                            _reference = null;
-                            _queueReference();
-                          }),
-                        ),
-                      if (!_editing)
-                        _field('quantity', 'Quantity',
-                            required: true, number: true),
-                      if (_editing) ...[
-                        _field('stock_adjustment', 'Stock adjustment',
-                            number: true),
-                        Text(S.t(
-                            'Add units with a positive number; remove with a negative number.'))
-                      ],
-                      DropdownButtonFormField<String>(
-                          value: _unit,
-                          decoration: InputDecoration(
-                              labelText: S.t('Unit'),
-                              helperText: _unit.toLowerCase()),
-                          items: [
-                            'KG',
-                            'QUINTAL',
-                            'TON',
-                            'PIECE',
-                            'DOZEN',
-                            'BUNCH',
-                            'BUNDLE',
-                            'COUNT'
-                          ]
-                              .map((u) =>
-                                  DropdownMenuItem(value: u, child: Text(u)))
-                              .toList(),
-                          onChanged: _editing || _busy
-                              ? null
-                              : (v) => setState(() {
-                                    _unit = v!;
-                                    _reference = null;
-                                    _queueReference();
-                                  })),
-                      _field('selling_price', 'Your selling price',
-                          required: true, number: true),
-                      if (_referenceLoading) ...[
-                        const LinearProgressIndicator(),
-                        Text(S.t('Loading verified price suggestion...')),
-                      ] else if (_reference != null)
-                        Text(S.t(!_manualPrice &&
-                                _fields['selling_price']!.text.isNotEmpty
-                            ? 'Verified suggestion filled in. You can change your selling price.'
-                            : _manualPrice
-                                ? 'Your entered selling price is preserved.'
-                                : 'No current verified suggestion is available. Enter your own selling price.')),
-                      _field('location', 'Farm location',
-                          required: true, editable: !_editing),
-                      _field('market', 'Nearest mandi',
-                          required: true, editable: !_editing),
-                      ExpansionTile(
-                          title: Text(S.t('Price lookup context')),
-                          children: [
-                            _field('state', 'State for price lookup'),
-                            _field('district', 'District for price lookup'),
-                            _field('variety', 'Variety for price lookup'),
-                          ]),
-                      ListTile(
-                          title: Text(S.t('Harvest date')),
-                          subtitle:
-                              Text(_date.toIso8601String().substring(0, 10)),
-                          trailing: const Icon(Icons.calendar_today),
-                          onTap: _busy
-                              ? null
-                              : () async {
-                                  final picked = await showDatePicker(
-                                      context: context,
-                                      initialDate: _date,
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime.now()
-                                          .add(const Duration(days: 365)));
-                                  if (picked != null) {
-                                    setState(() => _date = picked);
-                                  }
-                                }),
-                      if (_editing)
-                        DropdownButtonFormField<String>(
-                            value: _status,
-                            items: ['ACTIVE', 'INACTIVE']
-                                .map((s) => DropdownMenuItem(
-                                    value: s, child: Text(S.status(s))))
-                                .toList(),
-                            onChanged: _busy
-                                ? null
-                                : (v) => setState(() => _status = v!)),
-                      OutlinedButton.icon(
-                          onPressed: _busy ? null : _photo,
-                          icon: const Icon(Icons.add_a_photo),
-                          label: Text(S.t('Crop photograph'))),
-                      if (_image != null) Text(S.t('Photograph saved')),
-                      OutlinedButton(
-                          onPressed: _busy ? null : _lookup,
-                          child: Text(S.t('Verified market reference'))),
-                      if (_reference != null)
-                        MarketReferenceView(
-                            reference: _reference,
-                            sellingPricePaise: parseSellingPricePaise(
-                                _fields['selling_price']!.text)),
-                      ElevatedButton(
-                          onPressed: _busy ? null : _save,
-                          child: Text(S.t(_editing ? 'Save' : 'Publish'))),
-                    ]))));
+        body: PageBody(
+            child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                    key: _form,
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_busy) const LinearProgressIndicator(),
+                          if (_error != null)
+                            Text(_error!,
+                                style: const TextStyle(color: Colors.red)),
+                          Text(S.t(
+                              'Farmer receives the full base price. Commission is added for buyers.')),
+                          _buildCropImageSection(),
+                          const FormSection('Crop name'),
+                          _field('product_name', 'Crop name',
+                              required: true, editable: !_editing),
+                          _field('description', 'Description'),
+                          DropdownButtonFormField<String>(
+                              value: _category,
+                              isExpanded: true,
+                              decoration:
+                                  InputDecoration(labelText: S.t('Category')),
+                              items: categories
+                                  .map((c) => DropdownMenuItem(
+                                      value: c,
+                                      child: Text(S.t(c),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis)))
+                                  .toList(),
+                              onChanged: _editing || _busy
+                                  ? null
+                                  : (v) => setState(() {
+                                        _category = v!;
+                                        _fields['new_category']!.clear();
+                                        _reference = null;
+                                        _queueReference();
+                                      })),
+                          if (!_editing)
+                            TextFormField(
+                              controller: _fields['new_category'],
+                              enabled: !_busy,
+                              maxLength: 100,
+                              decoration: InputDecoration(
+                                  labelText:
+                                      S.t('New crop category (optional)'),
+                                  hintText: FormExamples.hint('new_category'),
+                                  hintStyle: FormExamples.style),
+                              validator: (value) => value != null &&
+                                      value.trim().isNotEmpty &&
+                                      value.trim().length < 2
+                                  ? S.t('Required')
+                                  : null,
+                              onChanged: (value) => setState(() {
+                                if (value.trim().length >= 2) {
+                                  _category = value.trim();
+                                }
+                                _reference = null;
+                                _queueReference();
+                              }),
+                            ),
+                          const FormSection('Available stock',
+                              icon: Icons.inventory_2_outlined),
+                          if (!_editing)
+                            _field('quantity', 'Quantity',
+                                required: true, number: true),
+                          if (_editing) ...[
+                            _field('stock_adjustment', 'Stock adjustment',
+                                number: true),
+                            Text(S.t(
+                                'Add units with a positive number; remove with a negative number.'))
+                          ],
+                          DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              itemHeight: null,
+                              value: _unit,
+                              decoration: InputDecoration(
+                                  labelText: S.t('Unit'),
+                                  helperText: _unit.toLowerCase()),
+                              items: [
+                                'KG',
+                                'QUINTAL',
+                                'TON',
+                                'PIECE',
+                                'DOZEN',
+                                'BUNCH',
+                                'BUNDLE',
+                                'COUNT'
+                              ]
+                                  .map((u) => DropdownMenuItem(
+                                      value: u, child: Text(u)))
+                                  .toList(),
+                              onChanged: _editing || _busy
+                                  ? null
+                                  : (v) => setState(() {
+                                        _unit = v!;
+                                        _reference = null;
+                                        _queueReference();
+                                      })),
+                          const FormSection('Your selling price',
+                              icon: Icons.payments_outlined),
+                          _field('selling_price', 'Your selling price',
+                              required: true, number: true),
+                          Padding(
+                            key: const ValueKey('price_suggestion_box'),
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_referenceLoading) ...[
+                                  const LinearProgressIndicator(minHeight: 3),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    S.t('Loading verified price suggestion...'),
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary),
+                                  ),
+                                ] else if (_reference != null) ...[
+                                  Text(
+                                    S.t(!_manualPrice &&
+                                            _fields['selling_price']!
+                                                .text
+                                                .isNotEmpty
+                                        ? 'Verified suggestion filled in. You can change your selling price.'
+                                        : _manualPrice
+                                            ? 'Your entered selling price is preserved.'
+                                            : 'No current verified suggestion is available. Enter your own selling price.'),
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.textSecondary),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const FormSection('Farm location',
+                              icon: Icons.location_on_outlined),
+                          _field('location', 'Farm location',
+                              required: true, editable: !_editing),
+                          _field('market', 'Nearest mandi',
+                              required: true, editable: !_editing),
+                          ExpansionTile(
+                              title: Text(S.t('Price lookup context')),
+                              children: [
+                                _field('state', 'State for price lookup'),
+                                _field('district', 'District for price lookup'),
+                                _field('variety', 'Variety for price lookup'),
+                              ]),
+                          const FormSection('Harvest date',
+                              icon: Icons.calendar_today_outlined),
+                          ListTile(
+                              title: Text(S.t('Harvest date')),
+                              subtitle: Text(
+                                  _date.toIso8601String().substring(0, 10)),
+                              trailing: const Icon(Icons.calendar_today),
+                              onTap: _busy
+                                  ? null
+                                  : () async {
+                                      final picked = await showDatePicker(
+                                          context: context,
+                                          initialDate: _date,
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime.now()
+                                              .add(const Duration(days: 365)));
+                                      if (picked != null) {
+                                        setState(() => _date = picked);
+                                      }
+                                    }),
+                          if (_editing)
+                            DropdownButtonFormField<String>(
+                                isExpanded: true,
+                                itemHeight: null,
+                                value: _status,
+                                items: ['ACTIVE', 'INACTIVE']
+                                    .map((s) => DropdownMenuItem(
+                                        value: s, child: Text(S.status(s))))
+                                    .toList(),
+                                onChanged: _busy
+                                    ? null
+                                    : (v) => setState(() => _status = v!)),
+                          OutlinedButton(
+                              onPressed: _busy ? null : _lookup,
+                              child: Text(S.t('Verified market reference'))),
+                          if (_reference != null)
+                            MarketReferenceView(
+                                reference: _reference,
+                                sellingPricePaise: parseSellingPricePaise(
+                                    _fields['selling_price']!.text)),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                              onPressed: (_busy || _imageUploading) ? null : _save,
+                              child: Text(S.t(_editing ? 'Save' : 'Publish'))),
+                        ])))));
   }
 }

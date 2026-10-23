@@ -1,3 +1,5 @@
+import '../theme/app_theme.dart';
+import '../widgets/brand_widgets.dart';
 import '../utils/form_examples.dart';
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
@@ -225,7 +227,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Profile'), showBack: true),
-      body: ListView(padding: const EdgeInsets.all(20), children: [
+      body: PageBody(
+          child: ListView(padding: const EdgeInsets.all(20), children: [
+        BrandHeading(title: S.t('Profile'), icon: Icons.person_outline),
         if (_busy) const LinearProgressIndicator(),
         if (_error != null) ErrorPanel(_error!, _load),
         if (_profile != null)
@@ -235,7 +239,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.account_circle, size: 60),
+                        const CircleAvatar(
+                            radius: 32,
+                            backgroundColor: AppTheme.softGreen,
+                            child: Icon(Icons.person_outline,
+                                size: 32, color: AppTheme.primaryGreen)),
                         detailLine('Name', _profile!['name']),
                         detailLine('Email', _profile!['email']),
                         detailLine('Contact number', _profile!['phone']),
@@ -286,5 +294,5 @@ class _ProfileScreenState extends State<ProfileScreen>
             onPressed: _busy ? null : _logout,
             icon: const Icon(Icons.logout),
             label: Text(S.t('Logout'))),
-      ]));
+      ])));
 }

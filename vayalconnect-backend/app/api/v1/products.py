@@ -76,7 +76,7 @@ async def create_product(
     Backend validates an official reference and adds commission to the selected payout.
     Response shows ONLY farmer payout — no buyer price, no commission.
     """
-    await validate_owned_image(db, data.image_url, current_user["id"])
+    await validate_owned_image(db, data.image_url, current_user["id"], product_name=data.product_name)
     pricing_engine = PricingEngine(db)
     product_repo = ProductRepository(db)
     audit = AuditService(db)
@@ -426,7 +426,7 @@ async def update_product(
         raise ForbiddenError("You can only update your own products.")
 
     if data.image_url is not None and data.image_url != product.get("image_url"):
-        await validate_owned_image(db, data.image_url, current_user["id"])
+        await validate_owned_image(db, data.image_url, current_user["id"], product_name=product.get("product_name"))
     update_fields = {k: v.value if hasattr(v, 'value') else v for k, v in data.model_dump(exclude_none=True).items()}
     if "quantity" in update_fields:
         from app.core.exceptions import ValidationError

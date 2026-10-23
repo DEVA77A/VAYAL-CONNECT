@@ -2,12 +2,14 @@
 
 > Secure, production-ready agricultural marketplace backend connecting Farmers, Buyers, and Platform Admins.
 
+Current market-price workflow and deployment gates: [Tamil Nadu statewide reference prices](docs/STATEWIDE_MARKET_PRICES.md).
+
 ---
 
 ## 🌟 Key Features
 
 - **Strict Role-Based Access Control (RBAC)**: Enforced separation between `FARMER`, `BUYER`, and `ADMIN`.
-- **Zero-Trust Pricing Engine**: Server-calculated prices integrating Government Market Price API (`data.gov.in AGMARKNET`).
+- **Market reference cache**: One consolidated Groq request over validated retrieved evidence; farmer selling prices remain independent. See [configuration, verification and daily scheduling](docs/GROQ_MARKET_PRICES.md).
 - **Role-Filtered Response Payloads**: Farmers see guaranteed payouts only; Buyers see retail prices only; Admins see comprehensive margin breakdowns.
 - **Secure Authentication & Brevo OTP**: Cryptographic password hashing (bcrypt), Fernet bank encryption, and rate-limited email OTPs.
 - **Razorpay TEST checkout**: Server-owned amounts, signature plus gateway capture verification, idempotent payment state, and payout review. Bank transfers are disabled; no simulated transfer is treated as paid.

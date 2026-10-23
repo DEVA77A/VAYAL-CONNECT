@@ -1,3 +1,4 @@
+import '../widgets/brand_widgets.dart';
 import '../utils/language_rebuild.dart';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
@@ -133,27 +134,37 @@ class _PaymentScreenState extends State<PaymentScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Payment'), showBack: true),
-      body: SingleChildScrollView(
-          child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.payment, size: 64),
-                    const SizedBox(height: 24),
-                    Text(S.t('Razorpay TEST MODE — no real money'),
-                        textAlign: TextAlign.center),
-                    if (_message != null)
-                      Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          child: Text(_message!, textAlign: TextAlign.center)),
-                    if (_busy) const LinearProgressIndicator(),
-                    if (!_verified)
-                      ElevatedButton(
-                          onPressed: _busy ? null : _pay,
-                          child: Text(S.t('Pay in test mode'))),
-                    TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: Text(S.t('View orders'))),
-                  ]))));
+      body: PageBody(
+          child: SingleChildScrollView(
+              child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        BrandHeading(
+                            title: S.t('Payment'), icon: Icons.lock_outline),
+                        SectionCard(
+                            title: 'Payment',
+                            icon: Icons.lock_outline,
+                            children: [
+                              Text(S.t('Razorpay TEST MODE — no real money'),
+                                  textAlign: TextAlign.center),
+                            ]),
+                        if (_message != null)
+                          Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              child: Card(
+                                  child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Text(_message!,
+                                          textAlign: TextAlign.center)))),
+                        if (_busy) const LinearProgressIndicator(),
+                        if (!_verified)
+                          ElevatedButton(
+                              onPressed: _busy ? null : _pay,
+                              child: Text(S.t('Pay in test mode'))),
+                        TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: Text(S.t('View orders'))),
+                      ])))));
 }

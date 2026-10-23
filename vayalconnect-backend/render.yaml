@@ -4,6 +4,16 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_MARKET_ENABLED
+        value: "false" # Enable after credential/model and source checks.
+      - key: GOVERNMENT_MARKET_UNIT
+        value: "" # Deprecated; a global fallback cannot identify each crop's unit.
+      - key: MARKET_SOURCE_URLS
+        value: "[]"
       - key: APP_ENV
         value: production
       - key: APP_NAME
@@ -26,6 +36,10 @@ services:
         sync: false
       - key: BREVO_SENDER_NAME
         value: VayalConnect
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PYPRICING_ENABLED
+        value: "false" # Live endpoint/data verification is still blocked.
       - key: GOVERNMENT_MARKET_API_KEY
         sync: false
       - key: GOVERNMENT_MARKET_API_BASE_URL
@@ -39,3 +53,45 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
     healthCheckPath: /health
+
+  - type: cron
+    name: vayalconnect-market-daily
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python -m scripts.refresh_market_prices
+    schedule: "30 2 * * *" # 08:00 Asia/Kolkata (Render uses UTC)
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_MARKET_ENABLED
+        value: "false" # Enable after credential/model and source checks.
+      - key: GOVERNMENT_MARKET_UNIT
+        value: "" # Deprecated; only explicit source-row units are accepted.
+      - key: MARKET_SOURCE_URLS
+        value: "[]"
+      - key: APP_ENV
+        value: production
+      - key: MARKET_STATEWIDE_ENABLED
+        value: "false"
+      - key: MARKET_SOURCE_VERIFIED
+        value: "false"
+      - key: MARKET_STATEWIDE_MIN_OBSERVATIONS
+        value: "3"
+      - key: MARKET_DAILY_REFRESH_ENABLED
+        value: "false" # Enable only after source and staging verification.
+      - key: PYPRICING_ENABLED
+        value: "false" # No external request until verification is complete.
+      - key: PYPRICING_RADIUS_KM
+        value: "60"
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DATABASE
+        value: Vayalconnect
+      - key: GOVERNMENT_MARKET_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false

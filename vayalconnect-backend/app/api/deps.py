@@ -126,3 +126,17 @@ async def get_approved_farmer(
     if missing_farmer_fields(profile):
         raise ForbiddenError("Complete farm coordinates and bank payout details before publishing.")
     return current_user
+
+
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Optional[dict]:
+    """Extract user if authenticated; returns None otherwise."""
+    if not credentials:
+        return None
+    try:
+        return await get_current_user(credentials, db)
+    except Exception:
+        return None
+

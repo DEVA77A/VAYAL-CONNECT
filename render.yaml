@@ -31,6 +31,22 @@ services:
         sync: false
       - key: GOVERNMENT_MARKET_API_BASE_URL
         value: https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_MARKET_ENABLED
+        value: "false"
+      - key: MARKET_STATEWIDE_ENABLED
+        value: "false"
+      - key: MARKET_SOURCE_VERIFIED
+        value: "false"
+      - key: MARKET_STATEWIDE_MIN_OBSERVATIONS
+        value: "3"
+      - key: MARKET_DAILY_REFRESH_ENABLED
+        value: "false"
+      - key: MARKET_SOURCE_URLS
+        value: "[]"
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
@@ -42,3 +58,42 @@ services:
       - key: CORS_ORIGINS
         value: '["*"]'
     healthCheckPath: /health
+
+  # Apply this repository-root Blueprint only. The backend subdirectory also
+  # contains a standalone Blueprint for deployments rooted at that directory.
+  - type: cron
+    name: vayalconnect-market-daily
+    runtime: docker
+    dockerfilePath: vayalconnect-backend/Dockerfile
+    dockerContext: vayalconnect-backend
+    dockerCommand: python -m scripts.refresh_market_prices
+    schedule: "30 2 * * *" # 08:00 Asia/Kolkata; Render schedules in UTC.
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DATABASE
+        value: Vayalconnect
+      - key: JWT_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_MARKET_ENABLED
+        value: "false"
+      - key: MARKET_STATEWIDE_ENABLED
+        value: "false"
+      - key: MARKET_SOURCE_VERIFIED
+        value: "false"
+      - key: MARKET_STATEWIDE_MIN_OBSERVATIONS
+        value: "3"
+      - key: MARKET_DAILY_REFRESH_ENABLED
+        value: "false"
+      - key: GOVERNMENT_MARKET_API_KEY
+        sync: false
+      - key: MARKET_SOURCE_URLS
+        value: "[]"
