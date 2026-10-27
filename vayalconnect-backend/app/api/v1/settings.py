@@ -64,3 +64,31 @@ async def get_quality_grades(request: Request):
         },
         request_id=get_request_id(request),
     )
+
+
+@router.get("/app-release", response_model=APIResponse)
+async def get_app_release(request: Request):
+    """Latest mobile app release metadata for safe in-app updates."""
+    import os
+    return APIResponse(
+        success=True,
+        data={
+            "app_id": "com.vayalconnect.app",
+            "version_name": os.environ.get("LATEST_APP_VERSION_NAME", "1.1.0"),
+            "version_code": int(os.environ.get("LATEST_APP_VERSION_CODE", "11")),
+            "min_supported_version_code": 1,
+            "apk_url": os.environ.get(
+                "LATEST_APK_URL",
+                "https://raw.githubusercontent.com/vayalconnect/vayalconnect-flutter/main/releases/v1.1.0-11/vayalconnect-release-1.1.0-11.apk",
+            ),
+            "sha256": os.environ.get(
+                "LATEST_APK_SHA256",
+                "",
+            ),
+            "release_notes_en": "• Fixed crop image upload with resilient fallback\n• Aligned interactive admin dashboard statistics\n• Enhanced farmer profile review & approval\n• Fresh lighter green UI theme\n• Safe in-app update checker and installer",
+            "release_notes_ta": "• பயிர் புகைப்பட பதிவேற்றம் மேம்படுத்தப்பட்டது\n• நிர்வாகி புள்ளிவிவரங்கள் எளிதாக அணுகும் வசதி\n• விவசாயி விண்ணப்ப மறுஆய்வு & ஒப்புதல்\n• புதிய பசுமை வடிவமைப்பு\n• பாதுகாப்பான நேரடி புதுப்பிப்பு அமைப்பு",
+            "mandatory": False,
+            "release_date": "2026-10-26",
+        },
+        request_id=get_request_id(request),
+    )

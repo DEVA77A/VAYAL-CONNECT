@@ -3,6 +3,8 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   errors:
     deprecated_member_use: ignore
+    dangling_library_doc_comments: ignore
+    use_super_parameters: ignore
   exclude:
     - build/**
     - android/**

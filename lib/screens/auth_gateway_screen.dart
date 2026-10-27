@@ -417,6 +417,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     final emailController = TextEditingController();
     final phoneController = TextEditingController();
     final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
     final addressController = TextEditingController();
     final locationController = TextEditingController();
     final ageController = TextEditingController(text: '30');
@@ -424,6 +425,8 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     bool isSubmitting = false;
     bool accountCreated = false;
     bool locating = false;
+    bool obscurePassword = true;
+    bool obscureConfirmPassword = true;
     LocationResult? registrationLocation;
     String? locationMessage;
     String? regError;
@@ -548,7 +551,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                             TextFormField(
                               enabled: !accountCreated && !isSubmitting,
                               controller: passwordController,
-                              obscureText: true,
+                              obscureText: obscurePassword,
                               validator: (v) => v == null ||
                                       v.length < 8 ||
                                       !RegExp(r'[A-Z]').hasMatch(v) ||
@@ -561,6 +564,52 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 hintStyle: FormExamples.style,
                                 prefixIcon:
                                     const Icon(Icons.lock_outline, size: 20),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: 20,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                  onPressed: () => setSheetState(() =>
+                                      obscurePassword = !obscurePassword),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              enabled: !accountCreated && !isSubmitting,
+                              controller: confirmPasswordController,
+                              obscureText: obscureConfirmPassword,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) {
+                                  return S.t('Please confirm your password');
+                                }
+                                if (v != passwordController.text) {
+                                  return S.t('Passwords do not match');
+                                }
+                                return null;
+                              },
+                              decoration: InputDecoration(
+                                labelText: S.t('Confirm Password'),
+                                hintText: S.t('Please confirm your password'),
+                                hintStyle: FormExamples.style,
+                                prefixIcon: const Icon(
+                                    Icons.lock_reset_outlined,
+                                    size: 20),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    obscureConfirmPassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: 20,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                  onPressed: () => setSheetState(() =>
+                                      obscureConfirmPassword =
+                                          !obscureConfirmPassword),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 10),

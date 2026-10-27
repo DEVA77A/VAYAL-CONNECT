@@ -44,13 +44,13 @@ async def upload_image(
     if len(raw) > 5_000_000:
         raise ValidationError("Crop photograph must be at most 5 MB. / பயிரின் படம் அதிகபட்சமாக 5 MB வரை மட்டுமே இருக்க வேண்டும்.")
     
-    # If crop_name is specified upon upload, validate the image content immediately
-    is_validated = False
-    if crop_name and crop_name.strip():
-        validation = CropImageValidator.validate_image_bytes(raw, crop_name.strip())
-        if not validation.is_valid:
-            raise ValidationError(validation.combined_message)
-        is_validated = True
+    # Technical validation of image content (format, dimensions, non-blank, non-corrupt)
+    validation = CropImageValidator.validate_image_bytes(raw, crop_name.strip() if crop_name else "")
+    if not validation.is_valid:
+        raise ValidationError(validation.combined_message)
+    is_validated = True
+    ai_verified = False
+    validation_category = validation.detected_category
 
     data = await asyncio.to_thread(compress_image, raw)
     doc = {
@@ -59,10 +59,17 @@ async def upload_image(
         "content_type": "image/jpeg",
         "crop_name": crop_name.strip() if crop_name else None,
         "validated": is_validated,
+        "ai_verified": ai_verified,
+        "validation_category": validation_category,
     }
     result = await db.crop_images.insert_one(doc)
     return APIResponse(
-        data={"image_url": "/api/v1/media/" + str(result.inserted_id)},
+        data={
+            "image_url": "/api/v1/media/" + str(result.inserted_id),
+            "validated": is_validated,
+            "ai_verified": ai_verified,
+            "validation_category": validation_category,
+        },
         request_id=get_request_id(request),
     )
 
@@ -120,18 +127,22 @@ async def validate_owned_image(db, image_url: Optional[str], farmer_id: str, pro
     if not image:
         raise ValidationError("Crop photograph must belong to the authenticated farmer. / பயிரின் புகைப்படம் அங்கீகரிக்கப்பட்ட விவசாயிக்கு சொந்தமானதாக இருக்க வேண்டும்.")
 
-    # Validate image content against the product name if specified
-    if product_name and product_name.strip():
-        crop_en, _ = resolve_crop_names(product_name)
-        validated_crop = image.get("crop_name")
-        val_en, _ = resolve_crop_names(validated_crop) if validated_crop else ("", "")
-
-        # If not yet verified or if verified for a different crop name
-        if not image.get("validated") or val_en.lower() != crop_en.lower():
-            validation = CropImageValidator.validate_image_bytes(bytes(image["data"]), product_name)
-            if not validation.is_valid:
-                raise ValidationError(validation.combined_message)
-            await db.crop_images.update_one(
-                {"_id": image["_id"]},
-                {"$set": {"validated": True, "crop_name": product_name}},
-            )
+    # Ensure image content has passed technical validation
+    if not image.get("validated"):
+        validation = CropImageValidator.validate_image_bytes(bytes(image["data"]), product_name or "")
+        if not validation.is_valid:
+            raise ValidationError(validation.combined_message)
+        await db.crop_images.update_one(
+            {"_id": image["_id"]},
+            {"$set": {
+                "validated": True,
+                "crop_name": product_name.strip() if product_name else image.get("crop_name"),
+                "ai_verified": False,
+                "validation_category": validation.detected_category,
+            }},
+        )
+    elif product_name and product_name.strip() and not image.get("crop_name"):
+        await db.crop_images.update_one(
+            {"_id": image["_id"]},
+            {"$set": {"crop_name": product_name.strip()}},
+        )

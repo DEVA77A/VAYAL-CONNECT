@@ -16,6 +16,7 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final String? subtitle;
   final bool showBack;
+  final bool? showMenu;
   final bool showRoleBadge;
   final List<Widget>? actions;
 
@@ -24,6 +25,7 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.title,
     this.subtitle,
     this.showBack = false,
+    this.showMenu,
     this.showRoleBadge = true,
     this.actions,
   });
@@ -36,36 +38,43 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
     final session = SessionManager();
 
     String roleName;
-    Color roleBadgeColor;
     switch (session.activeRole) {
       case AppRole.farmer:
         roleName = session.isTamil ? 'விவசாயி' : 'Farmer';
-        roleBadgeColor = AppTheme.surfaceCream;
         break;
       case AppRole.buyer:
         roleName = session.isTamil ? 'வாங்குபவர்' : 'Buyer';
-        roleBadgeColor = AppTheme.softGreen;
         break;
       case AppRole.admin:
         roleName = session.isTamil ? 'நிர்வாகி' : 'Admin';
-        roleBadgeColor = AppTheme.surfaceCream;
         break;
     }
 
+    final bool displayMenu = !showBack && (showMenu ?? true);
+
     return AppBar(
       toolbarHeight: preferredSize.height,
-      titleSpacing: 16,
-      backgroundColor: AppTheme.deepGreen,
+      titleSpacing: displayMenu || showBack ? 8 : 16,
+      backgroundColor: AppTheme.primaryGreen,
       elevation: 0,
       automaticallyImplyLeading: false,
       leadingWidth: 48,
+      iconTheme: const IconThemeData(color: Colors.white),
       leading: showBack
           ? IconButton(
               tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-              icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+              icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: Colors.white),
               onPressed: () => Navigator.of(context).maybePop(),
             )
-          : null,
+          : displayMenu
+              ? Builder(
+                  builder: (ctx) => IconButton(
+                    tooltip: S.t('Menu'),
+                    icon: const Icon(Icons.menu_rounded, size: 24, color: Colors.white),
+                    onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  ),
+                )
+              : null,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -100,13 +109,18 @@ class VayalAppBar extends StatelessWidget implements PreferredSizeWidget {
           if (showRoleBadge || subtitle != null) ...[
             const SizedBox(height: 4),
             Text(
-                [if (showRoleBadge) roleName, if (subtitle != null) subtitle!]
-                    .join(' · '),
-                maxLines:
-                    MediaQuery.textScalerOf(context).scale(14) > 21 ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12, color: roleBadgeColor, height: 1.3)),
+              [if (showRoleBadge) roleName, if (subtitle != null) subtitle!]
+                  .join(' · '),
+              maxLines:
+                  MediaQuery.textScalerOf(context).scale(14) > 21 ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.softGreen,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
           ],
         ],
       ),

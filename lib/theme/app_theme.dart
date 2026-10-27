@@ -82,13 +82,51 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryGreen,
         primary: primaryGreen,
-        secondary: earthBrown,
-        tertiary: earthBrown,
-        surface: Colors.white,
-        error: errorRed,
         onPrimary: Colors.white,
+        primaryContainer: softGreen,
+        onPrimaryContainer: deepGreen,
+        secondary: earthBrown,
         onSecondary: Colors.white,
+        secondaryContainer: surfaceCream,
+        onSecondaryContainer: darkBrown,
+        tertiary: primaryLightGreen,
+        onTertiary: deepGreen,
+        surface: Colors.white,
         onSurface: textPrimary,
+        surfaceContainer: surfaceCream,
+        surfaceContainerLow: backgroundWarm,
+        surfaceContainerHigh: surfaceCream,
+        surfaceContainerHighest: surfaceCream,
+        outline: cardBorder,
+        outlineVariant: dividerColor,
+        error: errorRed,
+        onError: Colors.white,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: Colors.white,
+        indicatorColor: softGreen,
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: primaryGreen);
+          }
+          return const IconThemeData(color: textSecondary);
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+                fontFamily: 'Roboto',
+                fontFamilyFallback: ['Noto Sans Tamil', 'Nirmala UI'],
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: primaryGreen);
+          }
+          return const TextStyle(
+              fontFamily: 'Roboto',
+              fontFamilyFallback: ['Noto Sans Tamil', 'Nirmala UI'],
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: textSecondary);
+        }),
       ),
       textTheme: const TextTheme(
         headlineSmall: TextStyle(
@@ -202,7 +240,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 2),
       appBarTheme: const AppBarTheme(
-        backgroundColor: deepGreen,
+        backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,

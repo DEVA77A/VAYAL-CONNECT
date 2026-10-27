@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/brand_widgets.dart';
 import '../utils/form_examples.dart';
 import '../utils/language_rebuild.dart';
@@ -27,6 +29,7 @@ class AddProductScreen extends StatefulWidget {
 
 class _AddProductScreenState extends State<AddProductScreen>
     with LanguageRebuild<AddProductScreen> {
+  static const _draftKey = 'vayal_add_product_draft';
   late final _api = widget.api ?? ApiClient();
   final _form = GlobalKey<FormState>();
   late final _fields = {
@@ -67,7 +70,6 @@ class _AddProductScreenState extends State<AddProductScreen>
   String? _imageError;
   bool _imageUploading = false;
   bool _imageVerified = false;
-  String? _validatedCropName;
   bool _busy = false;
   String? _error;
   Map<String, dynamic>? _reference;
@@ -103,16 +105,127 @@ class _AddProductScreenState extends State<AddProductScreen>
       _grade = p['quality_grade'];
       _image = p['image_url'];
       _imageVerified = _image != null && _image!.isNotEmpty;
-      _validatedCropName = p['product_name'] as String?;
       _status = p['status'] == 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
       _date = DateTime.tryParse(p['harvest_date'] ?? '') ?? DateTime.now();
     } else if (widget.initialImageUrl != null) {
       _image = widget.initialImageUrl;
       _imageVerified = true;
-      _validatedCropName = _fields['product_name']?.text;
     }
     _loadCategories();
-    if (_editing) _queueReference();
+    if (_editing) {
+      _queueReference();
+    } else {
+      _initScreen();
+    }
+  }
+
+  Future<void> _initScreen() async {
+    if (widget.initialImageUrl == null) {
+      await _restoreDraft();
+    }
+    await _recoverLostData();
+  }
+
+  void _saveDraft() {
+    if (_editing) return;
+    final draft = <String, dynamic>{
+      'product_name': _fields['product_name']?.text ?? '',
+      'category': _category,
+      'quantity': _fields['quantity']?.text ?? '',
+      'quantity_unit': _unit,
+      'selling_price': _fields['selling_price']?.text ?? '',
+      'location': _fields['location']?.text ?? '',
+      'market': _fields['market']?.text ?? '',
+      'state': _fields['state']?.text ?? '',
+      'district': _fields['district']?.text ?? '',
+      'variety': _fields['variety']?.text ?? '',
+      'description': _fields['description']?.text ?? '',
+      'quality_grade': _grade,
+      'image_url': _image,
+      'image_verified': _imageVerified,
+    };
+    SharedPreferences.getInstance()
+        .then((p) => p.setString(_draftKey, jsonEncode(draft)));
+  }
+
+  Future<void> _restoreDraft() async {
+    if (_editing) return;
+    try {
+      final p = await SharedPreferences.getInstance();
+      final draftStr = p.getString(_draftKey);
+      if (draftStr == null) return;
+      final draft = jsonDecode(draftStr) as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        if (_fields['product_name']?.text.isEmpty ?? true) {
+          _fields['product_name']?.text = draft['product_name'] ?? '';
+        }
+        if (_category == 'Grains' && draft['category'] != null) {
+          _category = draft['category'];
+        }
+        if (_fields['quantity']?.text.isEmpty ?? true) {
+          _fields['quantity']?.text = draft['quantity'] ?? '';
+        }
+        if (draft['quantity_unit'] != null) {
+          _unit = draft['quantity_unit'];
+        }
+        if (_fields['selling_price']?.text.isEmpty ?? true) {
+          _fields['selling_price']?.text = draft['selling_price'] ?? '';
+        }
+        if (_fields['location']?.text.isEmpty ?? true) {
+          _fields['location']?.text = draft['location'] ?? '';
+        }
+        if (_fields['market']?.text.isEmpty ?? true) {
+          _fields['market']?.text = draft['market'] ?? '';
+        }
+        if (_fields['state']?.text.isEmpty ?? true) {
+          _fields['state']?.text = draft['state'] ?? '';
+        }
+        if (_fields['district']?.text.isEmpty ?? true) {
+          _fields['district']?.text = draft['district'] ?? '';
+        }
+        if (_fields['variety']?.text.isEmpty ?? true) {
+          _fields['variety']?.text = draft['variety'] ?? '';
+        }
+        if (_fields['description']?.text.isEmpty ?? true) {
+          _fields['description']?.text = draft['description'] ?? '';
+        }
+        if (draft['quality_grade'] != null) {
+          _grade = draft['quality_grade'];
+        }
+        if (_image == null && draft['image_url'] != null) {
+          _image = draft['image_url'];
+          _imageVerified = draft['image_verified'] ?? true;
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _clearDraft() {
+    SharedPreferences.getInstance().then((p) {
+      p.remove(_draftKey);
+      p.remove('vayal_pending_camera_screen');
+    });
+  }
+
+  void _clearPendingCamera() {
+    SharedPreferences.getInstance().then((p) => p.remove('vayal_pending_camera_screen'));
+  }
+
+  Future<void> _recoverLostData() async {
+    try {
+      final picker = ImagePicker();
+      final LostDataResponse response = await picker.retrieveLostData();
+      if (response.isEmpty) return;
+      if (response.file != null) {
+        final cropName = _fields['product_name']?.text.trim() ?? '';
+        await _processAndUploadImage(response.file!, cropName);
+      } else if (response.exception != null && mounted) {
+        setState(() {
+          _imageError = response.exception!.message ?? 'Camera error';
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadCategories() async {
@@ -143,33 +256,69 @@ class _AddProductScreenState extends State<AddProductScreen>
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final cropName = _fields['product_name']!.text.trim();
-    if (cropName.isEmpty) {
-      _focusNodes['product_name']?.requestFocus();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(S.t('Please enter crop name before selecting image')),
-          backgroundColor: AppTheme.earthBrown,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
+    _saveDraft();
+    if (source == ImageSource.camera) {
+      await SharedPreferences.getInstance().then(
+          (p) => p.setString('vayal_pending_camera_screen', 'add_product'));
     }
 
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
-      source: source,
-      maxWidth: 1600,
-      maxHeight: 1600,
-      imageQuality: 82,
-    );
-    if (picked == null || !mounted) return;
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 82,
+      );
+      if (picked == null || !mounted) {
+        _clearPendingCamera();
+        return;
+      }
+      final cropName = _fields['product_name']?.text.trim() ?? '';
+      await _processAndUploadImage(picked, cropName);
+    } on PlatformException catch (e) {
+      _clearPendingCamera();
+      if (!mounted) return;
+      setState(() {
+        _imageUploading = false;
+        if (e.code == 'camera_access_denied') {
+          _imageError = S.t(
+              'Camera permission denied. Please grant permission in settings.');
+        } else {
+          _imageError =
+              e.message ?? S.t('Unable to access camera. Please retry.');
+        }
+      });
+    } catch (e) {
+      _clearPendingCamera();
+      if (!mounted) return;
+      setState(() {
+        _imageUploading = false;
+        _imageError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
 
+  Future<void> _processAndUploadImage(XFile picked, String cropName) async {
     setState(() {
       _imageUploading = true;
       _imageError = null;
       _error = null;
     });
+
+    if (SessionManager().isDemoMode) {
+      if (mounted) {
+        setState(() {
+          _image = '/api/v1/media/demo-${cropName.isNotEmpty ? cropName.toLowerCase() : "crop"}';
+          _imageVerified = true;
+          _imageError = null;
+          _imageUploading = false;
+        });
+        _saveDraft();
+        _clearPendingCamera();
+      }
+      return;
+    }
 
     final client = http.Client();
     try {
@@ -178,7 +327,9 @@ class _AddProductScreenState extends State<AddProductScreen>
         Uri.parse('${ApiConfig.baseUrl}/api/v1/media'),
       );
       req.headers['Authorization'] = 'Bearer ${SessionManager().accessToken}';
-      req.fields['crop_name'] = cropName;
+      if (cropName.isNotEmpty) {
+        req.fields['crop_name'] = cropName;
+      }
       final bytes = await picked.readAsBytes();
       req.files.add(http.MultipartFile.fromBytes(
         'file',
@@ -192,22 +343,27 @@ class _AddProductScreenState extends State<AddProductScreen>
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body);
+        final payload = data['data'] is Map ? data['data'] : data;
         if (mounted) {
           setState(() {
-            _image = data['data']?['image_url'] ?? data['image_url'];
+            _image = payload['image_url'];
             _imageVerified = true;
-            _validatedCropName = cropName;
             _imageError = null;
           });
+          _saveDraft();
         }
       } else {
         String msg = S.t('Unable to complete this request. Please retry.');
         try {
           final errJson = jsonDecode(response.body);
-          if (errJson['detail'] != null) {
-            msg = errJson['detail'].toString();
-          } else if (errJson['message'] != null) {
-            msg = errJson['message'].toString();
+          if (errJson is Map) {
+            if (errJson['error'] is Map && errJson['error']['message'] != null) {
+              msg = errJson['error']['message'].toString();
+            } else if (errJson['detail'] != null) {
+              msg = errJson['detail'].toString();
+            } else if (errJson['message'] != null) {
+              msg = errJson['message'].toString();
+            }
           }
         } catch (_) {}
         if (mounted) {
@@ -228,6 +384,7 @@ class _AddProductScreenState extends State<AddProductScreen>
       }
     } finally {
       client.close();
+      _clearPendingCamera();
       if (mounted) setState(() => _imageUploading = false);
     }
   }
@@ -320,34 +477,26 @@ class _AddProductScreenState extends State<AddProductScreen>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _image != null && _imageVerified
+                  color: _image != null && _image!.isNotEmpty
                       ? AppTheme.softGreen
-                      : (_image != null && !_imageVerified
-                          ? const Color(0xFFFFF3E0)
-                          : Colors.orange.shade50),
+                      : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: _image != null && _imageVerified
+                    color: _image != null && _image!.isNotEmpty
                         ? AppTheme.primaryGreen
-                        : (_image != null && !_imageVerified
-                            ? AppTheme.warningOrange
-                            : Colors.orange),
+                        : Colors.orange,
                   ),
                 ),
                 child: Text(
-                  _image != null && _imageVerified
-                      ? '✓ ${S.t('Image verified successfully')}'
-                      : (_image != null && !_imageVerified
-                          ? S.t('Crop changed — re-validation required')
-                          : S.t('Required')),
+                  _image != null && _image!.isNotEmpty
+                      ? '✓ ${S.t('Image Accepted')}'
+                      : S.t('Required'),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: _image != null && _imageVerified
+                    color: _image != null && _image!.isNotEmpty
                         ? AppTheme.primaryDarkGreen
-                        : (_image != null && !_imageVerified
-                            ? AppTheme.warningOrange
-                            : Colors.orange.shade800),
+                        : Colors.orange.shade800,
                   ),
                 ),
               ),
@@ -368,7 +517,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                   const CircularProgressIndicator(),
                   const SizedBox(height: 12),
                   Text(
-                    S.t('Validating image with AI...'),
+                    S.t('Uploading crop image...'),
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ],
@@ -648,6 +797,7 @@ class _AddProductScreenState extends State<AddProductScreen>
           method: _editing ? 'PUT' : 'POST',
           timeout: const Duration(seconds: 150),
           body: body);
+      _clearDraft();
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
@@ -678,13 +828,6 @@ class _AddProductScreenState extends State<AddProductScreen>
                 if (key == 'selling_price') {
                   _manualPrice = true;
                 } else if (key == 'product_name') {
-                  final cur = _fields['product_name']!.text.trim();
-                  if (_validatedCropName != null &&
-                      cur.toLowerCase() != _validatedCropName!.toLowerCase()) {
-                    setState(() {
-                      _imageVerified = false;
-                    });
-                  }
                   _reference = null;
                   _queueReference();
                 } else if (key == 'variety') {

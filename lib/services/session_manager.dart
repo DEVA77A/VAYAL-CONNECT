@@ -16,6 +16,7 @@ class SessionManager extends ChangeNotifier {
   SessionManager._internal();
 
   String? _accessToken;
+  String? _refreshToken;
   UserProfile? _currentUser;
   AppRole _activeRole = AppRole.farmer;
   bool _isTamil = false; // Default language: English
@@ -24,6 +25,7 @@ class SessionManager extends ChangeNotifier {
   bool get savingLanguage => _savingLanguage;
 
   String? get accessToken => _accessToken;
+  String? get refreshToken => _refreshToken;
   UserProfile? get currentUser => _currentUser;
   AppRole get activeRole => _activeRole;
   bool get isTamil => _isTamil;
@@ -32,22 +34,41 @@ class SessionManager extends ChangeNotifier {
       (_accessToken != null && _accessToken!.isNotEmpty) || _isDemoMode;
 
   /// Establish an authentic session from backend API response
-  void setSession({
+  Future<void> setSession({
     required String token,
+    String? refreshToken,
     required UserProfile user,
-  }) {
+  }) async {
     _accessToken = token;
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      _refreshToken = refreshToken;
+    }
     _currentUser = user;
     _activeRole = user.role;
     _isTamil = user.preferredLanguage == 'ta';
     VayalStrings.setLanguage(_isTamil);
     _isDemoMode = false; // Strictly real live session
+    await _persistSession();
+    notifyListeners();
+  }
+
+  /// Update tokens on successful refresh
+  Future<void> updateTokens({
+    required String accessToken,
+    String? refreshToken,
+  }) async {
+    _accessToken = accessToken;
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      _refreshToken = refreshToken;
+    }
+    await _persistSession();
     notifyListeners();
   }
 
   void refreshProfile(UserProfile user) {
     if (user.id != _currentUser?.id || user.role != _activeRole) return;
     _currentUser = user;
+    _persistSession();
     notifyListeners();
   }
 
@@ -110,10 +131,82 @@ class SessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void logout() {
+  Future<void> _persistSession() async {
+    final p = await SharedPreferences.getInstance();
+    if (_accessToken != null && _accessToken!.isNotEmpty) {
+      await p.setString('vayal_access_token', _accessToken!);
+    } else {
+      await p.remove('vayal_access_token');
+    }
+    if (_refreshToken != null && _refreshToken!.isNotEmpty) {
+      await p.setString('vayal_refresh_token', _refreshToken!);
+    } else {
+      await p.remove('vayal_refresh_token');
+    }
+    if (_currentUser != null) {
+      await p.setString('vayal_user_profile', jsonEncode(_currentUser!.toJson()));
+    } else {
+      await p.remove('vayal_user_profile');
+    }
+    await p.setString('vayal_active_role', _activeRole.name);
+    await p.setBool('vayal_is_demo_mode', _isDemoMode);
+  }
+
+  Future<void> restoreSession() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final token = p.getString('vayal_access_token');
+      final refreshToken = p.getString('vayal_refresh_token');
+      final userJson = p.getString('vayal_user_profile');
+      final roleName = p.getString('vayal_active_role');
+      final isDemo = p.getBool('vayal_is_demo_mode') ?? false;
+
+      if (token != null && token.isNotEmpty && userJson != null) {
+        final Map<String, dynamic> decoded = jsonDecode(userJson);
+        _accessToken = token;
+        _refreshToken = refreshToken;
+        _currentUser = UserProfile.fromJson(decoded);
+        if (roleName != null) {
+          _activeRole = AppRole.values.firstWhere(
+            (r) => r.name == roleName,
+            orElse: () => _currentUser!.role,
+          );
+        } else {
+          _activeRole = _currentUser!.role;
+        }
+        _isDemoMode = false;
+        notifyListeners();
+      } else if (isDemo && !kReleaseMode && roleName != null) {
+        final role = AppRole.values.firstWhere(
+          (r) => r.name == roleName,
+          orElse: () => AppRole.farmer,
+        );
+        enterDemoMode(role);
+      }
+    } catch (_) {
+      // Corrupted session, clear safely
+      final p = await SharedPreferences.getInstance();
+      p.remove('vayal_access_token');
+      p.remove('vayal_refresh_token');
+      p.remove('vayal_user_profile');
+      p.remove('vayal_active_role');
+      p.remove('vayal_is_demo_mode');
+    }
+  }
+
+  Future<void> logout() async {
     _accessToken = null;
+    _refreshToken = null;
     _currentUser = null;
     _isDemoMode = false;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove('vayal_access_token');
+      await p.remove('vayal_refresh_token');
+      await p.remove('vayal_user_profile');
+      await p.remove('vayal_active_role');
+      await p.remove('vayal_is_demo_mode');
+    } catch (_) {}
     notifyListeners();
   }
 
@@ -165,4 +258,14 @@ class SessionManager extends ChangeNotifier {
 
   /// Backward-compatible alias
   void setDemoRole(AppRole role) => enterDemoMode(role);
+
+  /// For testing memory-resets
+  @visibleForTesting
+  void resetForTests() {
+    _accessToken = null;
+    _refreshToken = null;
+    _currentUser = null;
+    _activeRole = AppRole.farmer;
+    _isDemoMode = false;
+  }
 }

@@ -50,6 +50,9 @@ class VayalStrings {
   static String get phoneOrEmail => isTamil ? 'கைபேசி அல்லது மின்னஞ்சல்' : 'Phone or Email';
   static String get phoneOrEmailHint => isTamil ? 'எ.கா: farmer@vayalconnect.in' : 'e.g. farmer@vayalconnect.in';
   static String get password => isTamil ? 'கடவுச்சொல்' : 'Password';
+  static String get confirmPassword => isTamil ? 'கடவுச்சொல்லை உறுதிப்படுத்தவும்' : 'Confirm Password';
+  static String get pleaseConfirmPassword => isTamil ? 'உங்கள் கடவுச்சொல்லை உறுதிப்படுத்தவும்' : 'Please confirm your password';
+  static String get passwordsDoNotMatch => isTamil ? 'கடவுச்சொற்கள் பொருந்தவில்லை' : 'Passwords do not match';
   static String get passwordHint => isTamil ? '••••••••' : '••••••••';
   static String get rememberMe => isTamil ? 'நினைவில் கொள்' : 'Remember me';
   static String get forgotPassword => isTamil ? 'கடவுச்சொல் மறந்ததா?' : 'Forgot Password?';

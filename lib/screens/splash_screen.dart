@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/session_manager.dart';
 import '../utils/localization.dart';
 import '../theme/app_theme.dart';
@@ -7,6 +8,7 @@ import 'auth_gateway_screen.dart';
 import 'farmer_home_screen.dart';
 import 'buyer_home_screen.dart';
 import 'admin_dashboard_screen.dart';
+import 'add_product_screen.dart';
 import '../models/auth_models.dart';
 
 /// Splash & Brand Entry Screen
@@ -52,11 +54,14 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
-  void _navigateToNext() {
+  Future<void> _navigateToNext() async {
     final session = SessionManager();
     Widget target;
 
     if (session.isAuthenticated) {
+      final p = await SharedPreferences.getInstance();
+      final pendingScreen = p.getString('vayal_pending_camera_screen');
+
       switch (session.activeRole) {
         case AppRole.farmer:
           target = const FarmerHomeScreen();
@@ -68,9 +73,26 @@ class _SplashScreenState extends State<SplashScreen>
           target = const AdminDashboardScreen();
           break;
       }
+
+      if (!mounted) return;
+
+      if (session.activeRole == AppRole.farmer && pendingScreen == 'add_product') {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => target,
+            transitionDuration: Duration.zero,
+          ),
+        );
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AddProductScreen()),
+        );
+        return;
+      }
     } else {
       target = const AuthGatewayScreen();
     }
+
+    if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

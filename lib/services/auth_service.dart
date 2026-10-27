@@ -41,8 +41,9 @@ class AuthService {
           throw Exception('Invalid server response. Please try again later.');
         }
         final authData = AuthTokenResponse.fromJson(data);
-        SessionManager().setSession(
+        await SessionManager().setSession(
           token: authData.accessToken,
+          refreshToken: authData.refreshToken,
           user: authData.user,
         );
         return authData;
@@ -292,6 +293,34 @@ class AuthService {
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'})
       .timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) throw Exception('Server sign-out could not be confirmed.');
+  }
+
+  /// Try refreshing the access token silently using the stored refresh token
+  Future<bool> tryRefreshToken() async {
+    final refresh = SessionManager().refreshToken;
+    if (refresh == null || refresh.isEmpty) return false;
+    try {
+      final response = await _client.post(
+        Uri.parse(ApiConfig.refreshUrl),
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: json.encode({'refresh_token': refresh}),
+      ).timeout(const Duration(seconds: 12));
+
+      final decoded = _decodeResponse(response);
+      if (response.statusCode == 200 && decoded['success'] == true && decoded['data'] != null) {
+        final data = decoded['data'] as Map<String, dynamic>;
+        final newAccessToken = data['access_token'] as String?;
+        final newRefreshToken = data['refresh_token'] as String?;
+        if (newAccessToken != null && newAccessToken.isNotEmpty) {
+          await SessionManager().updateTokens(
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken ?? refresh,
+          );
+          return true;
+        }
+      }
+    } catch (_) {}
+    return false;
   }
 
   String _authenticationError(Map<String, dynamic> decoded, String fallback) {

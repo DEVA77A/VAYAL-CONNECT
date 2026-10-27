@@ -81,7 +81,7 @@ async def list_orders(
     request: Request,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    status: str = Query(None, pattern="^(PENDING_PAYMENT|PAID|CONFIRMED|PROCESSING|SHIPPED|COMPLETED|CANCELLED|REFUNDED)$"),
+    status: str = Query(None, pattern="^(PENDING|PENDING_PAYMENT|PAID|CONFIRMED|PROCESSING|SHIPPED|COMPLETED|CANCELLED|REFUNDED)$"),
     period: str = Query(None, pattern="^(today|month|year)$"),
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
@@ -90,7 +90,12 @@ async def list_orders(
     order_service = OrderService(db)
     role = current_user.get("role", "")
     from app.services.report_service import ReportService
-    filters = {"order_status": status} if status else {}
+    if status == "PENDING":
+        filters = {"order_status": {"$in": ["PENDING_PAYMENT", "PAID", "CONFIRMED", "PROCESSING", "SHIPPED"]}}
+    elif status:
+        filters = {"order_status": status}
+    else:
+        filters = {}
     dates = ReportService(db)._build_date_filter(period, None, None)
     if dates: filters["created_at"] = dates
 

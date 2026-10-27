@@ -438,7 +438,15 @@ async def test_media_and_product_workflow(monkeypatch):
             )
             assert no_img_resp.status_code == 422
 
-            # Scenario 10: Publication with mismatched crop image (Wheat image for Tomato listing)
+            # Scenario 10: Farmer cannot publish with an image belonging to another farmer (Farmer ownership check)
+            other_farmer_id = ObjectId()
+            users_store[str(other_farmer_id)] = {
+                "_id": other_farmer_id, "id": str(other_farmer_id), "name": "Other Farmer",
+                "role": "FARMER", "is_active": True, "email_verified": True, "session_version": 0
+            }
+            farmer_profiles_store[str(other_farmer_id)] = {
+                "_id": ObjectId(), "user_id": other_farmer_id, **complete_farmer()
+            }
             wheat_bytes = create_test_image("yellow", "wheat_data")
             wheat_upload = await client.post(
                 "/api/v1/media",
@@ -448,17 +456,17 @@ async def test_media_and_product_workflow(monkeypatch):
             )
             wheat_img_url = wheat_upload.json()["data"]["image_url"]
 
-            mismatch_listing = {
+            stolen_listing = {
                 **invalid_listing,
                 "image_url": wheat_img_url,
             }
-            mismatch_resp = await client.post(
+            stolen_resp = await client.post(
                 "/api/v1/products/",
-                json=mismatch_listing,
-                headers=headers(farmer_id, "FARMER"),
+                json=stolen_listing,
+                headers=headers(other_farmer_id, "FARMER"),
             )
-            assert mismatch_resp.status_code == 422
-            assert "பொருந்தவில்லை" in mismatch_resp.text or "not match" in mismatch_resp.text.lower()
+            assert stolen_resp.status_code == 422
+            assert "belong to the authenticated farmer" in stolen_resp.text.lower() or "சொந்தமானதாக" in stolen_resp.text
 
             # Scenario 4: Publish with valid verified image succeeds
             valid_listing = {
@@ -493,3 +501,64 @@ async def test_media_and_product_workflow(monkeypatch):
     finally:
         CropImageValidator.reset_mock_handler()
         app.dependency_overrides.pop(get_database, None)
+
+
+def test_valid_photo_accepted_without_gemini_configuration(monkeypatch):
+    """A valid photograph is accepted without any Gemini API key or configuration."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+    CropImageValidator.reset_mock_handler()
+
+    # Valid genuine photo passes technical validation
+    valid_img = create_test_image("red", "tomato_produce")
+    res = CropImageValidator.validate_image_bytes(valid_img, "Tomato")
+    assert res.is_valid is True
+    assert res.ai_verified is False
+    assert res.detected_category == "technical_pass"
+    assert "ஏற்றுக்கொள்ளப்பட்டது" in res.reason_ta
+
+    # Blank image is still strictly rejected by technical validation
+    blank_img = create_blank_image()
+    blank_res = CropImageValidator.validate_image_bytes(blank_img, "Tomato")
+    assert blank_res.is_valid is False
+    assert blank_res.detected_category == "blank"
+
+    # Corrupt file is strictly rejected
+    corrupt_res = CropImageValidator.validate_image_bytes(b"corrupt non-image binary data", "Tomato")
+    assert corrupt_res.is_valid is False
+    assert corrupt_res.detected_category == "corrupt"
+
+
+def test_valid_photo_accepted_when_gemini_unavailable(monkeypatch):
+    """When Gemini is unavailable or network is offline, photograph is accepted based on technical validation."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "offline_key")
+    CropImageValidator.reset_mock_handler()
+
+    valid_img = create_test_image("green", "chilli_produce")
+    res = CropImageValidator.validate_image_bytes(valid_img, "Chilli")
+    assert res.is_valid is True
+    assert res.ai_verified is False
+    assert res.detected_category == "technical_pass"
+
+
+def test_unsupported_formats_and_oversized_rejected():
+    """Unsupported formats (GIF/BMP) and oversized files are rejected by technical validation."""
+    CropImageValidator.reset_mock_handler()
+    from PIL import Image
+    import io
+
+    # Unsupported format (GIF)
+    gif_io = io.BytesIO()
+    img = Image.new("RGB", (100, 100), color="blue")
+    img.save(gif_io, format="GIF")
+    gif_res = CropImageValidator.validate_image_bytes(gif_io.getvalue(), "Tomato")
+    assert gif_res.is_valid is False
+    assert gif_res.detected_category == "invalid_format"
+
+    # Oversized file (> 5 MB)
+    huge_bytes = b"X" * (5_000_001)
+    huge_res = CropImageValidator.validate_image_bytes(huge_bytes, "Tomato")
+    assert huge_res.is_valid is False
+    assert huge_res.detected_category == "too_large"
+

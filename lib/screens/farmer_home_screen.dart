@@ -6,12 +6,12 @@ import '../services/session_manager.dart';
 import '../utils/commerce_strings.dart';
 import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
+import '../widgets/bottom_nav_bar.dart';
 import '../utils/presentation_format.dart';
 import 'add_product_screen.dart';
 import 'farmer_application_screen.dart';
-import 'market_prices_screen.dart';
 import 'orders_screen.dart';
-import 'profile_screen.dart';
+import '../widgets/vayal_drawer.dart';
 
 class FarmerHomeScreen extends StatefulWidget {
   final ApiClient? api;
@@ -79,6 +79,20 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen>
     }
   }
 
+  void _onBottomNavTap(int index) {
+    switch (index) {
+      case 0:
+        _load();
+        break;
+      case 1:
+        _open(const MyCropsScreen());
+        break;
+      case 2:
+        _open(const OrdersScreen());
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ready = _profile?['can_publish'] == true;
@@ -87,6 +101,9 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen>
         appBar: VayalAppBar(
             title: SessionManager().currentUser?.name ?? S.t('Farmer'),
             subtitle: S.t('Dashboard')),
+        drawer: const VayalNavigationDrawer(currentSection: 'dashboard'),
+        bottomNavigationBar:
+            VayalBottomNavBar(currentIndex: 0, onTap: _onBottomNavTap),
         body: PageBody(
             child: RefreshIndicator(
                 onRefresh: _load,
@@ -150,31 +167,6 @@ class _FarmerHomeScreenState extends State<FarmerHomeScreen>
                       MetricCard('Pending payouts',
                           m['pending_payout_display'] ?? S.money(0)),
                     ]),
-                  const FormSection('Farmer', icon: Icons.agriculture_outlined),
-                  for (final entry in <(String, IconData, Widget)>[
-                    ('My crops', Icons.agriculture, const MyCropsScreen()),
-                    ('Orders', Icons.receipt_long, const OrdersScreen()),
-                    ('Sales', Icons.bar_chart, const FarmerSalesScreen()),
-                    (
-                      'Market prices',
-                      Icons.price_change,
-                      const MarketPricesScreen()
-                    ),
-                    (
-                      'Payouts',
-                      Icons.account_balance,
-                      const FarmerPayoutsScreen()
-                    ),
-                    ('Profile', Icons.person, const ProfileScreen()),
-                  ])
-                    Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Card(
-                            child: ListTile(
-                                leading: Icon(entry.$2),
-                                title: Text(S.t(entry.$1)),
-                                trailing: const Icon(Icons.chevron_right),
-                                onTap: () => _open(entry.$3)))),
                 ]))));
   }
 }

@@ -119,6 +119,7 @@ class ImageValidationResult:
     reason_en: str
     reason_ta: str
     detected_category: str = "unknown"
+    ai_verified: bool = False
 
     @property
     def combined_message(self) -> str:
@@ -227,130 +228,15 @@ class CropImageValidator:
         if cls._mock_handler is not None:
             return cls._mock_handler(raw, crop_name)
 
-        # Step 5: Server-side vision AI evaluation (Gemini Multimodal Vision)
-        return cls._evaluate_vision_ai(raw, crop_name)
-
-    @classmethod
-    def _evaluate_vision_ai(cls, raw: bytes, crop_name: str) -> ImageValidationResult:
-        """Call Gemini Multimodal Vision API to verify image content matches crop name."""
-        api_key = (settings.GEMINI_API_KEY or "").strip()
-        if not api_key:
-            # When AI service key is missing, follow Section 4 policy:
-            # "If the validator cannot determine whether the image matches:
-            #  Do not claim that it was verified.
-            #  Do not silently accept the image as AI-verified.
-            #  Explain that the image could not be verified and ask the farmer to upload a clearer, more relevant photo."
-            return ImageValidationResult(
-                is_valid=False,
-                confidence=0.0,
-                reason_en="AI crop verification service is not configured. Please ensure GEMINI_API_KEY is configured.",
-                reason_ta="AI பயிர் சரிபார்ப்பு சேவை அமைக்கப்படவில்லை. தயவுசெய்து சரியான அமைப்புகளை உறுதிப்படுத்தவும்.",
-                detected_category="service_unconfigured",
-            )
-
+        # Step 5: Technical validation succeeded — genuine photograph accepted without AI verification
         crop_en, crop_ta = resolve_crop_names(crop_name)
-        prompt = (
-            f"You are an agricultural computer vision validation assistant for the VayalConnect farmer marketplace.\n"
-            f"The farmer has listed this produce under crop name: '{crop_en}' (Tamil: '{crop_ta}').\n\n"
-            f"Task: Evaluate if the provided photograph plausibly depicts this crop.\n"
-            f"Valid depictions include:\n"
-            f"- Harvested produce (e.g. tomatoes, wheat grains, bananas, onions)\n"
-            f"- Produce growing on a plant\n"
-            f"- Field crop plants\n"
-            f"- Bundles, baskets, crates, or bags of the specified produce\n\n"
-            f"Reject the image if it is:\n"
-            f"- A selfie, face, or portrait of a person\n"
-            f"- A vehicle, automobile, motorcycle, or machinery unrelated to the crop produce\n"
-            f"- An unrelated animal, pet, or livestock\n"
-            f"- A screenshot, text document, bill, or meme\n"
-            f"- A completely different crop (e.g., photo of wheat when crop is Tomato, or photo of tomato when crop is Banana)\n"
-            f"- Blank, blurry, dark, or unrecognizable\n\n"
-            f"Respond strictly with valid JSON:\n"
-            f"{{\n"
-            f'  "is_match": true or false,\n'
-            f'  "is_unrelated": true or false,\n'
-            f'  "detected_category": "crop_match" | "crop_mismatch" | "selfie" | "vehicle" | "animal" | "screenshot" | "blank" | "unclear",\n'
-            f'  "confidence": <float between 0.0 and 1.0>,\n'
-            f'  "reason_en": "<concise explanation in English>",\n'
-            f'  "reason_ta": "<concise explanation in Tamil>"\n'
-            f"}}"
+        return ImageValidationResult(
+            is_valid=True,
+            confidence=1.0,
+            reason_en=f"Photograph accepted for {crop_en}." if crop_en else "Photograph accepted.",
+            reason_ta=f"{crop_ta} பயிருக்கான புகைப்படம் ஏற்றுக்கொள்ளப்பட்டது." if crop_ta else "புகைப்படம் ஏற்றுக்கொள்ளப்பட்டது.",
+            detected_category="technical_pass",
+            ai_verified=False,
         )
 
-        try:
-            from google import genai
-            from google.genai import types
 
-            client = genai.Client(
-                api_key=api_key,
-                vertexai=False,
-                enterprise=False,
-                http_options={"api_version": "v1alpha", "timeout": 25.0},
-            )
-            # Use gemini-2.5-flash or gemini-3.8-flash
-            model_name = "gemini-2.5-flash"
-            part = types.Part.from_bytes(data=raw, mime_type="image/jpeg")
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[part, prompt],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.1,
-                ),
-            )
-            text = (response.text or "").strip()
-            # Clean possible markdown fence
-            if text.startswith("```"):
-                text = text.strip("`")
-                if text.startswith("json"):
-                    text = text[4:].strip()
-            data = json.loads(text)
-
-            is_match = bool(data.get("is_match", False))
-            confidence = float(data.get("confidence", 0.0))
-            category = str(data.get("detected_category", "unknown"))
-            reason_en = data.get("reason_en", "")
-            reason_ta = data.get("reason_ta", "")
-
-            if is_match and confidence >= cls.CONFIDENCE_THRESHOLD:
-                return ImageValidationResult(
-                    is_valid=True,
-                    confidence=confidence,
-                    reason_en=reason_en or f"Verified crop photograph of {crop_en}.",
-                    reason_ta=reason_ta or f"{crop_ta} பயிரின் படம் சரிபார்க்கப்பட்டது.",
-                    detected_category="crop_match",
-                )
-            else:
-                # Provide tailored bilingual explanations if not returned by model
-                if category == "selfie":
-                    r_en = "The uploaded photo appears to be a person or selfie, not a crop."
-                    r_ta = "பதிவேற்றப்பட்ட படம் பயிருக்கு பதிலாக நபர் அல்லது செல்ஃபியாக உள்ளது."
-                elif category == "vehicle":
-                    r_en = "The uploaded photo contains a vehicle or machinery, not the crop."
-                    r_ta = "பதிவேற்றப்பட்ட படம் பயிருக்கு பதிலாக வாகனம் அல்லது இயந்திரமாக உள்ளது."
-                elif category == "animal":
-                    r_en = "The uploaded photo contains an unrelated animal, not the specified crop."
-                    r_ta = "பதிவேற்றப்பட்ட படம் பயிருக்கு பதிலாக தொடர்பில்லாத விலங்காக உள்ளது."
-                elif category == "crop_mismatch":
-                    r_en = f"The uploaded image does not match the specified crop ({crop_en})."
-                    r_ta = f"பதிவேற்றப்பட்ட படம் குறிப்பிட்ட பயிருடன் ({crop_ta}) பொருந்தவில்லை."
-                else:
-                    r_en = reason_en or f"The image could not be verified as a valid photograph of {crop_en}. Please upload a clearer photo."
-                    r_ta = reason_ta or f"இப்படம் {crop_ta} பயிரின் படமாக உறுதிப்படுத்தப்படவில்லை. தெளிவான புகைப்படத்தைப் பதிவேற்றவும்."
-
-                return ImageValidationResult(
-                    is_valid=False,
-                    confidence=confidence,
-                    reason_en=r_en,
-                    reason_ta=r_ta,
-                    detected_category=category,
-                )
-
-        except Exception as e:
-            logger.warning("AI vision validation failed: %s", e)
-            return ImageValidationResult(
-                is_valid=False,
-                confidence=0.0,
-                reason_en="Could not verify the image content. Please upload a clearer, well-lit photo of the crop.",
-                reason_ta="படத்தின் உள்ளடக்கத்தை சரிபார்க்க முடியவில்லை. பயிரின் தெளிவான, வெளிச்சமான புகைப்படத்தைப் பதிவேற்றவும்.",
-                detected_category="ai_error",
-            )

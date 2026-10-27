@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     MARKET_SOURCE_URLS: str = "[]" # Operator-reviewed JSON feeds; explicit units required.
     GOVERNMENT_MARKET_UNIT: str = "" # Deprecated; never applied to every OGD row.
     GEMINI_API_KEY: str = Field("", repr=False)
+    AI_CROP_VERIFICATION_ENABLED: bool = True
     GEMINI_MARKET_MODELS: str = "gemini-3.8-flash"
     GEMINI_MARKET_TIMEOUT_SECONDS: int = Field(60, ge=1, le=60)
     GEMINI_MARKET_TOTAL_TIMEOUT_SECONDS: int = Field(120, ge=5, le=120)

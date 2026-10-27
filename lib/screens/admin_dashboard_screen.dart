@@ -8,7 +8,8 @@ import '../utils/commerce_strings.dart';
 import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
 import 'orders_screen.dart';
-import 'profile_screen.dart';
+import '../widgets/bottom_nav_bar.dart';
+import '../widgets/vayal_drawer.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   final AdminService? adminService;
@@ -58,9 +59,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     _load();
   }
 
+  void _onBottomNavTap(int index) {
+    if (index == 0) {
+      _load();
+    } else if (index == 1) {
+      _open(AdminFarmersScreen(api: _api));
+    } else if (index == 2) {
+      _open(const OrdersScreen());
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Admin dashboard')),
+      drawer: const VayalNavigationDrawer(currentSection: 'overview'),
+      bottomNavigationBar: VayalBottomNavBar(
+        currentIndex: 0,
+        onTap: _onBottomNavTap,
+      ),
       body: PageBody(
           child: RefreshIndicator(
               onRefresh: _load,
@@ -68,29 +84,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 BrandHeading(
                     title: S.t('Manage VayalConnect'),
                     icon: Icons.dashboard_outlined),
-                const SizedBox(height: 16),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  ActionChip(
-                      avatar: const Icon(Icons.agriculture_outlined),
-                      label: Text(S.t('Farmers')),
-                      onPressed: () => _open(AdminFarmersScreen(api: _api))),
-                  ActionChip(
-                      avatar: const Icon(Icons.people_outline),
-                      label: Text(S.t('Buyers')),
-                      onPressed: () => _open(const AdminBuyersScreen())),
-                  ActionChip(
-                      label: Text(S.t('Commission')),
-                      onPressed: () => _open(CommissionScreen(api: _api))),
-                  ActionChip(
-                      label: Text(S.t('Payouts')),
-                      onPressed: () => _open(AdminPayoutsScreen(api: _api))),
-                  ActionChip(
-                      label: Text(S.t('Orders')),
-                      onPressed: () => _open(const OrdersScreen())),
-                  ActionChip(
-                      label: Text(S.t('Profile')),
-                      onPressed: () => _open(const ProfileScreen())),
-                ]),
                 const SizedBox(height: 16),
                 DropdownButton<String>(
                     isExpanded: true,
@@ -110,56 +103,277 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                 if (_busy) const LinearProgressIndicator(),
                 if (_error != null) ErrorPanel(_error!, _load),
                 if (_data != null) ...[
-                  Wrap(spacing: 8, runSpacing: 8, children: [
-                    for (final e in {
-                      'total_farmers': 'Registered farmers',
-                      'approved_farmers': 'Approved farmers',
-                      'pending_farmer_approvals': 'Pending applications',
-                      'rejected_farmers': 'Rejected applications',
-                      'total_buyers': 'Registered buyers',
-                      'active_products': 'Active listings',
-                      'total_orders': 'Total orders',
-                      'pending_orders': 'Pending orders',
-                      'completed_orders': 'Completed orders',
-                      'cancelled_orders': 'Cancelled orders'
-                    }.entries)
-                      MetricCard(e.value, '${_data![e.key] ?? 0}'),
-                    for (final e in {
-                      'gross_order_value_paise': 'Gross order value',
-                      'total_platform_commission_paise': 'Earned commission',
-                      'captured_payments_paise': 'Captured payments',
-                      'paid_payouts_paise': 'Paid payouts',
-                      'pending_payouts_paise': 'Pending payouts'
-                    }.entries)
-                      MetricCard(e.value, S.money(_data![e.key] ?? 0)),
-                  ]),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 12),
+                    child: Text(
+                      S.t('Operations & Marketplace'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Builder(builder: (ctx) {
+                    final screenWidth = MediaQuery.sizeOf(ctx).width;
+                    final textScale =
+                        MediaQuery.textScalerOf(ctx).scale(14) / 14;
+                    final int crossAxisCount =
+                        (screenWidth < 360 || textScale > 1.25) ? 1 : 2;
+                    final double childAspectRatio = crossAxisCount == 1
+                        ? (textScale > 1.3 ? 1.4 : 1.8)
+                        : 1.15;
+
+                    final operations = [
+                      _MetricDef(
+                        id: 'total_farmers',
+                        label: 'Registered farmers',
+                        icon: Icons.people_outline,
+                        color: AppTheme.primaryGreen,
+                        onTap: () => _open(
+                            AdminFarmersScreen(api: _api, initialStatus: '')),
+                      ),
+                      _MetricDef(
+                        id: 'approved_farmers',
+                        label: 'Approved farmers',
+                        icon: Icons.verified_user_outlined,
+                        color: AppTheme.primaryDarkGreen,
+                        onTap: () => _open(AdminFarmersScreen(
+                            api: _api, initialStatus: 'APPROVED')),
+                      ),
+                      _MetricDef(
+                        id: 'pending_farmer_approvals',
+                        label: 'Pending applications',
+                        icon: Icons.hourglass_top_outlined,
+                        color: AppTheme.warningOrange,
+                        onTap: () => _open(AdminFarmersScreen(
+                            api: _api, initialStatus: 'PENDING')),
+                      ),
+                      _MetricDef(
+                        id: 'rejected_farmers',
+                        label: 'Rejected applications',
+                        icon: Icons.highlight_off_outlined,
+                        color: AppTheme.errorRed,
+                        onTap: () => _open(AdminFarmersScreen(
+                            api: _api, initialStatus: 'REJECTED')),
+                      ),
+                      _MetricDef(
+                        id: 'total_buyers',
+                        label: 'Registered buyers',
+                        icon: Icons.shopping_bag_outlined,
+                        color: AppTheme.earthBrown,
+                        onTap: () => _open(const AdminBuyersScreen()),
+                      ),
+                      _MetricDef(
+                        id: 'active_products',
+                        label: 'Active listings',
+                        icon: Icons.inventory_2_outlined,
+                        color: AppTheme.primaryGreen,
+                        onTap: () => _open(AdminListingsScreen(api: _api)),
+                      ),
+                      _MetricDef(
+                        id: 'total_orders',
+                        label: 'Total orders',
+                        icon: Icons.receipt_long_outlined,
+                        color: AppTheme.deepGreen,
+                        onTap: () =>
+                            _open(const OrdersScreen(initialStatus: '')),
+                      ),
+                      _MetricDef(
+                        id: 'pending_orders',
+                        label: 'Pending orders',
+                        icon: Icons.pending_actions_outlined,
+                        color: AppTheme.warningOrange,
+                        onTap: () =>
+                            _open(const OrdersScreen(initialStatus: 'PENDING')),
+                      ),
+                      _MetricDef(
+                        id: 'completed_orders',
+                        label: 'Completed orders',
+                        icon: Icons.check_circle_outline,
+                        color: AppTheme.primaryDarkGreen,
+                        onTap: () => _open(
+                            const OrdersScreen(initialStatus: 'COMPLETED')),
+                      ),
+                      _MetricDef(
+                        id: 'cancelled_orders',
+                        label: 'Cancelled orders',
+                        icon: Icons.cancel_outlined,
+                        color: AppTheme.errorRed,
+                        onTap: () => _open(
+                            const OrdersScreen(initialStatus: 'CANCELLED')),
+                      ),
+                    ];
+
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: operations.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        childAspectRatio: childAspectRatio,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemBuilder: (c, i) {
+                        final def = operations[i];
+                        final val = '${_data![def.id] ?? 0}';
+                        return MetricCard(
+                          def.label,
+                          val,
+                          onTap: def.onTap,
+                          icon: def.icon,
+                          color: def.color,
+                        );
+                      },
+                    );
+                  }),
+                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 12),
+                    child: Text(
+                      S.t('Financial Overview'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Builder(builder: (ctx) {
+                    final screenWidth = MediaQuery.sizeOf(ctx).width;
+                    final textScale =
+                        MediaQuery.textScalerOf(ctx).scale(14) / 14;
+                    final int crossAxisCount =
+                        (screenWidth < 360 || textScale > 1.25) ? 1 : 2;
+                    final double childAspectRatio = crossAxisCount == 1
+                        ? (textScale > 1.3 ? 1.4 : 1.8)
+                        : 1.15;
+
+                    const financials = [
+                      _MetricDef(
+                        id: 'gross_order_value_paise',
+                        label: 'Gross order value',
+                        icon: Icons.payments_outlined,
+                        color: AppTheme.earthBrown,
+                        isMoney: true,
+                      ),
+                      _MetricDef(
+                        id: 'total_platform_commission_paise',
+                        label: 'Earned commission',
+                        icon: Icons.account_balance_wallet_outlined,
+                        color: AppTheme.primaryDarkGreen,
+                        isMoney: true,
+                      ),
+                      _MetricDef(
+                        id: 'captured_payments_paise',
+                        label: 'Captured payments',
+                        icon: Icons.price_check_outlined,
+                        color: AppTheme.primaryGreen,
+                        isMoney: true,
+                      ),
+                      _MetricDef(
+                        id: 'paid_payouts_paise',
+                        label: 'Paid payouts',
+                        icon: Icons.done_all_outlined,
+                        color: AppTheme.deepGreen,
+                        isMoney: true,
+                      ),
+                      _MetricDef(
+                        id: 'pending_payouts_paise',
+                        label: 'Pending payouts',
+                        icon: Icons.schedule_outlined,
+                        color: AppTheme.warningOrange,
+                        isMoney: true,
+                      ),
+                    ];
+
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: financials.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        childAspectRatio: childAspectRatio,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
+                      itemBuilder: (c, i) {
+                        final def = financials[i];
+                        final val = S.money(_data![def.id] ?? 0);
+                        return MetricCard(
+                          def.label,
+                          val,
+                          icon: def.icon,
+                          color: def.color,
+                        );
+                      },
+                    );
+                  }),
                   const SizedBox(height: 16),
-                  Text(S.t(
-                      'Financial periods use UTC order creation dates. Earned commission requires completed and captured orders.')),
+                  Text(
+                    S.t(
+                        'Financial periods use UTC order creation dates. Earned commission requires completed and captured orders.'),
+                    style: const TextStyle(
+                        fontSize: 12, color: AppTheme.textSecondary),
+                  ),
                 ],
               ]))));
 }
 
+class _MetricDef {
+  final String id;
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+  final bool isMoney;
+
+  const _MetricDef({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.onTap,
+    this.isMoney = false,
+  });
+}
+
 class AdminFarmersScreen extends StatefulWidget {
   final ApiClient api;
-  const AdminFarmersScreen({super.key, required this.api});
+  final String initialStatus;
+  const AdminFarmersScreen(
+      {super.key, required this.api, this.initialStatus = 'PENDING'});
   @override
   State<AdminFarmersScreen> createState() => _AdminFarmersScreenState();
 }
 
 class _AdminFarmersScreenState extends State<AdminFarmersScreen>
     with LanguageRebuild<AdminFarmersScreen> {
-  String _status = 'PENDING';
+  late String _status = widget.initialStatus;
+  final TextEditingController _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Farmers'), showBack: true),
       body: PageBody(
           child: Column(children: [
         Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: DropdownButton<String>(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: DropdownButtonFormField<String>(
                 isExpanded: true,
-                itemHeight: null,
+                decoration: InputDecoration(
+                  labelText: S.t('Approval Status'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
                 value: _status,
                 items: ['', 'PENDING', 'APPROVED', 'REJECTED']
                     .map((v) => DropdownMenuItem(
@@ -168,32 +382,110 @@ class _AdminFarmersScreenState extends State<AdminFarmersScreen>
                             Text(v.isEmpty ? S.t('All farmers') : S.status(v))))
                     .toList(),
                 onChanged: (v) => setState(() => _status = v!))),
+        Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                  hintText: S.t('Search by name, phone or location...'),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _query.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () => setState(() {
+                            _search.clear();
+                            _query = '';
+                          }),
+                        )
+                      : null,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+                onChanged: (v) =>
+                    setState(() => _query = v.trim().toLowerCase()))),
         Expanded(
             child: RecordPage(
-                key: ValueKey(_status),
+                key: ValueKey('$_status|$_query'),
                 title: 'Farmers',
                 embedded: true,
                 api: widget.api,
                 path:
                     '/api/v1/admin/farmers${_status.isEmpty ? '' : '?status=$_status'}',
-                itemBuilder: (ctx, f, reload) => Card(
-                    child: ListTile(
-                        leading: const CircleAvatar(
-                            backgroundColor: AppTheme.surfaceCream,
-                            child: Icon(Icons.agriculture_outlined,
-                                color: AppTheme.earthBrown)),
-                        title: Text(f['name'] ?? ''),
-                        subtitle: Text(
-                            '${S.status(f['approval_status'])}\n${f['area_location'] ?? ''}'),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          await Navigator.push(
-                              ctx,
-                              MaterialPageRoute(
-                                  builder: (_) => FarmerReviewScreen(
-                                      farmer: f, api: widget.api)));
-                          reload();
-                        })))),
+                itemBuilder: (ctx, f, reload) {
+                  if (_query.isNotEmpty) {
+                    final name = (f['name'] ?? '').toString().toLowerCase();
+                    final phone = (f['phone'] ?? '').toString().toLowerCase();
+                    final area =
+                        (f['area_location'] ?? '').toString().toLowerCase();
+                    if (!name.contains(_query) &&
+                        !phone.contains(_query) &&
+                        !area.contains(_query)) {
+                      return const SizedBox.shrink();
+                    }
+                  }
+                  final status = f['approval_status'] ?? 'PENDING';
+                  final Color statusColor = status == 'APPROVED'
+                      ? AppTheme.primaryDarkGreen
+                      : (status == 'REJECTED'
+                          ? AppTheme.errorRed
+                          : AppTheme.warningOrange);
+
+                  return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: AppTheme.cardBorder)),
+                      child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          leading: CircleAvatar(
+                              backgroundColor: statusColor.withOpacity(0.12),
+                              child: Icon(Icons.agriculture_outlined,
+                                  color: statusColor)),
+                          title: Text(f['name'] ?? '',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 15)),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    '${f['phone'] ?? ''} · ${f['area_location'] ?? ''}',
+                                    style: const TextStyle(
+                                        color: AppTheme.textSecondary,
+                                        fontSize: 13)),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    S.status(status),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: statusColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          trailing: const Icon(Icons.chevron_right,
+                              color: AppTheme.primaryGreen),
+                          onTap: () async {
+                            final changed = await Navigator.push(
+                                ctx,
+                                MaterialPageRoute(
+                                    builder: (_) => FarmerReviewScreen(
+                                        farmer: f, api: widget.api)));
+                            if (changed == true) reload();
+                          }));
+                })),
       ])));
 }
 
@@ -211,6 +503,8 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
   late Map<String, dynamic> _farmer = widget.farmer;
   bool _busy = false;
   bool _reviewLoaded = false;
+  String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -233,13 +527,17 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst('Exception: ', '');
+          _reviewLoaded = false;
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  String? _error;
   Future<void> _decide(bool approve) async {
     if (_busy || !_reviewLoaded) return;
     String? reason;
@@ -249,12 +547,22 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
           context: context,
           builder: (ctx) => AlertDialog(
                   title: Text(S.t('Rejection reason')),
-                  content: TextField(controller: controller, maxLength: 500),
+                  content: TextField(
+                    controller: controller,
+                    maxLength: 500,
+                    decoration: InputDecoration(
+                      hintText:
+                          S.t('Enter reason for rejecting this application'),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
                   actions: [
                     TextButton(
                         onPressed: () => Navigator.pop(ctx),
                         child: Text(S.t('Cancel'))),
-                    TextButton(
+                    FilledButton(
+                        style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.errorRed),
                         onPressed: () =>
                             Navigator.pop(ctx, controller.text.trim()),
                         child: Text(S.t('Reject')))
@@ -274,9 +582,30 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
             'application_revision': _farmer['application_revision'] ?? 0,
             if (!approve) 'reason': reason
           });
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(approve
+                ? S.t('Farmer approved successfully')
+                : S.t('Farmer application rejected')),
+            backgroundColor:
+                approve ? AppTheme.primaryGreen : AppTheme.errorRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_error!),
+            backgroundColor: AppTheme.errorRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -285,6 +614,9 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
   @override
   Widget build(BuildContext context) {
     final f = _farmer, a = Map<String, dynamic>.from(f['application'] ?? {});
+    final status = f['approval_status'] ?? 'PENDING';
+    final hasSubmission = f['submitted_at'] != null;
+
     return Scaffold(
         appBar: VayalAppBar(title: S.t('Farmer application'), showBack: true),
         body: PageBody(
@@ -294,21 +626,37 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
           detailLine('Name', f['name']),
           detailLine('Email', f['email']),
           detailLine('Contact number', f['phone']),
-          detailLine('Status', S.status(f['approval_status'])),
-          if (f['submitted_at'] == null)
-            Text(S.t(
-                'Application not submitted yet. The farmer must submit their farm details before approval.')),
+          detailLine('Status', S.status(status)),
+          if (!hasSubmission)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3E0),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.warningOrange),
+              ),
+              child: Text(
+                S.t(
+                    'Application not submitted yet. The farmer must submit their farm details before approval.'),
+                style: const TextStyle(
+                    color: AppTheme.earthBrown, fontWeight: FontWeight.w500),
+              ),
+            ),
           const FormSection('Farm details', icon: Icons.agriculture_outlined),
           detailLine('Farm name', a['farm_name']),
           detailLine('Farm address', a['farm_address']),
           detailLine('Farm details', a['farm_details']),
           detailLine('Crops', a['crops']),
           detailLine('Farm coordinates', a['coordinates']),
-          detailLine('Rejection reason', f['rejection_reason']),
+          if (f['rejection_reason'] != null &&
+              f['rejection_reason'].toString().trim().isNotEmpty)
+            detailLine('Rejection reason', f['rejection_reason']),
           const FormSection('Bank payout details',
               icon: Icons.account_balance_outlined),
           detailLine('Bank details submitted',
               S.t(f['bank_details_present'] == true ? 'Yes' : 'No')),
+          const SizedBox(height: 12),
           OutlinedButton(
               onPressed: () => Navigator.push(
                   context,
@@ -318,18 +666,135 @@ class _FarmerReviewScreenState extends State<FarmerReviewScreen>
               child: Text(S.t('Products and orders'))),
           if (_busy) const LinearProgressIndicator(),
           if (_error != null) ErrorPanel(_error!, _reload),
-          if (f['approval_status'] == 'PENDING' &&
-              f['submitted_at'] != null) ...[
-            FilledButton(
-                onPressed: _busy || !_reviewLoaded ? null : () => _decide(true),
-                child: Text(S.t('Approve'))),
-            OutlinedButton(
-                onPressed:
-                    _busy || !_reviewLoaded ? null : () => _decide(false),
-                child: Text(S.t('Reject'))),
+          const SizedBox(height: 16),
+          if (status == 'PENDING' && hasSubmission) ...[
+            FilledButton.icon(
+                icon: const Icon(Icons.check_circle_outline),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: (_busy || !_reviewLoaded) ? null : () => _decide(true),
+                label: Text(S.t('Approve'))),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+                icon: const Icon(Icons.cancel_outlined,
+                    color: AppTheme.errorRed),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppTheme.errorRed),
+                  foregroundColor: AppTheme.errorRed,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: (_busy || !_reviewLoaded) ? null : () => _decide(false),
+                label: Text(S.t('Reject'))),
+          ] else if (status == 'APPROVED') ...[
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.softGreen,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.primaryGreen),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified, color: AppTheme.primaryDarkGreen),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      S.t('Farmer is approved and actively selling.'),
+                      style: const TextStyle(
+                        color: AppTheme.primaryDarkGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton.icon(
+                icon: const Icon(Icons.block_outlined,
+                    color: AppTheme.errorRed),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppTheme.errorRed),
+                  foregroundColor: AppTheme.errorRed,
+                ),
+                onPressed: _busy ? null : () => _decide(false),
+                label: Text(S.t('Revoke / Reject'))),
+          ] else if (status == 'REJECTED') ...[
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.errorRed),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.cancel, color: AppTheme.errorRed),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      S.t('Application was rejected.'),
+                      style: const TextStyle(
+                        color: AppTheme.errorRed,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ])));
   }
+}
+
+class AdminListingsScreen extends StatelessWidget {
+  final ApiClient? api;
+  const AdminListingsScreen({super.key, this.api});
+
+  @override
+  Widget build(BuildContext context) => RecordPage(
+      title: 'Active listings',
+      path: '/api/v1/products',
+      api: api,
+      itemBuilder: (ctx, p, reload) => Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppTheme.cardBorder)),
+          child: ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                      width: 52,
+                      height: 52,
+                      color: AppTheme.surfaceCream,
+                      child: CropImage(
+                        p['image_url'],
+                        fit: BoxFit.cover,
+                        semanticLabel: p['product_name'],
+                      ))),
+              title: Text(
+                S.crop(p['product_name'] ?? ''),
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${p['quantity_available'] ?? 0} ${p['quantity_unit'] ?? 'KG'} · ${p['location'] ?? ''}\n${S.money(p['buyer_price_per_unit_paise'] ?? p['farmer_payout_per_unit_paise'])} / ${p['quantity_unit'] ?? 'KG'}',
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 13),
+                ),
+              ),
+              isThreeLine: true,
+              trailing: const Icon(Icons.chevron_right,
+                  color: AppTheme.primaryGreen))));
 }
 
 class AdminBuyersScreen extends StatelessWidget {

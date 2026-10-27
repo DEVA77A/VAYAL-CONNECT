@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../utils/commerce_strings.dart';
 import 'session_manager.dart';
+import 'auth_service.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -55,6 +56,12 @@ class ApiClient {
             method: method,
             path: path);
         if (response.statusCode == 401) {
+          if (!path.contains('/auth/') && SessionManager().refreshToken != null) {
+            final refreshed = await AuthService(client: client).tryRefreshToken();
+            if (refreshed) {
+              return this.request(path, method: method, body: body, timeout: timeout);
+            }
+          }
           fail(S.t('Session expired. Sign in again.'));
         }
         if (code == 'FARMER_NOT_APPROVED') {

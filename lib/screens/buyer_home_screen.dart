@@ -9,11 +9,11 @@ import '../services/session_manager.dart';
 import '../utils/commerce_strings.dart';
 import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
-import 'addresses_screen.dart';
-import 'market_prices_screen.dart';
+import '../widgets/bottom_nav_bar.dart';
 import 'orders_screen.dart';
 import 'product_details_screen.dart';
 import 'profile_screen.dart';
+import '../widgets/vayal_drawer.dart';
 
 class BuyerHomeScreen extends StatefulWidget {
   final ApiClient? api;
@@ -81,9 +81,26 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen>
 
   void _open(Widget screen) =>
       Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+  void _onBottomNavTap(int index) {
+    switch (index) {
+      case 0:
+        _load();
+        break;
+      case 1:
+        _open(const OrdersScreen());
+        break;
+      case 2:
+        _open(const ProfileScreen());
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Marketplace')),
+      drawer: const VayalNavigationDrawer(currentSection: 'market'),
+      bottomNavigationBar:
+          VayalBottomNavBar(currentIndex: 0, onTap: _onBottomNavTap),
       body: PageBody(
           maxWidth: 1120,
           child: RefreshIndicator(
@@ -101,28 +118,7 @@ class _BuyerHomeScreenState extends State<BuyerHomeScreen>
                                   title:
                                       '${S.t('Welcome')}, ${SessionManager().currentUser?.name ?? ''}',
                                   icon: Icons.storefront_outlined),
-                              Wrap(spacing: 8, children: [
-                                ActionChip(
-                                    label: Text(S.t('Orders')),
-                                    avatar: const Icon(Icons.receipt_long),
-                                    onPressed: () =>
-                                        _open(const OrdersScreen())),
-                                ActionChip(
-                                    label: Text(S.t('Addresses')),
-                                    avatar:
-                                        const Icon(Icons.location_on_outlined),
-                                    onPressed: () =>
-                                        _open(const AddressesScreen())),
-                                ActionChip(
-                                    label: Text(S.t('Market prices')),
-                                    onPressed: () =>
-                                        _open(const MarketPricesScreen())),
-                                ActionChip(
-                                    label: Text(S.t('Profile')),
-                                    onPressed: () =>
-                                        _open(const ProfileScreen())),
-                              ]),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
                               TextField(
                                   controller: _search,
                                   decoration: InputDecoration(

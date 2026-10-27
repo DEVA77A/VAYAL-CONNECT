@@ -228,7 +228,7 @@ void main() {
       expect(find.text('250'), findsOneWidget);
     });
 
-    testWidgets('Changing crop name marks verified image as needing re-validation',
+    testWidgets('Valid crop image remains accepted without requiring AI re-validation on crop change',
         (tester) async {
       VayalStrings.setLanguage(false);
       final mockApi = MockAddProductApi();
@@ -243,6 +243,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('✓ Image Accepted'), findsOneWidget);
+
       final cropNameFinder =
           find.byKey(const ValueKey('field_input_product_name'));
       await tester.enterText(cropNameFinder, 'Tomato');
@@ -252,8 +254,8 @@ void main() {
       await tester.enterText(cropNameFinder, 'Banana');
       await tester.pumpAndSettle();
 
-      // Verify badge indicates re-validation required
-      expect(find.text('Crop changed — re-validation required'), findsOneWidget);
+      // Verify image remains accepted without AI re-validation requirement
+      expect(find.text('✓ Image Accepted'), findsOneWidget);
     });
   });
 }

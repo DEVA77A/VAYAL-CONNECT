@@ -7,6 +7,7 @@ import 'theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SessionManager().restoreLanguage();
+  await SessionManager().restoreSession();
   runApp(const VayalConnectApp());
 }
 

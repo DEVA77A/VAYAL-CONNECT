@@ -14,6 +14,7 @@ import 'auth_gateway_screen.dart';
 import 'farmer_application_screen.dart';
 import 'farmer_bank_screen.dart';
 import 'addresses_screen.dart';
+import '../services/update_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiClient? api;
@@ -224,6 +225,35 @@ class _ProfileScreenState extends State<ProfileScreen>
     if (mounted) _load();
   }
 
+  Future<void> _checkForUpdate() async {
+    setState(() => _busy = true);
+    try {
+      final release = await UpdateService(api: _api).checkForUpdate();
+      if (!mounted) return;
+      if (release != null) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => UpdateDialog(release: release),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(S.t('App is up to date!')),
+          backgroundColor: AppTheme.primaryGreen,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${S.t('Could not check for updates')}: $e'),
+          backgroundColor: AppTheme.errorRed,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Profile'), showBack: true),
@@ -286,6 +316,10 @@ class _ProfileScreenState extends State<ProfileScreen>
               onPressed: _busy ? null : () => _open(const AddressesScreen()),
               icon: const Icon(Icons.location_on),
               label: Text(S.t('Addresses'))),
+        OutlinedButton.icon(
+            onPressed: _busy ? null : _checkForUpdate,
+            icon: const Icon(Icons.system_update_alt_rounded),
+            label: Text(S.t('Check for updates'))),
         OutlinedButton.icon(
             onPressed: _busy ? null : _password,
             icon: const Icon(Icons.password),

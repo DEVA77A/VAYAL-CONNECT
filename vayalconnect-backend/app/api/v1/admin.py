@@ -121,6 +121,48 @@ async def list_farmers(
     )
 
 
+@router.get("/farmers/{user_id}", response_model=APIResponse)
+async def get_farmer_detail(
+    user_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """Get single farmer details for admin review."""
+    farmer_repo = FarmerRepository(db)
+    user_repo = UserRepository(db)
+
+    user = await user_repo.find_by_id(user_id)
+    if not user or user.get("role") != "FARMER":
+        raise NotFoundError("Farmer profile")
+
+    f = await farmer_repo.find_by_user_id(user_id)
+    if not f:
+        f = {}
+
+    data = {
+        "user_id": user_id,
+        "name": user.get("name", ""),
+        "area_location": user.get("area_location", ""),
+        "email": user.get("email", ""),
+        "phone": user.get("phone", ""),
+        "approval_status": f.get("approval_status", "PENDING"),
+        "profile_present": bool(f),
+        "address": user.get("address", ""),
+        "email_verified": user.get("email_verified", False),
+        "is_active": user.get("is_active", False),
+        **application_view(f),
+        "bank_details_present": bool(f.get("bank_account_number")),
+        "created_at": f.get("created_at") or user.get("created_at"),
+    }
+
+    return APIResponse(
+        success=True,
+        data=data,
+        request_id=get_request_id(request),
+    )
+
+
 @router.put("/farmers/{user_id}/approve", response_model=APIResponse)
 async def approve_farmer(
     user_id: str,

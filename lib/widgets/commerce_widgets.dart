@@ -9,31 +9,167 @@ import 'brand_widgets.dart';
 class MetricCard extends StatelessWidget {
   final String label;
   final String value;
-  const MetricCard(this.label, this.value, {super.key});
+  final VoidCallback? onTap;
+  final IconData? icon;
+  final Color? color;
+  final bool compact;
+
+  const MetricCard(
+    this.label,
+    this.value, {
+    super.key,
+    this.onTap,
+    this.icon,
+    this.color,
+    this.compact = false,
+  });
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-      width: MediaQuery.sizeOf(context).width < 380 ||
-              MediaQuery.textScalerOf(context).scale(14) > 20
-          ? MediaQuery.sizeOf(context).width - 32
-          : (MediaQuery.sizeOf(context).width < 600
-              ? (MediaQuery.sizeOf(context).width - 48) / 2
-              : 220),
-      child: Card(
-          color: Colors.white,
-          child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isClickable = onTap != null;
+    final primaryColor = color ?? AppTheme.primaryGreen;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isGridCell =
+            constraints.hasBoundedWidth && constraints.maxWidth < 300;
+
+        Widget content;
+        if (icon != null || isClickable) {
+          content = Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: isGridCell ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(value,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(color: AppTheme.deepGreen)),
-                    const SizedBox(height: 8),
-                    Text(S.t(label),
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ]))));
+                    if (icon != null)
+                      Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(icon, size: 18, color: primaryColor),
+                      )
+                    else
+                      const SizedBox(height: 18),
+                    if (isClickable)
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 11,
+                        color: AppTheme.textSecondary.withOpacity(0.5),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                if (isGridCell)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        S.t(label),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 11,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Text(
+                    S.t(label),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 11,
+                      height: 1.2,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        } else {
+          content = Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      color: AppTheme.deepGreen,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  S.t(label),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final card = Card(
+          color: Colors.white,
+          elevation: isClickable ? 1.5 : 0.5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.cardBorder, width: 1),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: isClickable
+              ? InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(12),
+                  child: content,
+                )
+              : content,
+        );
+
+        if (isGridCell) return card;
+
+        final width = MediaQuery.sizeOf(context).width < 380 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20
+            ? MediaQuery.sizeOf(context).width - 32
+            : (MediaQuery.sizeOf(context).width < 600
+                ? (MediaQuery.sizeOf(context).width - 48) / 2
+                : 220.0);
+        return SizedBox(width: width, child: card);
+      },
+    );
+  }
 }
 
 class RecordPage extends StatefulWidget {

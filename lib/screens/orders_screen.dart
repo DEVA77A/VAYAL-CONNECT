@@ -14,14 +14,16 @@ import 'payment_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
   final ApiClient? api;
-  const OrdersScreen({super.key, this.api});
+  final String initialStatus;
+  const OrdersScreen({super.key, this.api, this.initialStatus = ''});
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
 class _OrdersScreenState extends State<OrdersScreen>
     with LanguageRebuild<OrdersScreen> {
-  String _status = '', _period = '';
+  late String _status = widget.initialStatus;
+  String _period = '';
   @override
   Widget build(BuildContext context) {
     final query = Uri(queryParameters: {
@@ -43,6 +45,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                         value: _status,
                         items: [
                           '',
+                          'PENDING',
                           'PENDING_PAYMENT',
                           'PAID',
                           'CONFIRMED',
@@ -55,7 +58,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                                 value: v,
                                 child: Text(v.isEmpty
                                     ? S.t('All statuses')
-                                    : S.status(v))))
+                                    : (v == 'PENDING' ? S.t('Pending orders') : S.status(v)))))
                             .toList(),
                         onChanged: (v) => setState(() => _status = v!)),
                     const SizedBox(height: 12),
