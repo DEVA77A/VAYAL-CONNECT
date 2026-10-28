@@ -666,17 +666,8 @@ class _AddProductScreenState extends State<AddProductScreen>
     _referenceRequest++;
     _referenceLoading = false;
     if (!_manualPrice) _fields['selling_price']!.clear();
-    final crop = _fields['product_name']!.text.trim().toLowerCase();
-    if (!const {
-      'tomato',
-      'தக்காளி',
-      'banana fruit',
-      'banana (fruit)',
-      'வாழைப்பழம்',
-      'jasmine',
-      'மல்லிகை',
-      'marigold',
-    }.contains(crop)) {
+    final crop = _fields['product_name']!.text.trim();
+    if (crop.length < 2) {
       if (crop.isNotEmpty) _reference = {'reference_price_available': false};
       return;
     }
@@ -715,8 +706,6 @@ class _AddProductScreenState extends State<AddProductScreen>
           final suggested = r['reference_price_per_listing_unit_paise'];
           if (!_manualPrice &&
               r['reference_price_available'] == true &&
-              r['reference_verification_status'] == 'verified' &&
-              r['reference_price_stale'] == false &&
               suggested is int &&
               suggested > 0 &&
               suggested <= 100000000) {
@@ -828,6 +817,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                 if (key == 'selling_price') {
                   _manualPrice = true;
                 } else if (key == 'product_name') {
+                  _manualPrice = false;
                   _reference = null;
                   _queueReference();
                 } else if (key == 'variety') {

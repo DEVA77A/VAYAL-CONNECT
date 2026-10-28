@@ -291,6 +291,20 @@ class PricingEngine:
             and market_price_provider.matches(r, commodity, state="Tamil Nadu")
         ]
         if not records:
+            try:
+                from app.services.ai_market_service import AIMarketService
+                ai_ref = await AIMarketService(self.db).get_crop_reference(
+                    commodity=commodity,
+                    unit=unit,
+                    state=state or "Tamil Nadu",
+                    district=district,
+                    market=market,
+                    variety=variety,
+                )
+                if ai_ref.get("reference_price_available"):
+                    return ai_ref
+            except Exception as e:
+                logger.warning(f"AI market lookup fallback failed for {commodity}: {e}")
             return {
                 "reference_price_available": False,
                 "reference_price_message": result["message"],
