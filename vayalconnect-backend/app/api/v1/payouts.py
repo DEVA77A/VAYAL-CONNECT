@@ -46,9 +46,9 @@ async def list_payouts(
             product_name=order_map.get(p["order_id"], {}).get("product_name", ""),
             amount_paise=p.get("amount_paise", 0),
             amount_display=format_rupees(p.get("amount_paise", 0)),
-            commission_total_paise=order_map.get(p["order_id"], {}).get("commission_total_paise", 0),
-            commission_display=format_rupees(order_map.get(p["order_id"], {}).get("commission_total_paise", 0)),
-            buyer_total_paise=order_map.get(p["order_id"], {}).get("buyer_total_paise", 0),
+            commission_total_paise=p.get("commission_total_paise", order_map.get(p["order_id"], {}).get("commission_total_paise", 0)),
+            commission_display=format_rupees(p.get("commission_total_paise", order_map.get(p["order_id"], {}).get("commission_total_paise", 0))),
+            buyer_total_paise=p.get("buyer_total_paise", order_map.get(p["order_id"], {}).get("buyer_total_paise", 0)),
             status=p.get("status", ""),
             provider=p.get("provider"),
             provider_reference_id=p.get("provider_reference_id"),
@@ -139,5 +139,22 @@ async def process_payout(
     return APIResponse(
         success=True,
         data={"message": "Payout processing initiated.", "result": result},
+        request_id=get_request_id(request),
+    )
+
+
+@router.post("/{payout_id}/retry", response_model=APIResponse)
+async def retry_payout(
+    payout_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """Admin: Retry a failed or pending transfer."""
+    service = PayoutService(db)
+    result = await service.process_payout(payout_id, current_user["id"])
+    return APIResponse(
+        success=True,
+        data={"message": "Payout transfer retried.", "result": result},
         request_id=get_request_id(request),
     )

@@ -84,7 +84,7 @@ services:
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
       - key: GROQ_MARKET_ENABLED
-        value: "true"
+        value: "false"
       - key: MARKET_STATEWIDE_ENABLED
         value: "false"
       - key: MARKET_SOURCE_VERIFIED

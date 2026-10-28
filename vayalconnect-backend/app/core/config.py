@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_ROUTE_ENABLED: bool = True
+    AUTO_PAYOUT_ENABLED: bool = True
+    SANDBOX_PAYOUTS_ENABLED: bool = False
 
     # Encryption (Fernet key for bank details)
     ENCRYPTION_KEY: str = ""

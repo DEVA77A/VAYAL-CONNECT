@@ -100,7 +100,7 @@ class ReportService:
             "total_platform_commission_display": format_rupees(total_commission),
             "active_farmers": active_farmers,
             "active_buyers": active_buyers,
-            "pending_payouts": payout_counts.get("PENDING_APPROVAL", 0) + payout_counts.get("APPROVED", 0),
+            "pending_payouts": payout_counts.get("PENDING_APPROVAL", 0) + payout_counts.get("APPROVED", 0) + payout_counts.get("PROCESSING", 0),
             "completed_payouts": payout_counts.get("PAID", 0),
             "failed_payouts": payout_counts.get("FAILED", 0),
             "pending_farmer_approvals": pending_approvals,

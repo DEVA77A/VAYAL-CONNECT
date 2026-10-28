@@ -35,8 +35,23 @@ class PaymentSettlement:
         await orders.update_one({"_id": order["_id"], "order_status": "PENDING_PAYMENT"}, {"$set": {
             "payment_status": "CAPTURED", "order_status": "PAID", "updated_at": now, "paid_at": now,
             "payout_status": "PENDING_APPROVAL"}})
-        await payouts.update_one({"order_id": order["_id"]}, {"$setOnInsert": {
-            "order_id": order["_id"], "farmer_id": order["farmer_id"], "amount_paise": order["farmer_total_payout_paise"],
-            "currency": "INR", "status": "PENDING_APPROVAL", "provider": "pending", "created_at": now,
-            "payout_number": "PO-" + str(order["_id"]).upper(), "idempotency_key": "payout_" + str(order["_id"])}}, upsert=True)
+        payout_doc = {
+            "order_id": order["_id"],
+            "farmer_id": order["farmer_id"],
+            "amount_paise": order["farmer_total_payout_paise"],
+            "commission_total_paise": order.get("commission_total_paise", 0),
+            "commission_percentage_bps": order.get("commission_percentage_bps", 0),
+            "buyer_total_paise": order.get("buyer_total_paise", payment["amount_paise"]),
+            "payment_id": payment["id"] if isinstance(payment.get("id"), ObjectId) else ObjectId(payment["id"]),
+            "razorpay_payment_id": gateway["id"],
+            "currency": "INR",
+            "status": "PENDING_APPROVAL",
+            "provider": "razorpay_route",
+            "provider_status": "INITIATED",
+            "created_at": now,
+            "updated_at": now,
+            "payout_number": "PO-" + str(order["_id"]).upper(),
+            "idempotency_key": "payout_" + str(order["_id"]),
+        }
+        await payouts.update_one({"order_id": order["_id"]}, {"$setOnInsert": payout_doc}, upsert=True)
         return {"payment_verified": True, "order_status": "PAID", "message": "Razorpay test payment verified. No real money charged."}

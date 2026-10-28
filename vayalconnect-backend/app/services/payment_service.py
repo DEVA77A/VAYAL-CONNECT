@@ -136,7 +136,15 @@ class PaymentService:
             raise PaymentVerificationFailedError()
 
         from app.services.payment_settlement import PaymentSettlement
-        return await PaymentSettlement(self.db).captured(payment, gateway_payment, "CHECKOUT_SIGNATURE_AND_GATEWAY_FETCH")
+        from app.core.config import settings
+        res = await PaymentSettlement(self.db).captured(payment, gateway_payment, "CHECKOUT_SIGNATURE_AND_GATEWAY_FETCH")
+        if settings.AUTO_PAYOUT_ENABLED and res.get("payment_verified") and res.get("order_status") != "CANCELLED":
+            try:
+                from app.services.payout_service import PayoutService
+                await PayoutService(self.db).auto_process_payout(order_id)
+            except Exception as e:
+                logger.error("Auto payout execution error after payment verification: %s", type(e).__name__)
+        return res
 
     async def get_payment_status(self, order_id: str) -> Optional[Dict[str, Any]]:
         return await self.payment_repo.find_by_order_id(order_id)
@@ -156,7 +164,47 @@ class PaymentService:
                     or gateway.get("status") != "captured"):
                 raise PaymentVerificationFailedError()
             from app.services.payment_settlement import PaymentSettlement
-            await PaymentSettlement(self.db).captured(payment, gateway, "SIGNED_WEBHOOK_AND_GATEWAY_FETCH")
+            from app.core.config import settings
+            res = await PaymentSettlement(self.db).captured(payment, gateway, "SIGNED_WEBHOOK_AND_GATEWAY_FETCH")
+            if settings.AUTO_PAYOUT_ENABLED and res.get("payment_verified") and res.get("order_status") != "CANCELLED":
+                try:
+                    from app.services.payout_service import PayoutService
+                    await PayoutService(self.db).auto_process_payout(str(payment.get("order_id")))
+                except Exception as e:
+                    logger.error("Auto payout webhook execution error: %s", type(e).__name__)
         elif event_type == "payment.failed":
             await self.audit_service.log(actor_id="razorpay", actor_role="GATEWAY", action="PAYMENT_ATTEMPT_FAILED",
                 entity_type="payment", entity_id=entity.get("id", "unknown"))
+        elif event_type in ("transfer.processed", "transfer.settled"):
+            entity = payload.get("payload", {}).get("transfer", {}).get("entity", {})
+            transfer_id = entity.get("id")
+            notes = entity.get("notes", {})
+            payout_id = notes.get("payout_id")
+            order_id = notes.get("order_id")
+            from app.services.payout_service import PayoutService
+            payout_service = PayoutService(self.db)
+            if payout_id:
+                await payout_service.confirm_payout(payout_id, transfer_id or "", provider="razorpay_route")
+            elif order_id:
+                payout = await self.payout_repo.find_by_order_id(order_id)
+                if payout:
+                    await payout_service.confirm_payout(payout["id"], transfer_id or "", provider="razorpay_route")
+            elif transfer_id:
+                payout = await self.payout_repo.find_by_provider_reference(transfer_id)
+                if payout:
+                    await payout_service.confirm_payout(payout["id"], transfer_id, provider="razorpay_route")
+        elif event_type == "transfer.failed":
+            entity = payload.get("payload", {}).get("transfer", {}).get("entity", {})
+            transfer_id = entity.get("id")
+            notes = entity.get("notes", {})
+            payout_id = notes.get("payout_id")
+            order_id = notes.get("order_id")
+            reason = entity.get("error_description") or "Transfer failed at gateway."
+            from app.services.payout_service import PayoutService
+            payout_service = PayoutService(self.db)
+            if payout_id:
+                await payout_service.fail_payout(payout_id, failure_reason=reason)
+            elif order_id:
+                payout = await self.payout_repo.find_by_order_id(order_id)
+                if payout:
+                    await payout_service.fail_payout(payout["id"], failure_reason=reason)

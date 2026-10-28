@@ -32,6 +32,10 @@ class PayoutRepository:
         doc = await self.collection.find_one({"order_id": ObjectId(order_id)})
         return self._serialize(doc)
 
+    async def find_by_provider_reference(self, reference_id: str) -> Optional[Dict[str, Any]]:
+        doc = await self.collection.find_one({"provider_reference_id": reference_id})
+        return self._serialize(doc)
+
     async def list_by_farmer(
         self, farmer_id: str, page: int = 1, limit: int = 50
     ) -> tuple[List[Dict[str, Any]], int]:
@@ -79,12 +83,33 @@ class PayoutRepository:
             }}
         ]
         results = await self.collection.aggregate(pipeline).to_list(10)
-        summary: Dict[str, Any] = {"total_paid": 0, "total_pending": 0}
+        summary: Dict[str, Any] = {
+            "total_paid": 0,
+            "total_pending": 0,
+            "total_processing": 0,
+            "total_failed": 0,
+            "paid_count": 0,
+            "pending_count": 0,
+            "processing_count": 0,
+            "failed_count": 0,
+        }
         for r in results:
-            if r["_id"] == "PAID":
-                summary["total_paid"] = r["total"]
-            elif r["_id"] in ("PENDING_APPROVAL", "APPROVED", "PROCESSING"):
-                summary["total_pending"] += r["total"]
+            status = r["_id"]
+            total = r["total"]
+            count = r["count"]
+            if status == "PAID":
+                summary["total_paid"] = total
+                summary["paid_count"] = count
+            elif status in ("PENDING_APPROVAL", "APPROVED"):
+                summary["total_pending"] += total
+                summary["pending_count"] += count
+            elif status == "PROCESSING":
+                summary["total_processing"] += total
+                summary["processing_count"] += count
+                summary["total_pending"] += total
+            elif status == "FAILED":
+                summary["total_failed"] += total
+                summary["failed_count"] += count
         return summary
 
     async def generate_payout_number(self) -> str:

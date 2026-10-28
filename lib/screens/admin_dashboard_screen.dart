@@ -1078,6 +1078,20 @@ class _PayoutReviewScreenState extends State<PayoutReviewScreen>
     }
   }
 
+  Future<void> _processTransfer() async {
+    setState(() => _busy = true);
+    try {
+      await widget.api.request(
+          '/api/v1/payouts/${widget.payout['payout_id']}/process',
+          method: 'POST');
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
       appBar: VayalAppBar(title: S.t('Payout review'), showBack: true),
@@ -1108,6 +1122,14 @@ class _PayoutReviewScreenState extends State<PayoutReviewScreen>
           OutlinedButton(
               onPressed: _busy ? null : () => _review(false),
               child: Text(S.t('Reject payout'))),
+        ],
+        if (widget.payout['status'] == 'APPROVED' ||
+            widget.payout['status'] == 'FAILED') ...[
+          FilledButton(
+              onPressed: _busy || _order?['payment_status'] != 'CAPTURED'
+                  ? null
+                  : _processTransfer,
+              child: Text(S.t('Process payout'))),
         ],
       ])));
 }

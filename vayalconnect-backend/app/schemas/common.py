@@ -118,12 +118,12 @@ VALID_ORDER_TRANSITIONS = {
 }
 
 VALID_PAYOUT_TRANSITIONS = {
-    PayoutStatus.PENDING_APPROVAL: [PayoutStatus.APPROVED, PayoutStatus.REJECTED],
-    PayoutStatus.APPROVED: [PayoutStatus.PROCESSING],
+    PayoutStatus.PENDING_APPROVAL: [PayoutStatus.APPROVED, PayoutStatus.PROCESSING, PayoutStatus.PAID, PayoutStatus.REJECTED],
+    PayoutStatus.APPROVED: [PayoutStatus.PROCESSING, PayoutStatus.PAID, PayoutStatus.REJECTED],
     PayoutStatus.REJECTED: [],  # Terminal
     PayoutStatus.PROCESSING: [PayoutStatus.PAID, PayoutStatus.FAILED],
     PayoutStatus.PAID: [],  # Terminal
-    PayoutStatus.FAILED: [PayoutStatus.PROCESSING],  # Can retry
+    PayoutStatus.FAILED: [PayoutStatus.PROCESSING, PayoutStatus.PAID],  # Can retry
 }
 
 
