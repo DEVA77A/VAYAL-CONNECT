@@ -233,17 +233,17 @@ void main() {
     test('ThemeData uses the authoritative green, cream, white, and brown palette', () {
       final theme = AppTheme.lightTheme;
 
-      expect(AppTheme.primaryGreen.value, equals(0xFF5B9030));
-      expect(AppTheme.primaryDarkGreen.value, equals(0xFF264E22));
+      expect(AppTheme.primaryGreen.value, equals(0xFF4B8F20));
+      expect(AppTheme.primaryDarkGreen.value, equals(0xFF174B2A));
       expect(AppTheme.deepGreen.value, equals(0xFF1E3F1C));
       expect(AppTheme.primaryLightGreen.value, equals(0xFF88BD38));
-      expect(AppTheme.softGreen.value, equals(0xFFEBF4DB));
-      expect(AppTheme.surfaceCream.value, equals(0xFFF7F2EA));
-      expect(AppTheme.backgroundWarm.value, equals(0xFFFAF8F5));
-      expect(AppTheme.earthBrown.value, equals(0xFF7A471F));
+      expect(AppTheme.softGreen.value, equals(0xFFDCEBCB));
+      expect(AppTheme.surfaceCream.value, equals(0xFFFAF6EF));
+      expect(AppTheme.backgroundWarm.value, equals(0xFFF4EEE5));
+      expect(AppTheme.earthBrown.value, equals(0xFF805638));
       expect(AppTheme.darkBrown.value, equals(0xFF482710));
-      expect(AppTheme.cardBorder.value, equals(0xFFE2E7DB));
-      expect(AppTheme.textPrimary.value, equals(0xFF1B211A));
+      expect(AppTheme.cardBorder.value, equals(0xFFE3D9CB));
+      expect(AppTheme.textPrimary.value, equals(0xFF25291F));
 
       // ColorScheme check
       expect(theme.colorScheme.primary, equals(AppTheme.primaryGreen));

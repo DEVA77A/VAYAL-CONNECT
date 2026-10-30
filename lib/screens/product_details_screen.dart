@@ -10,6 +10,8 @@ import '../widgets/market_reference_view.dart';
 import '../widgets/vayal_app_bar.dart';
 import 'addresses_screen.dart';
 import 'orders_screen.dart';
+import '../models/auth_models.dart';
+import '../services/session_manager.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final BuyerProduct product;
@@ -155,17 +157,23 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                             }),
                         const FormSection('Buyer total',
                             icon: Icons.receipt_long_outlined),
-                        detailLine('Farmer base price',
-                            '${S.money(p.farmerBasePricePaise * _quantity)} / $_quantity ${S.t(p.quantityUnit)}'),
-                        detailLine('Platform commission',
-                            '${S.money(p.commissionPerUnitPaise * _quantity)} (${p.commissionPercentageBps / 100}%)'),
+                        detailLine('Product price',
+                            '${S.money(p.buyerPricePerUnitPaise)} / ${S.t(p.quantityUnit)}'),
+                        detailLine('Quantity',
+                            '$_quantity ${S.t(p.quantityUnit)}'),
                         detailLine('Delivery charge', S.money(0)),
                         detailLine('Buyer total',
                             S.money(p.buyerPricePerUnitPaise * _quantity)),
-                        Text(S.t(
-                            'Buyer total = farmer base + platform commission + delivery charge.')),
-                        Text(S.t(
-                            'Farmer receives the full base price. Commission is added for buyers.')),
+                        if (SessionManager().activeRole == AppRole.admin) ...[
+                          detailLine('Farmer base price',
+                              '${S.money(p.farmerBasePricePaise * _quantity)} / $_quantity ${S.t(p.quantityUnit)}'),
+                          detailLine('Platform commission',
+                              '${S.money(p.commissionPerUnitPaise * _quantity)} (${p.commissionPercentageBps / 100}%)'),
+                          Text(S.t(
+                              'Buyer total = farmer base + platform commission + delivery charge.')),
+                          Text(S.t(
+                              'Farmer receives the full base price. Commission is added for buyers.')),
+                        ],
                         const SizedBox(height: 20),
                         DropdownButtonFormField<String>(
                             isExpanded: true,

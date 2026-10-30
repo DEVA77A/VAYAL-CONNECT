@@ -6,46 +6,52 @@ import 'package:flutter/material.dart';
 class AppTheme {
   AppTheme._();
 
-  // Core Brand Palette from Reference Image (Panels 1, 2, and 3)
+  // Core Brand Palette from Reference Image (Warm Cream & Light Green)
   static const Color primaryGreen =
-      Color(0xFF5B9030); // Fresh leaf & foliage green from Panel 1 & 3
+      Color(0xFF4B8F20); // Primary agricultural green (#4B8F20)
   static const Color primaryDarkGreen =
-      Color(0xFF264E22); // Deep organic canopy green from Panel 3
+      Color(0xFF174B2A); // Deep organic canopy green / text (#174B2A)
+  static const Color darkGreenText =
+      Color(0xFF174B2A); // High-contrast text on light green dashboard (#174B2A)
   static const Color deepGreen =
-      Color(0xFF1E3F1C); // Header & elevation green (replaces harsh #163D2B)
+      Color(0xFF1E3F1C); // Header & elevation green
   static const Color primaryLightGreen =
-      Color(0xFF88BD38); // Fresh spring lime green wave from Panel 1
+      Color(0xFF88BD38); // Fresh spring lime green wave
   static const Color softGreen =
-      Color(0xFFEBF4DB); // Botanical pill & badge tint from Panel 1
+      Color(0xFFDCEBCB); // Botanical pill & badge tint (#DCEBCB)
+  static const Color lightGreenDashboard =
+      Color(0xFFDCEBCB); // Light green dashboard hero (#DCEBCB)
   static const Color surfaceCream =
-      Color(0xFFF7F2EA); // Warm ivory/earth tone from Panel 2 & 3
+      Color(0xFFFAF6EF); // Card & surface background (#FAF6EF)
   static const Color backgroundWarm =
-      Color(0xFFFAF8F5); // Premium light canvas background from reference
+      Color(0xFFF4EEE5); // Main application canvas background (#F4EEE5)
+  static const Color warmCreamSecondary =
+      Color(0xFFEEE4D6); // Secondary warm cream surface (#EEE4D6)
   static const Color backgroundLight =
-      Color(0xFFF1F6E8); // Soft botanical surface
+      Color(0xFFFAF6EF); // Soft cream surface
   static const Color earthBrown =
-      Color(0xFF7A471F); // Natural warm soil accent from Panel 2 & 3
+      Color(0xFF805638); // Natural warm soil accent (#805638)
   static const Color darkBrown =
-      Color(0xFF482710); // Rich earthy soil contrast from Panel 2
+      Color(0xFF482710); // Rich earthy soil contrast
   static const Color lightBrown =
-      Color(0xFFBA8754); // Warm caramel/amber wave from Panel 2
+      Color(0xFFBA8754); // Warm caramel/amber wave
   static const Color sandBeige =
       Color(0xFFE5D5C2); // Soft sand divider & badge tint
   static const Color accentGold =
-      Color(0xFF7A471F); // Legacy token mapped to logo earth brown
+      Color(0xFF805638); // Legacy token mapped to brown accent
   static const Color goldLight =
-      Color(0xFFF7F2EA); // Warning / pending tint
+      Color(0xFFFAF6EF); // Warning / pending tint
 
   // Neutral Tokens
   static const Color textPrimary =
-      Color(0xFF1B211A); // High-contrast readable botanical charcoal
+      Color(0xFF25291F); // High-contrast readable botanical charcoal (#25291F)
   static const Color darkBackground = Color(0xFF121512);
-  static const Color textSecondary = Color(0xFF556052); // Subtle secondary text
+  static const Color textSecondary = Color(0xFF68665D); // Subtle secondary text (#68665D)
   static const Color textMuted = Color(0xFF758172); // Helper text
   static const Color cardBorder =
-      Color(0xFFE2E7DB); // Crisp card outline with soft organic tint
+      Color(0xFFE3D9CB); // Subtle borders (#E3D9CB)
   static const Color dividerColor =
-      Color(0xFFEAEFE4); // Subtle line divider
+      Color(0xFFE3D9CB); // Subtle line divider (#E3D9CB)
 
   // Semantic Status Tokens
   static const Color successGreen = Color(0xFF43701E);
@@ -91,7 +97,7 @@ class AppTheme {
         onSecondaryContainer: darkBrown,
         tertiary: primaryLightGreen,
         onTertiary: deepGreen,
-        surface: Colors.white,
+        surface: surfaceCream,
         onSurface: textPrimary,
         surfaceContainer: surfaceCream,
         surfaceContainerLow: backgroundWarm,
@@ -103,7 +109,7 @@ class AppTheme {
         onError: Colors.white,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: surfaceCream,
         indicatorColor: softGreen,
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
@@ -200,7 +206,7 @@ class AppTheme {
             color: textSecondary),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: surfaceCream,
         selectedColor: softGreen,
         side: const BorderSide(color: cardBorder),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
@@ -213,12 +219,12 @@ class AppTheme {
             borderRadius: BorderRadius.circular(radiusMedium)),
       ),
       dialogTheme: DialogThemeData(
-          backgroundColor: Colors.white,
+          backgroundColor: surfaceCream,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(radiusXLarge))),
       bottomSheetTheme: const BottomSheetThemeData(
-          backgroundColor: Colors.white,
+          backgroundColor: surfaceCream,
           surfaceTintColor: Colors.transparent,
           showDragHandle: true,
           shape: RoundedRectangleBorder(
@@ -255,7 +261,7 @@ class AppTheme {
         iconTheme: IconThemeData(color: Colors.white),
       ),
       cardTheme: CardThemeData(
-        color: Colors.white,
+        color: surfaceCream,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         margin: const EdgeInsets.only(bottom: 12),
@@ -313,7 +319,7 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: surfaceCream,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
@@ -348,7 +354,7 @@ class AppTheme {
         ),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Colors.white,
+        backgroundColor: surfaceCream,
         selectedItemColor: primaryGreen,
         unselectedItemColor: textSecondary,
         selectedLabelStyle: TextStyle(

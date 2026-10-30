@@ -437,7 +437,7 @@ class _AddProductScreenState extends State<AddProductScreen>
       margin: const EdgeInsets.symmetric(vertical: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surfaceCream,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _imageError != null
@@ -895,8 +895,6 @@ class _AddProductScreenState extends State<AddProductScreen>
                           if (_error != null)
                             Text(_error!,
                                 style: const TextStyle(color: Colors.red)),
-                          Text(S.t(
-                              'Farmer receives the full base price. Commission is added for buyers.')),
                           _buildCropImageSection(),
                           const FormSection('Crop name'),
                           _field('product_name', 'Crop name',

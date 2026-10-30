@@ -256,7 +256,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceCream,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -538,7 +538,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceCream,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1034,7 +1034,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
   void _showDemoPreviewSheet(SessionManager session) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceCream,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1174,7 +1174,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 9, vertical: 5),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: AppTheme.surfaceCream,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(
                                         color: AppTheme.cardBorder),
@@ -1319,7 +1319,7 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 22, vertical: 24),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: AppTheme.surfaceCream,
                           borderRadius: BorderRadius.circular(20),
                           border:
                               Border.all(color: AppTheme.cardBorder, width: 1.2),

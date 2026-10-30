@@ -93,7 +93,7 @@ class VayalBottomNavBar extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surfaceCream,
         border: Border(
           top: BorderSide(
               color: AppTheme.cardBorder.withOpacity(0.8), width: 1),
@@ -117,7 +117,7 @@ class VayalBottomNavBar extends StatelessWidget {
           selectedFontSize: 12,
           unselectedFontSize: 12,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
+          backgroundColor: AppTheme.surfaceCream,
           elevation: 0,
         ),
       ),
@@ -132,7 +132,7 @@ class VayalBottomNavBar extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.surfaceCream,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),

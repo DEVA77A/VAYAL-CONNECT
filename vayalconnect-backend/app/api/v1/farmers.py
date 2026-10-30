@@ -285,10 +285,8 @@ async def farmer_sales(request: Request, period: str = Query(None, pattern="^(to
     window = ReportService(db)._build_date_filter(period, None, None)
     if window: match["created_at"] = window
     rows = await db.orders.aggregate([{"$match": match}, {"$group": {"_id": {"crop": "$product_name", "unit": "$quantity_unit"},
-        "orders": {"$sum": 1}, "quantity": {"$sum": "$quantity"}, "farmer_amount_paise": {"$sum": "$farmer_total_payout_paise"},
-        "commission_paise": {"$sum": "$commission_total_paise"}, "buyer_amount_paise": {"$sum": "$buyer_total_paise"}}}]).to_list(500)
+        "orders": {"$sum": 1}, "quantity": {"$sum": "$quantity"}, "farmer_amount_paise": {"$sum": "$farmer_total_payout_paise"}}}]).to_list(500)
     stock = await db.products.aggregate([{"$match": {"farmer_id": ObjectId(current_user["id"]), "is_active": True}},
         {"$group": {"_id": "$quantity_unit", "quantity": {"$sum": "$quantity_available"}}}]).to_list(10)
     return APIResponse(data={"items": rows, "stock": stock, "period": period or "all", "timezone": "UTC",
-        "farmer_earnings_paise": sum(r["farmer_amount_paise"] for r in rows), "commission_paise": sum(r["commission_paise"] for r in rows),
-        "formula": "Farmer receives their full selected base price. Commission is added to the buyer price, not deducted from the selected farmer price. Delivery is included."}, request_id=get_request_id(request))
+        "farmer_earnings_paise": sum(r["farmer_amount_paise"] for r in rows)}, request_id=get_request_id(request))

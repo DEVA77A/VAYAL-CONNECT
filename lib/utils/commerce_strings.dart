@@ -144,6 +144,7 @@ class S {
     'Payment status': 'கட்டண நிலை',
     'Order ID': 'ஆர்டர் எண்',
     'Price': 'விலை',
+    'Product price': 'பொருள் விலை',
     'Loading verified price suggestion...':
         'சரிபார்க்கப்பட்ட விலை பரிந்துரை ஏற்றப்படுகிறது...',
     'Verified suggestion filled in. You can change your selling price.':

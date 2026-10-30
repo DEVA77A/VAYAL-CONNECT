@@ -282,12 +282,8 @@ class _FarmerSalesScreenState extends State<FarmerSalesScreen>
             Wrap(spacing: 12, runSpacing: 12, children: [
               MetricCard(
                   'Farmer earnings', S.money(_data!['farmer_earnings_paise'])),
-              MetricCard(
-                  'Platform commission', S.money(_data!['commission_paise']))
             ]),
             const SizedBox(height: 16),
-            Text(S.t(
-                'Farmer receives the full base price. Commission is added for buyers.')),
             for (final stock in _data!['stock'])
               detailLine(
                   'Available stock', '${stock['quantity']} ${S.t((stock['_id'] as String? ?? 'KG').toUpperCase())}'),

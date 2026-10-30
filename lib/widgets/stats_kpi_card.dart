@@ -37,7 +37,7 @@ class StatsKpiCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppTheme.surfaceCream,
           borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
           border: Border.all(color: AppTheme.cardBorder, width: 1),
           boxShadow: [

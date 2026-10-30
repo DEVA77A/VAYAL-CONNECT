@@ -142,7 +142,7 @@ class MetricCard extends StatelessWidget {
         }
 
         final card = Card(
-          color: Colors.white,
+          color: AppTheme.surfaceCream,
           elevation: isClickable ? 1.5 : 0.5,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

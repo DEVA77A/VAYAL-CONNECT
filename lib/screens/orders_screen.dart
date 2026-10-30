@@ -264,15 +264,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                             title: 'Payment breakdown',
                             icon: Icons.payments_outlined,
                             children: [
-                              if (o['farmer_base_total_paise'] is num ||
-                                  o['farmer_total_payout_paise'] is num)
+                              if (!buyer &&
+                                  (o['farmer_base_total_paise'] is num ||
+                                      o['farmer_total_payout_paise'] is num))
                                 InfoRow(
-                                    buyer
-                                        ? 'Farmer base price'
-                                        : 'Farmer earnings',
+                                    'Farmer earnings',
                                     S.money(o['farmer_base_total_paise'] ??
                                         o['farmer_total_payout_paise'])),
-                              if (o['commission_total_paise'] is num)
+                              if (SessionManager().activeRole == AppRole.admin &&
+                                  o['commission_total_paise'] is num)
                                 InfoRow('Platform commission',
                                     S.money(o['commission_total_paise'])),
                               if (o['delivery_fee_paise'] is num)
@@ -289,10 +289,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                                         S.money(o['buyer_total_paise']),
                                     emphasize: true),
                               ],
-                              const SizedBox(height: 12),
-                              Text(
-                                  S.t('Farmer receives the full base price. Commission is added for buyers.'),
-                                  style: Theme.of(context).textTheme.bodySmall),
+                              if (SessionManager().activeRole == AppRole.admin) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                    S.t('Farmer receives the full base price. Commission is added for buyers.'),
+                                    style: Theme.of(context).textTheme.bodySmall),
+                              ],
                             ]),
                         SectionCard(
                             title: 'Delivery information',

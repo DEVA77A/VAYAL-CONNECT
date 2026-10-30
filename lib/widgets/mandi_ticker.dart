@@ -116,7 +116,7 @@ class MandiRatesTicker extends StatelessWidget {
       width: 190,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surfaceCream,
         borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
         border: Border.all(color: AppTheme.cardBorder, width: 1),
         boxShadow: [

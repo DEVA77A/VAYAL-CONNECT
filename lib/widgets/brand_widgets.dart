@@ -194,11 +194,17 @@ class BrandHeading extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-            gradient: const LinearGradient(
-                colors: [AppTheme.primaryDarkGreen, AppTheme.primaryGreen],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(24)),
+          color: AppTheme.lightGreenDashboard,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppTheme.cardBorder, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.darkBrown.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
               child: Column(
@@ -208,12 +214,16 @@ class BrandHeading extends StatelessWidget {
                     style: Theme.of(context)
                         .textTheme
                         .titleLarge
-                        ?.copyWith(color: Colors.white)),
+                        ?.copyWith(
+                            color: AppTheme.darkGreenText,
+                            fontWeight: FontWeight.bold)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 8),
                   Text(subtitle!,
                       style: const TextStyle(
-                          color: Color(0xFFDDEBDF), height: 1.5)),
+                          color: AppTheme.textSecondary,
+                          fontWeight: FontWeight.w500,
+                          height: 1.5)),
                 ],
               ])),
           if (MediaQuery.textScalerOf(context).scale(14) <= 21) ...[
@@ -221,9 +231,10 @@ class BrandHeading extends StatelessWidget {
             Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16)),
-                child: Icon(icon, color: const Color(0xFFDDEBDF), size: 24)),
+                    color: AppTheme.surfaceCream,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.cardBorder, width: 1)),
+                child: Icon(icon, color: AppTheme.darkGreenText, size: 24)),
           ],
         ]),
       );
