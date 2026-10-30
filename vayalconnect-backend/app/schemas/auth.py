@@ -10,6 +10,29 @@ from app.schemas.common import UserRole, Gender, Language, OTPPurpose
 from app.utils.validators import is_valid_email, is_valid_phone
 
 
+def validate_password_policy(v: str) -> str:
+    """Validate password against security policy.
+
+    Requirements:
+    - Minimum 8 characters, maximum 128 characters, at most 72 UTF-8 bytes (bcrypt limit).
+    - At least one uppercase letter.
+    - At least one number.
+    """
+    if len(v.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 UTF-8 bytes.")
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters long.")
+    missing = []
+    if not any(c.isupper() for c in v):
+        missing.append("one uppercase letter")
+    if not any(c.isdigit() for c in v):
+        missing.append("one number")
+    if missing:
+        reqs = " and ".join(missing)
+        raise ValueError(f"Your password must contain at least {reqs}.")
+    return v
+
+
 class RegisterRequest(BaseModel):
     """User registration request."""
     name: str = Field(..., min_length=2, max_length=100)
@@ -50,15 +73,7 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password must be at most 72 UTF-8 bytes")
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+        return validate_password_policy(v)
 
 
 class RegisterResponse(BaseModel):
@@ -160,13 +175,7 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, v: str) -> str:
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Password must be at most 72 UTF-8 bytes")
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+        return validate_password_policy(v)
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -186,7 +195,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_reset_password(cls, v: str) -> str:
-        return RegisterRequest.validate_password(v)
+        return validate_password_policy(v)
 
     @field_validator("email")
     @classmethod

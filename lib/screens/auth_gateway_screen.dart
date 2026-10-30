@@ -229,9 +229,29 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
         TextEditingController(text: _emailPhoneController.text.trim());
     final otpController = TextEditingController();
     final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
     bool otpSent = false;
     bool isSubmitting = false;
+    bool obscureNewPassword = true;
+    bool obscureConfirmPassword = true;
     String? dialogError;
+
+    String? validateNewPasswordPolicy(String pwd) {
+      if (pwd.length < 8) {
+        return S.t('Password must be at least 8 characters long.');
+      }
+      final missing = <String>[];
+      if (!RegExp(r'[A-Z]').hasMatch(pwd)) {
+        missing.add(S.t('one uppercase letter'));
+      }
+      if (!RegExp(r'[0-9]').hasMatch(pwd)) {
+        missing.add(S.t('one number'));
+      }
+      if (missing.isNotEmpty) {
+        return '${S.t("Your password must contain at least")} ${missing.join(S.t(" and "))}.';
+      }
+      return null;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -287,6 +307,11 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                         controller: emailController,
                         keyboardType: TextInputType.emailAddress,
                         enabled: !otpSent,
+                        onChanged: (_) {
+                          if (dialogError != null) {
+                            setSheetState(() => dialogError = null);
+                          }
+                        },
                         decoration: InputDecoration(
                           labelText: VayalStrings.phoneOrEmail,
                           prefixIcon:
@@ -299,6 +324,11 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                           controller: otpController,
                           keyboardType: TextInputType.number,
                           maxLength: 6,
+                          onChanged: (_) {
+                            if (dialogError != null) {
+                              setSheetState(() => dialogError = null);
+                            }
+                          },
                           decoration: InputDecoration(
                             labelText: VayalStrings.enterOtp,
                             prefixIcon: const Icon(Icons.security, size: 20),
@@ -308,11 +338,54 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                         const SizedBox(height: 8),
                         TextField(
                           controller: newPasswordController,
-                          obscureText: true,
+                          obscureText: obscureNewPassword,
+                          onChanged: (_) {
+                            if (dialogError != null) {
+                              setSheetState(() => dialogError = null);
+                            }
+                          },
                           decoration: InputDecoration(
                             labelText: VayalStrings.newPassword,
                             prefixIcon:
                                 const Icon(Icons.lock_outline, size: 20),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                obscureNewPassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 20,
+                                color: AppTheme.textSecondary,
+                              ),
+                              onPressed: () => setSheetState(() =>
+                                  obscureNewPassword = !obscureNewPassword),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: confirmPasswordController,
+                          obscureText: obscureConfirmPassword,
+                          onChanged: (_) {
+                            if (dialogError != null) {
+                              setSheetState(() => dialogError = null);
+                            }
+                          },
+                          decoration: InputDecoration(
+                            labelText: VayalStrings.confirmPassword,
+                            prefixIcon:
+                                const Icon(Icons.lock_outline, size: 20),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                obscureConfirmPassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 20,
+                                color: AppTheme.textSecondary,
+                              ),
+                              onPressed: () => setSheetState(() =>
+                                  obscureConfirmPassword =
+                                      !obscureConfirmPassword),
+                            ),
                           ),
                         ),
                       ],
@@ -351,11 +424,42 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
                                 } else {
                                   final otp = otpController.text.trim();
                                   final newPass = newPasswordController.text;
-                                  if (otp.length < 6 || newPass.length < 8) {
+                                  final confirmPass =
+                                      confirmPasswordController.text;
+
+                                  if (otp.length != 6 ||
+                                      !RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
                                     setSheetState(() {
                                       isSubmitting = false;
-                                      dialogError = S.t(
-                                          'Please enter a valid 6-digit OTP and 8+ char password.');
+                                      dialogError = S.t('Enter a valid 6-digit OTP.');
+                                    });
+                                    return;
+                                  }
+
+                                  final policyError =
+                                      validateNewPasswordPolicy(newPass);
+                                  if (policyError != null) {
+                                    setSheetState(() {
+                                      isSubmitting = false;
+                                      dialogError = policyError;
+                                    });
+                                    return;
+                                  }
+
+                                  if (confirmPass.isEmpty) {
+                                    setSheetState(() {
+                                      isSubmitting = false;
+                                      dialogError =
+                                          VayalStrings.pleaseConfirmPassword;
+                                    });
+                                    return;
+                                  }
+
+                                  if (newPass != confirmPass) {
+                                    setSheetState(() {
+                                      isSubmitting = false;
+                                      dialogError =
+                                          VayalStrings.passwordsDoNotMatch;
                                     });
                                     return;
                                   }

@@ -310,6 +310,26 @@ class S {
     'Complete onboarding and obtain administrator approval.':
         'விவரங்களை நிறைவுசெய்து நிர்வாகியின் ஒப்புதல் பெறவும்.',
     'Farmer application': 'விவசாயி விண்ணப்பம்',
+    'Step 1 of 2: Farm Details': 'படி 1 / 2: பண்ணை விவரங்கள்',
+    'Step 2 of 2: Bank Details': 'படி 2 / 2: வங்கி விவரங்கள்',
+    'Next': 'அடுத்து',
+    'Back': 'பின்னே',
+    'Revise application': 'விண்ணப்பத்தைத் திருத்த',
+    'Farm Information': 'பண்ணை விவரங்கள்',
+    'Please save current farm coordinates before proceeding.':
+        'தொடர்வதற்கு முன் தற்போதைய பண்ணை ஆயங்களைச் சேமிக்கவும்.',
+    'Application submitted successfully! Awaiting administrator review.':
+        'விண்ணப்பம் வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது! நிர்வாகியின் மதிப்பாய்வு நிலுவையில் உள்ளது.',
+    'Your password must contain at least one uppercase letter and one number.':
+        'உங்கள் கடவுச்சொல்லில் குறைந்தபட்சம் ஒரு பெரிய எழுத்து மற்றும் ஒரு எண் இருக்க வேண்டும்.',
+    'Your password must contain at least one uppercase letter.':
+        'உங்கள் கடவுச்சொல்லில் குறைந்தபட்சம் ஒரு பெரிய எழுத்து இருக்க வேண்டும்.',
+    'Your password must contain at least one number.':
+        'உங்கள் கடவுச்சொல்லில் குறைந்தபட்சம் ஒரு எண் இருக்க வேண்டும்.',
+    'Password must be at least 8 characters long.':
+        'கடவுச்சொல் குறைந்தபட்சம் 8 எழுத்துக்கள் கொண்டிருக்க வேண்டும்.',
+    'Enter your own bank details. Full account numbers are never displayed.':
+        'உங்கள் சொந்த வங்கி விவரங்களை உள்ளிடவும். முழு கணக்கு எண்களும் ஒருபோதும் காட்டப்படாது.',
     'Farm name': 'பண்ணை பெயர்',
     'Farm address': 'பண்ணை முகவரி',
     'Pickup address': 'பெறும் முகவரி',
@@ -323,6 +343,7 @@ class S {
     'Bank name': 'வங்கியின் பெயர்',
     'Account number': 'கணக்கு எண்',
     'IFSC code': 'IFSC குறியீடு',
+    'UPI ID': 'UPI ஐடி',
     'Bank verification is pending.': 'வங்கி சரிபார்ப்பு நிலுவையில் உள்ளது.',
     'Save current farm coordinates': 'தற்போதைய பண்ணை ஆயங்களைச் சேமி',
     'Use this only while physically at your farm.':

@@ -154,10 +154,30 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         # FastAPI's default includes submitted values, including passwords/bank data.
+        fields = []
+        messages = []
+        for e in exc.errors():
+            loc = list(e.get("loc", []))
+            raw_msg = e.get("msg", "")
+            if raw_msg.startswith("Value error, "):
+                clean_msg = raw_msg[len("Value error, "):]
+            else:
+                clean_msg = raw_msg
+            fields.append({
+                "location": loc,
+                "type": e.get("type", "value_error"),
+                "message": clean_msg,
+            })
+            if clean_msg:
+                messages.append(clean_msg)
+        primary_message = messages[0] if messages else "Check required fields and values."
         return JSONResponse(status_code=422, content={
             "success": False, "data": None,
-            "error": {"code": "VALIDATION_ERROR", "message": "Check required fields and values.",
-                "fields": [{"location": list(e["loc"]), "type": e["type"]} for e in exc.errors()]},
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": primary_message,
+                "fields": fields,
+            },
             "request_id": getattr(request.state, "request_id", None),
         })
 

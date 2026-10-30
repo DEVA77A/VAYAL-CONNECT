@@ -262,7 +262,21 @@ class AuthService {
       if (response.statusCode == 200 && decoded['success'] == true) {
         return decoded['data']?['message'] as String? ?? 'Password reset successfully.';
       } else {
-        throw Exception(decoded['error']?['message'] ?? 'Failed to reset password.');
+        final error = decoded['error'];
+        if (error is Map) {
+          final fields = error['fields'];
+          if (fields is List && fields.isNotEmpty) {
+            for (final f in fields) {
+              if (f is Map && f['message'] is String && (f['message'] as String).isNotEmpty) {
+                throw Exception(f['message'] as String);
+              }
+            }
+          }
+          if (error['message'] is String && (error['message'] as String).isNotEmpty) {
+            throw Exception(error['message'] as String);
+          }
+        }
+        throw Exception('Failed to reset password.');
       }
     } on SocketException catch (_) {
       throw Exception(VayalStrings.errorNoNetwork);

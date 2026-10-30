@@ -51,7 +51,8 @@ void main() {
               'application_revision': submits == 0 ? 2 : 3,
               'approval_status': submits == 0 ? 'REJECTED' : 'PENDING',
               'rejection_reason': submits == 0 ? 'Correct farm details' : null,
-              'submitted_at': '2026-10-11'
+              'submitted_at': '2026-10-11',
+              'bank_details_present': true
             }
           }),
           200);
@@ -60,6 +61,10 @@ void main() {
         MaterialApp(home: FarmerApplicationScreen(service: service)));
     await tester.pumpAndSettle();
     expect(find.text('Review reason: Correct farm details'), findsOneWidget);
+    final next = find.text('Next');
+    await tester.ensureVisible(next);
+    await tester.tap(next);
+    await tester.pumpAndSettle();
     final submit = find.text('Submit for review');
     await tester.ensureVisible(submit);
     await tester.tap(submit);
