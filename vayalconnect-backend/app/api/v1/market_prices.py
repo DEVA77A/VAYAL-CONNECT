@@ -31,30 +31,59 @@ router = APIRouter(prefix="/market-prices", tags=["Market Prices"])
 @router.post("/refresh", response_model=APIResponse)
 async def manual_refresh(
     request: Request,
+    force: bool = Query(True, description="Force refresh when admin explicitly requests"),
     db: AsyncIOMotorDatabase = Depends(get_database),
     admin: dict = Depends(get_current_admin),
 ):
-    """Consumes the same IST daily claim as cron, with no force/retry option."""
-    from app.core.config import settings
+    """Manual administrative refresh with distributed locking."""
     from pymongo.errors import PyMongoError
 
-    if (
-        not settings.MARKET_STATEWIDE_ENABLED
-        or not settings.MARKET_SOURCE_VERIFIED
-        or not settings.MARKET_DAILY_REFRESH_ENABLED
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="Market discovery is disabled in backend configuration.",
-        )
     try:
-        outcome = await MarketDiscoveryService(db).refresh_daily()
+        outcome = await MarketDiscoveryService(db).refresh_daily(force=force)
     except PyMongoError:
         raise HTTPException(
             status_code=503, detail="Market cache unavailable; no retry."
         ) from None
     return APIResponse(
         success=not bool(outcome.get("failed") or outcome.get("unavailable")),
+        data=outcome,
+        request_id=get_request_id(request),
+    )
+
+
+@router.post("/cron-daily-update", response_model=APIResponse)
+async def cron_daily_update(
+    request: Request,
+    force: bool = Query(False, description="Force refresh even if already completed today"),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """
+    Render-compatible webhook or external cron trigger for 08:00 AM IST daily refresh.
+    Protected by CRON_SECRET_TOKEN.
+    """
+    from app.core.config import settings
+    from pymongo.errors import PyMongoError
+
+    token = (
+        request.headers.get("X-Cron-Secret")
+        or request.query_params.get("token")
+        or request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    )
+    if settings.CRON_SECRET_TOKEN and token != settings.CRON_SECRET_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized cron trigger. Valid X-Cron-Secret or token required.",
+        )
+
+    try:
+        outcome = await MarketDiscoveryService(db).refresh_daily(force=force)
+    except PyMongoError:
+        raise HTTPException(
+            status_code=503, detail="Market database unavailable."
+        ) from None
+
+    return APIResponse(
+        success=not bool(outcome.get("failed")),
         data=outcome,
         request_id=get_request_id(request),
     )

@@ -76,15 +76,33 @@ async def lifespan(app: FastAPI):
             from app.services.market_discovery import MarketDiscoveryService
             from app.core.database import get_database
             from datetime import datetime, timezone, timedelta
+            try:
+                from zoneinfo import ZoneInfo
+                kolkata_tz = ZoneInfo("Asia/Kolkata")
+            except Exception:
+                kolkata_tz = timezone(timedelta(hours=5, minutes=30))
+
+            # Startup recovery check: if service starts or restarts after 08:00 AM IST,
+            # execute recovery check immediately if today's daily batch hasn't run.
+            try:
+                db = get_database()
+                now_ist = datetime.now(kolkata_tz)
+                if now_ist.hour >= 8:
+                    logger.info("Executing market price startup recovery check for IST %s", now_ist.date())
+                    await MarketDiscoveryService(db).refresh_daily()
+            except Exception as exc:
+                logger.warning("Market scheduler startup recovery check failed: %s", exc)
+
             while True:
                 try:
                     db = get_database()
-                    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
-                    if now_ist.hour >= 6:
+                    now_ist = datetime.now(kolkata_tz)
+                    # Trigger at or after 08:00 AM IST
+                    if now_ist.hour >= 8:
                         await MarketDiscoveryService(db).refresh_daily()
                 except Exception as exc:
                     logger.warning("Market scheduler worker category=%s", type(exc).__name__)
-                await asyncio.sleep(1800)
+                await asyncio.sleep(60)
 
         asyncio.create_task(market_scheduler_worker())
         await reservation_worker()

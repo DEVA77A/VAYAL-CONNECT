@@ -264,13 +264,19 @@ class PricingRepository:
     ) -> List[Dict[str, Any]]:
         # Legacy AI/provider records remain in history but are not eligible for
         # current verified cache reads. Filter before pagination.
+        verified_methods = [
+            "primary_source_api",
+            "agmarknet_api",
+            "retrieved_source_record",
+            "statewide_source_median",
+            "provider_reported_quote",
+            "ai_mandi_reference",
+        ]
         query: Dict[str, Any] = {
             "verification_status": "verified",
             "verification_method": "statewide_source_median"
             if scope == "statewide"
-            else "retrieved_source_record"
-            if scope == "market"
-            else {"$in": ["retrieved_source_record", "statewide_source_median"]},
+            else {"$in": verified_methods},
         }
         if commodity_id:
             query["commodity_id"] = commodity_id

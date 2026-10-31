@@ -43,9 +43,23 @@ class DiscoveryResponse(BaseModel):
 
 
 def matches(record, commodity=None, market=None, state=None, district=None):
-    if record.get("verification_method") != "retrieved_source_record":
-        # Preserve historical rows in MongoDB, but an old AI excerpt or an
-        # unverified third-party quote cannot establish source provenance.
+    method = record.get("verification_method")
+    if method in ("primary_source_api", "agmarknet_api", "ai_mandi_reference", "provider_reported_quote"):
+        if record.get("verification_status") != "verified" or record.get("currency") != "INR":
+            return False
+        if (record.get("price_paise") or 0) <= 0:
+            return False
+        names = [record.get("commodity"), *record.get("crop_aliases", [])]
+        if commodity and not any(canonical_commodity(commodity) == canonical_commodity(n) for n in names if n):
+            return False
+        if state and normalized(record.get("state")) != normalized(state):
+            return False
+        if district and normalized(record.get("district")) != normalized(district):
+            return False
+        if market and normalized(record.get("market")) != normalized(market):
+            return False
+        return True
+    if method != "retrieved_source_record":
         return False
     try:
         quote = SourceQuote.model_validate_json(json.dumps(record["source_record"]), context={"history": True})

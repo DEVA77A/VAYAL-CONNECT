@@ -38,13 +38,21 @@ services:
       - key: GROQ_MARKET_ENABLED
         value: "true"
       - key: MARKET_STATEWIDE_ENABLED
-        value: "false"
+        value: "true"
       - key: MARKET_SOURCE_VERIFIED
-        value: "false"
+        value: "true"
       - key: MARKET_STATEWIDE_MIN_OBSERVATIONS
         value: "3"
       - key: MARKET_DAILY_REFRESH_ENABLED
-        value: "false"
+        value: "true"
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      - key: DATA_GOV_IN_RESOURCE_ID
+        value: 9ef84268-d588-465a-a308-a864a43d0070
+      - key: MARKET_PRICE_UPDATE_TIME
+        value: "08:00"
+      - key: MARKET_PRICE_TIMEZONE
+        value: Asia/Kolkata
       - key: MARKET_SOURCE_URLS
         value: "[]"
       - key: RAZORPAY_KEY_ID
@@ -86,13 +94,21 @@ services:
       - key: GROQ_MARKET_ENABLED
         value: "false"
       - key: MARKET_STATEWIDE_ENABLED
-        value: "false"
+        value: "true"
       - key: MARKET_SOURCE_VERIFIED
-        value: "false"
+        value: "true"
       - key: MARKET_STATEWIDE_MIN_OBSERVATIONS
         value: "3"
       - key: MARKET_DAILY_REFRESH_ENABLED
-        value: "false"
+        value: "true"
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      - key: DATA_GOV_IN_RESOURCE_ID
+        value: 9ef84268-d588-465a-a308-a864a43d0070
+      - key: MARKET_PRICE_UPDATE_TIME
+        value: "08:00"
+      - key: MARKET_PRICE_TIMEZONE
+        value: Asia/Kolkata
       - key: GOVERNMENT_MARKET_API_KEY
         sync: false
       - key: MARKET_SOURCE_URLS

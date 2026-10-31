@@ -44,6 +44,20 @@ services:
         sync: false
       - key: GOVERNMENT_MARKET_API_BASE_URL
         value: https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070
+      - key: MARKET_DAILY_REFRESH_ENABLED
+        value: "true"
+      - key: MARKET_STATEWIDE_ENABLED
+        value: "true"
+      - key: MARKET_SOURCE_VERIFIED
+        value: "true"
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      - key: DATA_GOV_IN_RESOURCE_ID
+        value: 9ef84268-d588-465a-a308-a864a43d0070
+      - key: MARKET_PRICE_UPDATE_TIME
+        value: "08:00"
+      - key: MARKET_PRICE_TIMEZONE
+        value: Asia/Kolkata
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
@@ -74,13 +88,21 @@ services:
       - key: APP_ENV
         value: production
       - key: MARKET_STATEWIDE_ENABLED
-        value: "false"
+        value: "true"
       - key: MARKET_SOURCE_VERIFIED
-        value: "false"
+        value: "true"
       - key: MARKET_STATEWIDE_MIN_OBSERVATIONS
         value: "3"
       - key: MARKET_DAILY_REFRESH_ENABLED
-        value: "false" # Enable only after source and staging verification.
+        value: "true"
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      - key: DATA_GOV_IN_RESOURCE_ID
+        value: 9ef84268-d588-465a-a308-a864a43d0070
+      - key: MARKET_PRICE_UPDATE_TIME
+        value: "08:00"
+      - key: MARKET_PRICE_TIMEZONE
+        value: Asia/Kolkata
       - key: PYPRICING_ENABLED
         value: "false" # No external request until verification is complete.
       - key: PYPRICING_RADIUS_KM

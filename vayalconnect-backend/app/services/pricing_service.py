@@ -416,7 +416,7 @@ class PricingEngine:
         ):
             base_price = daily_ref["reference_price_per_listing_unit_paise"]
         else:
-            base_price = product.get("farmer_payout_per_unit_paise") or daily_ref.get("reference_price_per_listing_unit_paise")
+            base_price = (product.get("farmer_payout_per_unit_paise") or product.get("farmer_price_per_unit_paise") or product.get("farmer_base_price_paise") or daily_ref.get("reference_price_per_listing_unit_paise"))
 
         if not base_price or base_price <= 0:
             raise ValidationError("Listing has no valid base price.")

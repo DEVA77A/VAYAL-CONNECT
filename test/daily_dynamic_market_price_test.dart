@@ -318,7 +318,7 @@ void main() {
       // Verify the Daily Market Prices card exists
       expect(find.text('Daily Market Prices'), findsOneWidget);
       expect(find.text('Provider: Government AGMARKNET & Mandi'), findsOneWidget);
-      expect(find.text('Schedule: 06:00 IST Daily'), findsOneWidget);
+      expect(find.text('Schedule: 08:00 IST Daily'), findsOneWidget);
 
       // Tap Refresh Now
       final refreshBtn = find.widgetWithText(ElevatedButton, 'Refresh Now');

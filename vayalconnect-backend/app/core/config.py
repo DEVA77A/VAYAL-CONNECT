@@ -36,7 +36,16 @@ class Settings(BaseSettings):
     BREVO_SENDER_EMAIL: str = "vayalconnect@gmail.com"
     BREVO_SENDER_NAME: str = "Vayal Connect"
 
-    # Government Market Price API
+    # Government Market Price API & AGMARKNET
+    DATA_GOV_IN_API_KEY: str = Field("", repr=False)
+    DATA_GOV_IN_RESOURCE_ID: str = "9ef84268-d588-465a-a308-a864a43d0070"
+    MAX_DAILY_API_REQUESTS: int = Field(100, ge=1, le=1000)
+    MAX_RETRY_ATTEMPTS: int = Field(3, ge=1, le=10)
+    API_TIMEOUT_SECONDS: int = Field(25, ge=5, le=120)
+    MARKET_PRICE_UPDATE_TIME: str = "08:00"
+    MARKET_PRICE_TIMEZONE: str = "Asia/Kolkata"
+    CRON_SECRET_TOKEN: str = Field("", repr=False)
+
     GROQ_API_KEY: str = Field("", repr=False)
     GROQ_MODEL: str = "openai/gpt-oss-120b"
     GROQ_MARKET_ENABLED: bool = False
@@ -56,9 +65,9 @@ class Settings(BaseSettings):
     GEMINI_MARKET_RETRIES: int = Field(0, ge=0, le=2)
     MARKET_CURRENT_MAX_DAYS: int = Field(0, ge=0, le=7)
     MARKET_CACHE_MAX_DAYS: int = Field(7, ge=1, le=30)
-    MARKET_DAILY_REFRESH_ENABLED: bool = False
-    MARKET_STATEWIDE_ENABLED: bool = False
-    MARKET_SOURCE_VERIFIED: bool = False
+    MARKET_DAILY_REFRESH_ENABLED: bool = True
+    MARKET_STATEWIDE_ENABLED: bool = True
+    MARKET_SOURCE_VERIFIED: bool = True
     MARKET_STATEWIDE_MIN_OBSERVATIONS: int = Field(3, ge=3, le=100)
     # Do not activate until the documented endpoint and current data are verified.
     # The scheduled/application market workflow never calls Gemini.
@@ -68,6 +77,18 @@ class Settings(BaseSettings):
     GOVERNMENT_MARKET_API_BASE_URL: str = (
         "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
     )
+
+    @property
+    def active_market_api_key(self) -> str:
+        return self.DATA_GOV_IN_API_KEY or self.GOVERNMENT_MARKET_API_KEY
+
+    @property
+    def active_market_resource_id(self) -> str:
+        if self.DATA_GOV_IN_RESOURCE_ID:
+            return self.DATA_GOV_IN_RESOURCE_ID
+        if "/resource/" in self.GOVERNMENT_MARKET_API_BASE_URL:
+            return self.GOVERNMENT_MARKET_API_BASE_URL.split("/resource/")[-1].strip()
+        return "9ef84268-d588-465a-a308-a864a43d0070"
 
     ORDER_RESERVATION_MINUTES: int = Field(30, ge=5, le=120)
     DELIVERY_SPEED_KMH: float = Field(30, gt=0, le=120)
