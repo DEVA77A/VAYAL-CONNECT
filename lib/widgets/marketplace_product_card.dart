@@ -55,7 +55,9 @@ class MarketplaceProductCard extends StatelessWidget {
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleMedium
-                                    ?.copyWith(color: AppTheme.primaryGreen))),
+                                    ?.copyWith(
+                                        color: AppTheme.primaryGreen,
+                                        fontWeight: FontWeight.bold))),
                         const SizedBox(width: 8),
                         const DecoratedBox(
                             decoration: BoxDecoration(
@@ -66,6 +68,45 @@ class MarketplaceProductCard extends StatelessWidget {
                                 child: Icon(Icons.arrow_forward_rounded,
                                     size: 20, color: AppTheme.primaryGreen))),
                       ]),
+                      if (product.marketReferencePricePaise != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                            '${S.t('Market reference')}: ${S.money(product.marketReferencePricePaise)} / ${S.t(product.quantityUnit)}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: AppTheme.textSecondary)),
+                      ],
+                      if (product.marketPriceDate != null &&
+                          product.marketPriceDate!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                            '${S.t('Price updated')}: ${product.marketPriceDate}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(color: AppTheme.textSecondary)),
+                      ],
+                      if (product.isMarketPriceStale) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.sandBeige.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            S.t(
+                                'Market price update unavailable. Showing the last available price.'),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: AppTheme.earthBrown,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ])),
           ])));
 }

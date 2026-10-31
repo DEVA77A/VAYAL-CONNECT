@@ -72,12 +72,31 @@ class BuyerProduct {
   final String qualityGrade;
   final String? imageUrl;
   final String location;
+  final String? farmerId;
   final String? farmerName;
   final String? pickupAddress;
   final bool deliveryAvailable;
   final int buyerPricePerUnitPaise;
   final String buyerPricePerUnitDisplay;
   final String? harvestDate;
+
+  int? get marketReferencePricePaise {
+    final ref = marketReference;
+    if (ref == null) return null;
+    final p = ref['reference_price_per_listing_unit_paise'] ??
+        ref['government_reference_price_paise'];
+    if (p is num && p > 0) return p.toInt();
+    return null;
+  }
+
+  String? get marketPriceDate =>
+      marketReference?['reference_price_date'] as String?;
+
+  bool get isMarketPriceStale =>
+      marketReference?['reference_price_stale'] == true;
+
+  String? get marketPriceSource =>
+      marketReference?['reference_price_source'] as String?;
 
   BuyerProduct({
     this.farmerBasePricePaise = 0,
@@ -87,18 +106,19 @@ class BuyerProduct {
     this.marketReference,
     this.farmCoordinates,
     required this.productId,
+    this.farmerId,
     required this.productName,
     required this.category,
     required this.quantityAvailable,
     required this.quantityUnit,
-    required this.qualityGrade,
+    this.qualityGrade = 'FAQ',
     this.imageUrl,
     required this.location,
     this.farmerName,
     this.pickupAddress,
     this.deliveryAvailable = false,
     required this.buyerPricePerUnitPaise,
-    required this.buyerPricePerUnitDisplay,
+    this.buyerPricePerUnitDisplay = '',
     this.harvestDate,
   });
 
@@ -114,6 +134,7 @@ class BuyerProduct {
       marketReference: json['market_reference'] as Map<String, dynamic>?,
       farmCoordinates: json['farm_coordinates'] as Map<String, dynamic>?,
       productId: json['product_id'] as String? ?? json['id'] as String? ?? '',
+      farmerId: json['farmer_id'] as String?,
       productName: json['product_name'] as String? ?? '',
       category: json['category'] as String? ?? '',
       quantityAvailable: (json['quantity_available'] as num?)?.toInt() ?? 0,

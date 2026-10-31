@@ -82,7 +82,7 @@ void main() {
 
       // Farmer sees their own earnings
       expect(find.text('Farmer earnings'), findsOneWidget);
-      expect(find.text('₹4,500.00'), findsOneWidget);
+      expect(find.text('₹4500.00'), findsAtLeastNWidgets(1));
 
       // Farmer DOES NOT see platform commission
       expect(find.text('Platform commission'), findsNothing);

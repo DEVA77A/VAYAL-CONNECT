@@ -474,11 +474,42 @@ class OrderRecordCard extends StatelessWidget {
                         if (amount != null)
                           Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: Text(amount.toString(),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(color: AppTheme.deepGreen))),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    SessionManager().activeRole == AppRole.farmer
+                                        ? S.t('Farmer earnings')
+                                        : S.t('Buyer total'),
+                                    style: Theme.of(context).textTheme.titleSmall,
+                                  ),
+                                  Text(amount.toString(),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(color: AppTheme.deepGreen)),
+                                ],
+                              )),
+                        if (SessionManager().activeRole == AppRole.admin &&
+                            o['commission_total_paise'] != null)
+                          Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    S.t('Platform commission'),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                  Text(
+                                    S.money(o['commission_total_paise'] as num?),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              )),
                       ],
                     ]))));
   }

@@ -30,6 +30,7 @@ class CreateProductRequest(BaseModel):
     location: str = Field(..., min_length=2, max_length=200)
     market: str = Field(..., min_length=2, max_length=200)
     harvest_date: date
+    pricing_mode: Optional[str] = Field("FARMER_SELECTED", pattern="^(FARMER_SELECTED|MARKET_BASED)$")
 
 
 class UpdateProductRequest(BaseModel):

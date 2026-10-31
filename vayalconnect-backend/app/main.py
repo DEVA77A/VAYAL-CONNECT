@@ -71,6 +71,22 @@ async def lifespan(app: FastAPI):
             return
         app.state.database_ready = True
         logger.info("Database connected and indexes created; service ready")
+
+        async def market_scheduler_worker():
+            from app.services.market_discovery import MarketDiscoveryService
+            from app.core.database import get_database
+            from datetime import datetime, timezone, timedelta
+            while True:
+                try:
+                    db = get_database()
+                    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+                    if now_ist.hour >= 6:
+                        await MarketDiscoveryService(db).refresh_daily()
+                except Exception as exc:
+                    logger.warning("Market scheduler worker category=%s", type(exc).__name__)
+                await asyncio.sleep(1800)
+
+        asyncio.create_task(market_scheduler_worker())
         await reservation_worker()
 
     task = None

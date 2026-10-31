@@ -52,7 +52,7 @@ class _FarmerApplicationScreenState extends State<FarmerApplicationScreen>
   int _currentStep = 0; // 0 = Farm Details, 1 = Bank Details
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? _coordinates;
-  bool _busy = false, _delivery = false;
+  bool _busy = true, _delivery = false;
   String? _error;
   bool _submitted = false;
   bool _obscureAccountNumber = true;
@@ -309,12 +309,19 @@ class _FarmerApplicationScreenState extends State<FarmerApplicationScreen>
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: _currentStep == 0 ? 0.5 : 1.0,
-              backgroundColor: AppTheme.sandBeige.withOpacity(0.5),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppTheme.primaryGreen),
-              minHeight: 6,
+            child: Container(
+              height: 6,
+              color: AppTheme.sandBeige.withOpacity(0.5),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: _currentStep == 0 ? 0.5 : 1.0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
             ),
           ),
         ],

@@ -26,6 +26,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Map<String, dynamic>? _data;
   bool _busy = true;
   String? _error;
+  bool _refreshingMarket = false;
+  String? _marketRefreshMessage;
+
+  Future<void> _manualRefreshMarketPrices() async {
+    setState(() {
+      _refreshingMarket = true;
+      _marketRefreshMessage = null;
+    });
+    try {
+      final res = await _api.request('/api/v1/market-prices/refresh', method: 'POST');
+      if (mounted) {
+        setState(() {
+          _marketRefreshMessage = S.t('Market prices refreshed successfully.');
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(S.t('Market prices refreshed successfully.')),
+            backgroundColor: AppTheme.successGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final err = e.toString().replaceFirst('Exception: ', '');
+        setState(() => _marketRefreshMessage = err);
+      }
+    } finally {
+      if (mounted) setState(() => _refreshingMarket = false);
+    }
+  }
   @override
   void initState() {
     super.initState();
@@ -228,6 +258,57 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       },
                     );
                   }),
+                  const SizedBox(height: 16),
+                  SectionCard(
+                    title: 'Daily Market Prices',
+                    icon: Icons.query_stats_outlined,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  S.t('Provider: Government AGMARKNET & Mandi'),
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  S.t('Schedule: 06:00 IST Daily'),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: _refreshingMarket ? null : _manualRefreshMarketPrices,
+                            icon: _refreshingMarket
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.refresh, size: 16),
+                            label: Text(S.t('Refresh Now')),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_marketRefreshMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _marketRefreshMessage!,
+                          style: const TextStyle(fontSize: 12, color: AppTheme.primaryDarkGreen, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ],
+                  ),
                   const SizedBox(height: 20),
                   Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 12),

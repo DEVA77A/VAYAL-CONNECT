@@ -31,18 +31,34 @@ from datetime import datetime, timezone, date, timedelta
 from app.core.config import settings
 
 def reference_view(product):
-    fields = ("reference_price_available", "reference_price_message", "government_reference_price_paise", "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit", "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale", "reference_price_retrieved_at", "reference_commodity", "reference_market", "reference_min_paise", "reference_max_paise", "reference_state", "reference_source_url", "reference_records", "reference_price_type", "reference_verification_status", "reference_district", "reference_verification_method", "reference_quote_type", "reference_currency")
-    if product.get("pricing_mode") != "FARMER_SELECTED": return None
-    fields += ("reference_scope", "reference_label", "reference_aggregation_method", "reference_observation_count", "reference_observation_dates")
+    if product.get("pricing_mode") not in ("FARMER_SELECTED", "MARKET_BASED"):
+        return None
+    fields = (
+        "reference_price_available", "reference_price_message", "government_reference_price_paise",
+        "reference_price_per_listing_unit_paise", "reference_price_unit", "reference_listing_unit",
+        "reference_price_date", "reference_price_source", "reference_price_cached", "reference_price_stale",
+        "reference_price_retrieved_at", "reference_commodity", "reference_market", "reference_min_paise",
+        "reference_max_paise", "reference_state", "reference_source_url", "reference_records",
+        "reference_price_type", "reference_verification_status", "reference_district",
+        "reference_verification_method", "reference_quote_type", "reference_currency",
+        "reference_scope", "reference_label", "reference_aggregation_method",
+        "reference_observation_count", "reference_observation_dates", "market_price_status_message"
+    )
     result = {k: product.get(k) for k in fields}
     try:
         today = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
-        result["reference_price_stale"] = bool(product.get("reference_price_stale")) or date.fromisoformat(str(product.get("reference_price_date"))[:10]) != today
+        date_str = str(product.get("reference_price_date") or "")[:10]
+        if date_str:
+            result["reference_price_stale"] = bool(product.get("reference_price_stale")) or date.fromisoformat(date_str) != today
+        else:
+            result["reference_price_stale"] = True
         result["reference_records"] = [{**record, "stale": bool(record.get("stale")) or
             date.fromisoformat(str(record.get("arrival_date"))[:10]) != today}
             for record in (product.get("reference_records") or [])]
     except (TypeError, ValueError):
         result["reference_price_stale"] = True
+    if result.get("reference_price_stale") and not result.get("market_price_status_message"):
+        result["market_price_status_message"] = "Market price update unavailable. Showing the last available price."
     return result
 
 
@@ -121,8 +137,9 @@ async def create_product(
         "pricing_policy_version": pricing.get("pricing_policy_version", 0),
     }
 
-    product_doc.update(reference_view({**pricing, "pricing_mode": "FARMER_SELECTED"}) or {})
-    product_doc["pricing_mode"] = "FARMER_SELECTED"
+    mode = getattr(data, "pricing_mode", "FARMER_SELECTED") or "FARMER_SELECTED"
+    product_doc.update(reference_view({**pricing, "pricing_mode": mode}) or {})
+    product_doc["pricing_mode"] = mode
     product_id = await product_repo.create(product_doc)
 
     # Create immutable pricing snapshot

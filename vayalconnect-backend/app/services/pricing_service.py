@@ -257,15 +257,178 @@ class PricingEngine:
             "commission_config_version": config.get("version", 0) if config else 0,
         }
 
+    async def resolve_daily_market_price(self, product: dict) -> dict:
+        """
+        Resolves the daily dynamic market reference price for a product.
+        Matching priority (Priority 3):
+        1. Farmer's registered farm district (or product district)
+        2. Farmer's registered state ("Tamil Nadu")
+        3. Relevant nearby mandi
+        4. Fallback market / statewide reference for commodity
+
+        Uses modal price as reference; normalizes units (e.g. Quintal to KG).
+        Returns dict with reference fields, staleness detection, and status message.
+        Never returns ₹0 on failure; falls back to last known valid price.
+        """
+        commodity = product.get("product_name") or product.get("commodity", "")
+        market = product.get("market")
+        district = product.get("district")
+        state = product.get("state") or "Tamil Nadu"
+        unit = product.get("quantity_unit") or product.get("unit") or "KG"
+        variety = product.get("variety")
+        category = product.get("category")
+
+        records = []
+        discovery = MarketDiscoveryService(self.db)
+
+        # Priority 1 & 2: District and State match
+        if district:
+            district_res = await discovery.lookup(
+                commodity=commodity,
+                state=state,
+                district=district,
+                variety=variety,
+                limit=20,
+            )
+            records = district_res.get("records", [])
+
+        # Priority 3: Specific market / mandi match
+        if not records and market:
+            market_res = await discovery.lookup(
+                commodity=commodity,
+                state=state,
+                market=market,
+                variety=variety,
+                limit=20,
+            )
+            records = market_res.get("records", [])
+
+        # Priority 4: Statewide reference
+        if not records:
+            statewide_res = await discovery.lookup(
+                commodity=commodity,
+                state="Tamil Nadu",
+                variety=variety,
+                limit=20,
+                scope="statewide",
+            )
+            records = statewide_res.get("records", [])
+
+        # Priority 5: Any last known good historical price for commodity in cache
+        if not records:
+            any_res = await discovery.lookup(
+                commodity=commodity,
+                limit=20,
+            )
+            records = any_res.get("records", [])
+
+        today_ist = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
+
+        if records:
+            def sort_key(r):
+                arr_str = str(r.get("arrival_date") or r.get("observation_date") or "")[:10]
+                try:
+                    arr_date = date.fromisoformat(arr_str)
+                    days_ago = (today_ist - arr_date).days
+                except (ValueError, TypeError):
+                    days_ago = 9999
+                has_modal = 0 if r.get("modal_price_paise") or r.get("price_paise") else 1
+                return (days_ago, has_modal)
+
+            records.sort(key=sort_key)
+            best = records[0]
+
+            raw_price = best.get("modal_price_paise") or best.get("price_paise") or best.get("min_price_paise", 0)
+            raw_unit = str(best.get("unit", "KG")).upper().strip()
+
+            # Unit conversion
+            aliases = {"KILOGRAM": "KG", "QTL": "QUINTAL", "TONNE": "TON", "PIECES": "PIECE"}
+            listing_u = aliases.get(unit.upper().strip(), unit.upper().strip())
+            source_u = aliases.get(raw_unit, raw_unit)
+            factors = {"KG": 1, "QUINTAL": 100, "TON": 1000}
+
+            converted = raw_price
+            if listing_u in factors and source_u in factors:
+                converted = int(
+                    (Decimal(raw_price) * factors[listing_u] / factors[source_u]).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP
+                    )
+                )
+
+            obs_date_str = str(best.get("arrival_date") or best.get("observation_date") or "")[:10]
+            try:
+                obs_date = date.fromisoformat(obs_date_str)
+                is_stale = obs_date != today_ist
+            except (ValueError, TypeError):
+                is_stale = True
+
+            msg = (
+                "Market price update unavailable. Showing the last available price."
+                if is_stale
+                else "Updated today from official agricultural market data."
+            )
+
+            return {
+                "reference_price_available": True,
+                "government_reference_price_paise": raw_price,
+                "reference_price_per_listing_unit_paise": converted,
+                "reference_price_unit": best.get("unit", "KG"),
+                "reference_listing_unit": unit,
+                "reference_price_date": obs_date_str or today_ist.isoformat(),
+                "reference_price_source": best.get("source", "AGMARKNET Mandi Reference"),
+                "reference_price_stale": is_stale,
+                "reference_price_retrieved_at": best.get("retrieved_at"),
+                "reference_commodity": best.get("commodity", commodity),
+                "reference_market": best.get("market", market or "Tamil Nadu"),
+                "reference_district": best.get("district", district),
+                "reference_state": best.get("state", state),
+                "market_price_status_message": msg,
+            }
+
+        # Fallback if no records found in DB:
+        existing_payout = product.get("farmer_payout_per_unit_paise") or product.get("selling_price_per_unit_paise") or 0
+        ref_date = str(product.get("reference_price_date") or "")[:10]
+        return {
+            "reference_price_available": existing_payout > 0,
+            "government_reference_price_paise": product.get("government_reference_price_paise") or existing_payout,
+            "reference_price_per_listing_unit_paise": existing_payout,
+            "reference_price_unit": unit,
+            "reference_listing_unit": unit,
+            "reference_price_date": ref_date or today_ist.isoformat(),
+            "reference_price_source": product.get("reference_price_source", "Approved Reference"),
+            "reference_price_stale": True,
+            "reference_price_retrieved_at": product.get("reference_price_retrieved_at"),
+            "reference_commodity": commodity,
+            "reference_market": market or "Tamil Nadu",
+            "reference_district": district,
+            "reference_state": state,
+            "market_price_status_message": "Market price update unavailable. Showing the last available price.",
+        }
+
     async def buyer_pricing(self, product: dict) -> dict:
-        if not product.get("farmer_payout_per_unit_paise"):
-            raise ValidationError("Listing has no valid farmer base price.")
-        amounts = await self.selling_amounts(product["farmer_payout_per_unit_paise"])
+        daily_ref = await self.resolve_daily_market_price(product)
+
+        # If product is in MARKET_BASED pricing mode and has a valid daily market price:
+        if (
+            product.get("pricing_mode") == "MARKET_BASED"
+            and daily_ref.get("reference_price_available")
+            and (daily_ref.get("reference_price_per_listing_unit_paise") or 0) > 0
+        ):
+            base_price = daily_ref["reference_price_per_listing_unit_paise"]
+        else:
+            base_price = product.get("farmer_payout_per_unit_paise") or daily_ref.get("reference_price_per_listing_unit_paise")
+
+        if not base_price or base_price <= 0:
+            raise ValidationError("Listing has no valid base price.")
+
+        amounts = await self.selling_amounts(base_price)
         return {
             **product,
+            **daily_ref,
             **amounts,
             "commission_percentage": amounts["commission_percentage_bps"],
         }
+
 
     async def get_verified_reference(
         self,

@@ -704,8 +704,10 @@ class _AddProductScreenState extends State<AddProductScreen>
         setState(() {
           _reference = Map<String, dynamic>.from(r);
           final suggested = r['reference_price_per_listing_unit_paise'];
+          final isStale = r['reference_price_stale'] == true;
           if (!_manualPrice &&
               r['reference_price_available'] == true &&
+              !isStale &&
               suggested is int &&
               suggested > 0 &&
               suggested <= 100000000) {
@@ -817,7 +819,9 @@ class _AddProductScreenState extends State<AddProductScreen>
                 if (key == 'selling_price') {
                   _manualPrice = true;
                 } else if (key == 'product_name') {
-                  _manualPrice = false;
+                  if (_fields['selling_price']!.text.isEmpty) {
+                    _manualPrice = false;
+                  }
                   _reference = null;
                   _queueReference();
                 } else if (key == 'variety') {

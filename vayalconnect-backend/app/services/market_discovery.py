@@ -532,22 +532,57 @@ class MarketDiscoveryService:
             {"status": "completed", "verified_records": {"$gt": 0}},
             sort=[("finished_at", -1)],
         )
+
+        now = datetime.now(timezone.utc)
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        now_ist = now.astimezone(ist_tz)
+        next_update_date = now_ist.date() if now_ist.hour < 6 else now_ist.date() + timedelta(days=1)
+        next_update_str = f"{next_update_date.isoformat()} 06:00:00 IST"
+
+        # Count commodities in market_prices
+        try:
+            distinct_commodities = await self.db["market_prices"].distinct("commodity")
+            commodities_count = len(distinct_commodities)
+        except Exception:
+            commodities_count = 0
+
+        # Retrieve summary of latest market reference prices
+        latest_prices = []
+        try:
+            cursor = self.db["market_prices"].find(
+                {"verification_status": "verified"}
+            ).sort("arrival_date", -1).limit(10)
+            async for doc in cursor:
+                latest_prices.append({
+                    "commodity": doc.get("commodity"),
+                    "market": doc.get("market"),
+                    "district": doc.get("district"),
+                    "price_paise": doc.get("price_paise") or doc.get("modal_price_paise"),
+                    "price_display": doc.get("price_display", "₹0.00"),
+                    "unit": doc.get("unit", "KG"),
+                    "arrival_date": str(doc.get("arrival_date", ""))[:10],
+                    "stale": doc.get("stale", False),
+                })
+        except Exception:
+            pass
+
         return {
-            "provider": self.provider.name,
+            "provider": getattr(self.provider, "name", "Government AGMARKNET & TN Mandis"),
             "enabled": settings.MARKET_STATEWIDE_ENABLED,
             "source_verified": settings.MARKET_SOURCE_VERIFIED,
             "groq_enabled": settings.GROQ_MARKET_ENABLED,
             "last_attempted_at": attempted.get("started_at") if attempted else None,
             "last_attempt_status": attempted.get("status") if attempted else None,
-            "last_attempt_partial": attempted.get("partial", False)
-            if attempted
-            else False,
-            "last_attempt_diagnostics": attempted.get("diagnostics", [])
-            if attempted
-            else [],
+            "last_attempt_partial": attempted.get("partial", False) if attempted else False,
+            "last_attempt_diagnostics": attempted.get("diagnostics", []) if attempted else [],
             "daily_refresh_enabled": settings.MARKET_DAILY_REFRESH_ENABLED,
-            "last_successful_at": successful.get("finished_at") if successful else None,
-            "schedule": "08:00 Asia/Kolkata daily (requires Render Cron configuration)",
+            "last_successful_at": successful.get("finished_at") if successful else (attempted.get("finished_at") if attempted and attempted.get("status") == "completed" else None),
+            "next_scheduled_update": next_update_str,
+            "schedule": "06:00 Asia/Kolkata daily (Render Cron / In-process scheduler)",
+            "commodities_count": commodities_count,
+            "verified_records_count": attempted.get("verified_records", 0) if attempted else len(latest_prices),
+            "failed_records_count": 1 if attempted and attempted.get("status") in ("failed", "unavailable") else 0,
+            "latest_prices": latest_prices,
             "live_verified": False,
         }
 
