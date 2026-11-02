@@ -59,7 +59,7 @@ class ApiClient {
           if (!path.contains('/auth/') && SessionManager().refreshToken != null) {
             final refreshed = await AuthService(client: client).tryRefreshToken();
             if (refreshed) {
-              return this.request(path, method: method, body: body, timeout: timeout);
+              return await this.request(path, method: method, body: body, timeout: timeout);
             }
           }
           fail(S.t('Session expired. Sign in again.'));

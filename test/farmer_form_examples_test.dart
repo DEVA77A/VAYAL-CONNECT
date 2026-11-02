@@ -66,7 +66,7 @@ void main() {
       await tester.enterText(field('Your selling price'), '17');
       await tester.pump();
       expect(selling.controller!.text, '17');
-      expect(find.byType(MarketReferenceView), findsOneWidget);
+      expect(find.byType(MarketReferenceView), findsNothing);
       await tester.pumpWidget(const SizedBox());
       api.dispose();
     });

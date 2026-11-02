@@ -14,7 +14,6 @@ import '../utils/commerce_strings.dart';
 import '../utils/money_input.dart';
 import '../config/api_config.dart';
 import '../widgets/vayal_app_bar.dart';
-import '../widgets/market_reference_view.dart';
 import '../theme/app_theme.dart';
 
 class AddProductScreen extends StatefulWidget {
@@ -209,7 +208,8 @@ class _AddProductScreenState extends State<AddProductScreen>
   }
 
   void _clearPendingCamera() {
-    SharedPreferences.getInstance().then((p) => p.remove('vayal_pending_camera_screen'));
+    SharedPreferences.getInstance()
+        .then((p) => p.remove('vayal_pending_camera_screen'));
   }
 
   Future<void> _recoverLostData() async {
@@ -309,7 +309,8 @@ class _AddProductScreenState extends State<AddProductScreen>
     if (SessionManager().isDemoMode) {
       if (mounted) {
         setState(() {
-          _image = '/api/v1/media/demo-${cropName.isNotEmpty ? cropName.toLowerCase() : "crop"}';
+          _image =
+              '/api/v1/media/demo-${cropName.isNotEmpty ? cropName.toLowerCase() : "crop"}';
           _imageVerified = true;
           _imageError = null;
           _imageUploading = false;
@@ -357,7 +358,8 @@ class _AddProductScreenState extends State<AddProductScreen>
         try {
           final errJson = jsonDecode(response.body);
           if (errJson is Map) {
-            if (errJson['error'] is Map && errJson['error']['message'] != null) {
+            if (errJson['error'] is Map &&
+                errJson['error']['message'] != null) {
               msg = errJson['error']['message'].toString();
             } else if (errJson['detail'] != null) {
               msg = errJson['detail'].toString();
@@ -474,8 +476,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                 ),
               ),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: _image != null && _image!.isNotEmpty
                       ? AppTheme.softGreen
@@ -505,8 +506,7 @@ class _AddProductScreenState extends State<AddProductScreen>
           const SizedBox(height: 8),
           Text(
             S.t('Please upload a genuine photograph of your crop.'),
-            style:
-                const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 12),
           if (_imageUploading) ...[
@@ -572,8 +572,7 @@ class _AddProductScreenState extends State<AddProductScreen>
             ),
           ] else ...[
             Container(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
               decoration: BoxDecoration(
                 color: AppTheme.backgroundWarm,
                 borderRadius: BorderRadius.circular(12),
@@ -605,8 +604,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                         onPressed: _busy || _imageUploading
                             ? null
                             : () => _pickImage(ImageSource.camera),
-                        icon:
-                            const Icon(Icons.camera_alt_rounded, size: 18),
+                        icon: const Icon(Icons.camera_alt_rounded, size: 18),
                         label: Text(S.t('Take Photo')),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryGreen,
@@ -617,8 +615,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                         onPressed: _busy || _imageUploading
                             ? null
                             : () => _pickImage(ImageSource.gallery),
-                        icon: const Icon(Icons.photo_library_rounded,
-                            size: 18),
+                        icon: const Icon(Icons.photo_library_rounded, size: 18),
                         label: Text(S.t('Choose from Gallery')),
                       ),
                     ],
@@ -639,8 +636,7 @@ class _AddProductScreenState extends State<AddProductScreen>
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.red, size: 20),
+                  const Icon(Icons.error_outline, color: Colors.red, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1067,17 +1063,10 @@ class _AddProductScreenState extends State<AddProductScreen>
                                 onChanged: _busy
                                     ? null
                                     : (v) => setState(() => _status = v!)),
-                          OutlinedButton(
-                              onPressed: _busy ? null : _lookup,
-                              child: Text(S.t('Verified market reference'))),
-                          if (_reference != null)
-                            MarketReferenceView(
-                                reference: _reference,
-                                sellingPricePaise: parseSellingPricePaise(
-                                    _fields['selling_price']!.text)),
                           const SizedBox(height: 24),
                           ElevatedButton(
-                              onPressed: (_busy || _imageUploading) ? null : _save,
+                              onPressed:
+                                  (_busy || _imageUploading) ? null : _save,
                               child: Text(S.t(_editing ? 'Save' : 'Publish'))),
                         ])))));
   }

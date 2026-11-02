@@ -1,20 +1,21 @@
-import '../theme/app_theme.dart';
-import '../widgets/brand_widgets.dart';
-import '../utils/form_examples.dart';
 import 'package:flutter/material.dart';
 import '../models/auth_models.dart';
 import '../services/session_manager.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
+import '../services/update_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/commerce_strings.dart';
+import '../utils/form_examples.dart';
 import '../utils/language_rebuild.dart';
+import '../widgets/brand_widgets.dart';
 import '../widgets/commerce_widgets.dart';
 import '../widgets/vayal_app_bar.dart';
+import '../widgets/logout_dialog.dart';
 import 'auth_gateway_screen.dart';
 import 'farmer_application_screen.dart';
 import 'farmer_bank_screen.dart';
 import 'addresses_screen.dart';
-import '../services/update_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final ApiClient? api;
@@ -30,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Map<String, dynamic>? _profile, _bank;
   bool _busy = true;
   String? _error;
+
   @override
   void initState() {
     super.initState();
@@ -255,78 +257,510 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final role = SessionManager().activeRole;
+    final roleName = role == AppRole.farmer
+        ? S.t('Farmer')
+        : (role == AppRole.admin ? S.t('Admin') : S.t('Buyer'));
+
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundWarm,
       appBar: VayalAppBar(title: S.t('Profile'), showBack: true),
       body: PageBody(
-          child: ListView(padding: const EdgeInsets.all(20), children: [
-        BrandHeading(title: S.t('Profile'), icon: Icons.person_outline),
-        if (_busy) const LinearProgressIndicator(),
-        if (_error != null) ErrorPanel(_error!, _load),
-        if (_profile != null)
-          Card(
-              child: Padding(
-                  padding: const EdgeInsets.all(20),
+        child: RefreshIndicator(
+          onRefresh: _load,
+          color: AppTheme.primaryGreen,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            children: [
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 16),
+                  child: LinearProgressIndicator(
+                    color: AppTheme.primaryGreen,
+                    backgroundColor: AppTheme.softGreen,
+                  ),
+                ),
+
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: ErrorPanel(_error!, _load),
+                ),
+
+              // A. Profile Header & Hero Card
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.softGreen.withOpacity(0.85),
+                      AppTheme.surfaceCream,
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppTheme.cardBorder, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // Avatar with subtle glow
+                    Container(
+                      width: 84,
+                      height: 84,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppTheme.primaryGreen,
+                          width: 2.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryGreen.withOpacity(0.2),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          (_profile?['name']?.toString().isNotEmpty == true)
+                              ? _profile!['name'][0].toUpperCase()
+                              : 'V',
+                          style: const TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.primaryDarkGreen,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // User Name
+                    Text(
+                      _profile?['name'] ?? S.t('VayalConnect User'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryDarkGreen,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Role Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        roleName,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // B. Profile Information Card
+              if (_profile != null) ...[
+                _buildSectionHeader(
+                  title: S.t('Personal Information'),
+                  icon: Icons.badge_outlined,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceCream,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.cardBorder, width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
                   child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const CircleAvatar(
-                            radius: 32,
-                            backgroundColor: AppTheme.softGreen,
-                            child: Icon(Icons.person_outline,
-                                size: 32, color: AppTheme.primaryGreen)),
-                        detailLine('Name', _profile!['name']),
-                        detailLine('Email', _profile!['email']),
-                        detailLine('Contact number', _profile!['phone']),
-                        detailLine('Address', _profile!['address']),
-                        detailLine(
-                            'Area / locality', _profile!['area_location']),
-                      ]))),
-        if (_profile != null)
-          OutlinedButton.icon(
-              onPressed: _busy ? null : _edit,
-              icon: const Icon(Icons.edit_outlined),
-              label: Text(S.t('Edit profile'))),
-        if (SessionManager().activeRole == AppRole.farmer) ...[
-          OutlinedButton.icon(
-              onPressed:
-                  _busy ? null : () => _open(const FarmerApplicationScreen()),
-              icon: const Icon(Icons.agriculture),
-              label: Text(S.t('Farmer application'))),
-          OutlinedButton.icon(
-              onPressed: _busy ? null : () => _open(const FarmerBankScreen()),
-              icon: const Icon(Icons.account_balance),
-              label: Text(S.t('Bank payout details'))),
-          if (_bank != null)
-            Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          detailLine('Bank name', _bank!['bank_name']),
-                          detailLine('Account number',
-                              _bank!['account_number_masked']),
-                          Text(S.t(_bank!['bank_details_verified'] == true
-                              ? 'Verified'
-                              : 'Not verified')),
-                        ]))),
+                    children: [
+                      _buildInfoTile(
+                        icon: Icons.person_outline,
+                        label: S.t('Name'),
+                        value: _profile!['name'],
+                      ),
+                      _buildDivider(),
+                      _buildInfoTile(
+                        icon: Icons.email_outlined,
+                        label: S.t('Email'),
+                        value: _profile!['email'],
+                      ),
+                      _buildDivider(),
+                      _buildInfoTile(
+                        icon: Icons.phone_outlined,
+                        label: S.t('Contact number'),
+                        value: _profile!['phone'],
+                      ),
+                      _buildDivider(),
+                      _buildInfoTile(
+                        icon: Icons.home_outlined,
+                        label: S.t('Address'),
+                        value: _profile!['address'],
+                      ),
+                      _buildDivider(),
+                      _buildInfoTile(
+                        icon: Icons.location_city_outlined,
+                        label: S.t('Area / locality'),
+                        value: _profile!['area_location'],
+                        isLast: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // Farmer Bank Payout Details Card
+              if (role == AppRole.farmer && _bank != null) ...[
+                _buildSectionHeader(
+                  title: S.t('Bank Payout Details'),
+                  icon: Icons.account_balance_outlined,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceCream,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.cardBorder, width: 1),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildInfoTile(
+                        icon: Icons.account_balance,
+                        label: S.t('Bank name'),
+                        value: _bank!['bank_name'],
+                      ),
+                      _buildDivider(),
+                      _buildInfoTile(
+                        icon: Icons.numbers,
+                        label: S.t('Account number'),
+                        value: _bank!['account_number_masked'],
+                      ),
+                      _buildDivider(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              S.t('Status'),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: (_bank!['bank_details_verified'] == true)
+                                    ? AppTheme.successGreen.withOpacity(0.12)
+                                    : AppTheme.warningOrange.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                S.t(_bank!['bank_details_verified'] == true
+                                    ? 'Verified'
+                                    : 'Not verified'),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      (_bank!['bank_details_verified'] == true)
+                                          ? AppTheme.successGreen
+                                          : AppTheme.warningOrange,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // C. Profile Action Buttons
+              _buildSectionHeader(
+                title: S.t('Account Actions'),
+                icon: Icons.tune_rounded,
+              ),
+              const SizedBox(height: 10),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceCream,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.cardBorder, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // 1. Edit Profile
+                    _buildActionTile(
+                      icon: Icons.edit_outlined,
+                      iconColor: AppTheme.primaryGreen,
+                      title: S.t('Edit profile'),
+                      onTap: _busy ? null : _edit,
+                    ),
+                    _buildDivider(),
+
+                    // 2. Role Specific Actions
+                    if (role == AppRole.farmer) ...[
+                      _buildActionTile(
+                        icon: Icons.agriculture_outlined,
+                        iconColor: AppTheme.earthBrown,
+                        title: S.t('Farmer application'),
+                        onTap: _busy
+                            ? null
+                            : () => _open(const FarmerApplicationScreen()),
+                      ),
+                      _buildDivider(),
+                      _buildActionTile(
+                        icon: Icons.account_balance_outlined,
+                        iconColor: AppTheme.earthBrown,
+                        title: S.t('Bank payout details'),
+                        onTap: _busy
+                            ? null
+                            : () => _open(const FarmerBankScreen()),
+                      ),
+                      _buildDivider(),
+                    ],
+
+                    if (role == AppRole.buyer) ...[
+                      _buildActionTile(
+                        icon: Icons.location_on_outlined,
+                        iconColor: AppTheme.primaryGreen,
+                        title: S.t('Addresses'),
+                        onTap:
+                            _busy ? null : () => _open(const AddressesScreen()),
+                      ),
+                      _buildDivider(),
+                    ],
+
+                    // 3. Check for Updates
+                    _buildActionTile(
+                      icon: Icons.system_update_alt_rounded,
+                      iconColor: AppTheme.primaryGreen,
+                      title: S.t('Check for updates'),
+                      onTap: _busy ? null : _checkForUpdate,
+                    ),
+                    _buildDivider(),
+
+                    // 4. Change Password
+                    _buildActionTile(
+                      icon: Icons.lock_outline_rounded,
+                      iconColor: AppTheme.primaryGreen,
+                      title: S.t('Change password'),
+                      onTap: _busy ? null : _password,
+                    ),
+                    _buildDivider(),
+
+                    // 5. Logout
+                    _buildActionTile(
+                      icon: Icons.logout_rounded,
+                      iconColor: AppTheme.errorRed,
+                      title: S.t('Logout'),
+                      textColor: AppTheme.errorRed,
+                      isLast: true,
+                      onTap: _busy
+                          ? null
+                          : () {
+                              LogoutConfirmationDialog.show(
+                                context,
+                                onConfirm: _logout,
+                              );
+                            },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader({required String title, required IconData icon}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.earthBrown),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.primaryDarkGreen,
+                letterSpacing: 0.1,
+              ),
+            ),
+          ),
         ],
-        if (SessionManager().activeRole == AppRole.buyer)
-          OutlinedButton.icon(
-              onPressed: _busy ? null : () => _open(const AddressesScreen()),
-              icon: const Icon(Icons.location_on),
-              label: Text(S.t('Addresses'))),
-        OutlinedButton.icon(
-            onPressed: _busy ? null : _checkForUpdate,
-            icon: const Icon(Icons.system_update_alt_rounded),
-            label: Text(S.t('Check for updates'))),
-        OutlinedButton.icon(
-            onPressed: _busy ? null : _password,
-            icon: const Icon(Icons.password),
-            label: Text(S.t('Change password'))),
-        OutlinedButton.icon(
-            onPressed: _busy ? null : _logout,
-            icon: const Icon(Icons.logout),
-            label: Text(S.t('Logout'))),
-      ])));
+      ),
+    );
+  }
+
+  Widget _buildInfoTile({
+    required IconData icon,
+    required String label,
+    required dynamic value,
+    bool isLast = false,
+  }) {
+    final strVal = (value == null || value.toString().trim().isEmpty)
+        ? '—'
+        : value.toString();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.softGreen.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: AppTheme.primaryDarkGreen),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  strVal,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required VoidCallback? onTap,
+    Color? textColor,
+    bool isLast = false,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: isLast
+            ? const BorderRadius.vertical(bottom: Radius.circular(16))
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: textColor ?? AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: textColor ?? AppTheme.textSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return const Divider(
+      height: 1,
+      thickness: 1,
+      indent: 16,
+      endIndent: 16,
+      color: AppTheme.dividerColor,
+    );
+  }
 }

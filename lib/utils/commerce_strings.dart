@@ -88,6 +88,24 @@ class S {
     'Log Out': 'வெளியேறு',
     'Confirm Logout': 'வெளியேறுவதை உறுதிப்படுத்தவும்',
     'Are you sure you want to log out?': 'நிச்சயமாக வெளியேற விரும்புகிறீர்களா?',
+    'Are you sure you want to log out of your account?':
+        'உங்கள் கணக்கிலிருந்து நிச்சயமாக வெளியேற விரும்புகிறீர்களா?',
+    'Enable location for a better experience':
+        'சிறந்த பயன்பாட்டிற்கு இருப்பிடத்தை இயக்கவும்',
+    'Nearby Farm Discovery': 'அருகிலுள்ள பண்ணை கண்டறிதல்',
+    'Find nearby farms and fresh local harvests':
+        'அருகிலுள்ள பண்ணைகள் மற்றும் புதிய உள்ளூர் விளைச்சலைக் கண்டறியவும்',
+    'Accurate Distance': 'துல்லியமான தூரம்',
+    'Get precise distance & delivery estimates':
+        'துல்லியமான தூரம் மற்றும் டெலிவரி மதிப்பீடுகளைப் பெறுங்கள்',
+    'Transparent Pricing': 'வெளிப்படையான விலை',
+    'View government mandi prices for your district':
+        'உங்கள் மாவட்டத்திற்கான அரசு மண்டி விலைகளைக் காண்க',
+    'GPS is only used while using the app and does not replace your delivery address.':
+        'ஜிபிஎஸ் பயன்பாட்டைப் பயன்படுத்தும் போது மட்டுமே பயன்படுத்தப்படுகிறது மற்றும் உங்கள் டெலிவரி முகவரியை மாற்றாது.',
+    'Personal Information': 'தனிப்பட்ட தகவல்கள்',
+    'Account Actions': 'கணக்கு விருப்பங்கள்',
+    'Bank Payout Details': 'வங்கி செலுத்துதல் விவரங்கள்',
     'My Crops': 'என் பயிர்கள்',
     'Overview': 'மேற்பார்வை',
     'Add Crop': 'பயிர் சேர்',

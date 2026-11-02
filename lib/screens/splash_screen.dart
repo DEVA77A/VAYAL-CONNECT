@@ -76,7 +76,8 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (!mounted) return;
 
-      if (session.activeRole == AppRole.farmer && pendingScreen == 'add_product') {
+      if (session.activeRole == AppRole.farmer &&
+          pendingScreen == 'add_product') {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => target,
@@ -116,10 +117,11 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return Scaffold(
-      backgroundColor: AppTheme.deepGreen,
+      backgroundColor: const Color(0xFFDCEBCB),
       body: SafeArea(
           child: Center(
               child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.all(24),
         child: AnimatedBuilder(
             animation: _controller,
@@ -128,28 +130,30 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Transform.scale(
                       scale: reducedMotion ? 1 : _scaleAnimation.value,
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        const VayalLogo(width: 240, height: 240),
-                        const SizedBox(height: 32),
+                        const VayalLogo(width: 220, height: 220),
+                        const SizedBox(height: 28),
                         Text(VayalStrings.appName,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
-                                fontSize: 30,
-                                height: 1.3,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white)),
-                        const SizedBox(height: 12),
+                                fontSize: 32,
+                                height: 1.25,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.2,
+                                color: Color(0xFF174B2A))),
+                        const SizedBox(height: 10),
                         Text(VayalStrings.tagline,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                                 fontSize: 15,
-                                height: 1.5,
-                                color: Color(0xFFDDEBDF))),
-                        const SizedBox(height: 32),
+                                height: 1.45,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF4B8F20))),
+                        const SizedBox(height: 28),
                         Container(
-                            width: 40,
+                            width: 44,
                             height: 4,
                             decoration: BoxDecoration(
-                                color: AppTheme.earthBrown,
+                                color: const Color(0xFF805638),
                                 borderRadius: BorderRadius.circular(4))),
                       ])),
                 )),

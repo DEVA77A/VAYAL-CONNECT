@@ -5,7 +5,6 @@ import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
 import '../utils/commerce_strings.dart';
 import 'vayal_logo.dart';
-import '../screens/auth_gateway_screen.dart';
 import '../screens/farmer_home_screen.dart';
 import '../screens/add_product_screen.dart';
 import '../screens/farmer_application_screen.dart';
@@ -16,6 +15,7 @@ import '../screens/buyer_home_screen.dart';
 import '../screens/addresses_screen.dart';
 import '../screens/admin_dashboard_screen.dart';
 import '../screens/profile_screen.dart';
+import 'logout_dialog.dart';
 
 /// Top-left Material navigation drawer for Farmer, Buyer, and Admin roles.
 class VayalNavigationDrawer extends StatelessWidget {
@@ -489,8 +489,7 @@ class VayalNavigationDrawer extends StatelessWidget {
           Navigator.pop(context);
           Navigator.push(
             context,
-            MaterialPageRoute(
-                builder: (_) => AdminListingsScreen(api: api)),
+            MaterialPageRoute(builder: (_) => AdminListingsScreen(api: api)),
           );
         },
       ),
@@ -516,8 +515,7 @@ class VayalNavigationDrawer extends StatelessWidget {
           Navigator.pop(context);
           Navigator.push(
             context,
-            MaterialPageRoute(
-                builder: (_) => CommissionScreen(api: api)),
+            MaterialPageRoute(builder: (_) => CommissionScreen(api: api)),
           );
         },
       ),
@@ -530,8 +528,7 @@ class VayalNavigationDrawer extends StatelessWidget {
           Navigator.pop(context);
           Navigator.push(
             context,
-            MaterialPageRoute(
-                builder: (_) => AdminPayoutsScreen(api: api)),
+            MaterialPageRoute(builder: (_) => AdminPayoutsScreen(api: api)),
           );
         },
       ),
@@ -591,7 +588,8 @@ class VayalNavigationDrawer extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppTheme.softGreen,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.5)),
+                  border:
+                      Border.all(color: AppTheme.primaryGreen.withOpacity(0.5)),
                 ),
                 child: Text(
                   session.isTamil ? 'Switch' : 'மாற்று',
@@ -631,36 +629,7 @@ class VayalNavigationDrawer extends StatelessWidget {
   }
 
   void _confirmLogout(BuildContext context, SessionManager session) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(S.t('Confirm Logout')),
-        content: Text(S.t('Are you sure you want to log out?')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(S.t('Cancel')),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppTheme.errorRed),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              Navigator.pop(context); // Close drawer
-              await session.logout();
-              if (context.mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(
-                      builder: (_) => const AuthGatewayScreen()),
-                  (route) => false,
-                );
-              }
-            },
-            child: Text(S.t('Logout')),
-          ),
-        ],
-      ),
-    );
+    LogoutConfirmationDialog.show(context, closeDrawer: true);
   }
 }
 

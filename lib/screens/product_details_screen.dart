@@ -103,10 +103,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
       if (mounted) {
         final errStr = e.toString();
         setState(() => _error = errStr);
-        if (errStr.contains('PRICE_CHANGED') || errStr.toLowerCase().contains('price changed')) {
+        if (errStr.contains('PRICE_CHANGED') ||
+            errStr.toLowerCase().contains('price changed')) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(S.t('Price changed. Please review the updated total before placing your order.')),
+              content: Text(S.t(
+                  'Price changed. Please review the updated total before placing your order.')),
               backgroundColor: AppTheme.warningOrange,
               duration: const Duration(seconds: 4),
             ),
@@ -131,7 +133,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
               borderRadius: BorderRadius.circular(20),
               child: AspectRatio(
                   aspectRatio: 1.6,
-                  child: CropImage(p.imageUrl, semanticLabel: S.crop(p.productName)))),
+                  child: CropImage(p.imageUrl,
+                      semanticLabel: S.crop(p.productName)))),
           const SizedBox(height: 16),
           Card(
               child: Padding(
@@ -172,27 +175,29 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                             icon: Icons.receipt_long_outlined),
                         detailLine('Product price',
                             '${S.money(p.buyerPricePerUnitPaise)} / ${S.t(p.quantityUnit)}'),
-                        detailLine('Quantity',
-                            '$_quantity ${S.t(p.quantityUnit)}'),
+                        detailLine(
+                            'Quantity', '$_quantity ${S.t(p.quantityUnit)}'),
                         detailLine('Delivery charge', S.money(0)),
                         detailLine('Buyer total',
                             S.money(p.buyerPricePerUnitPaise * _quantity)),
                         if (p.marketReferencePricePaise != null)
                           detailLine('Market reference',
                               '${S.money(p.marketReferencePricePaise)} / ${S.t(p.quantityUnit)}'),
-                        if (p.marketPriceDate != null && p.marketPriceDate!.isNotEmpty)
+                        if (p.marketPriceDate != null &&
+                            p.marketPriceDate!.isNotEmpty)
                           detailLine('Price updated', p.marketPriceDate!),
                         if (p.isMarketPriceStale)
                           Container(
                             margin: const EdgeInsets.symmetric(vertical: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: AppTheme.sandBeige.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               S.t('Market price update unavailable. Showing the last available price.'),
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 11,
                                 color: AppTheme.earthBrown,
                                 fontWeight: FontWeight.w500,
@@ -256,10 +261,13 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen>
                                 : _order,
                             child: Text(S.t('Place order'))),
                       ]))),
-          const SizedBox(height: 12),
-          MarketReferenceView(
-              reference: p.marketReference,
-              sellingPricePaise: p.farmerBasePricePaise),
+          if (SessionManager().activeRole == AppRole.admin &&
+              p.marketReference != null) ...[
+            const SizedBox(height: 12),
+            MarketReferenceView(
+                reference: p.marketReference,
+                sellingPricePaise: p.farmerBasePricePaise),
+          ],
         ])));
   }
 }
