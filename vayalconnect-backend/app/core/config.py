@@ -58,10 +58,14 @@ class Settings(BaseSettings):
     GOVERNMENT_MARKET_UNIT: str = "" # Deprecated; never applied to every OGD row.
     GEMINI_API_KEY: str = Field("", repr=False)
     AI_CROP_VERIFICATION_ENABLED: bool = True
-    GEMINI_MARKET_MODELS: str = "gemini-3.8-flash"
+    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_MARKET_MODELS: str = "gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-flash-latest,gemini-2.5-flash,gemini-2.5-flash-lite"
+    GEMINI_MARKET_SEARCH_ENABLED: bool = True
+    GEMINI_TIMEOUT_SECONDS: int = Field(30, ge=5, le=120)
+    GEMINI_MAX_REQUESTS_PER_DAY: int = Field(50, ge=1, le=500)
+    GEMINI_MAX_RETRIES: int = Field(1, ge=0, le=5)
     GEMINI_MARKET_TIMEOUT_SECONDS: int = Field(60, ge=1, le=60)
     GEMINI_MARKET_TOTAL_TIMEOUT_SECONDS: int = Field(120, ge=5, le=120)
-    # Retained to accept old environment settings; discovery NEVER retries.
     GEMINI_MARKET_RETRIES: int = Field(0, ge=0, le=2)
     MARKET_CURRENT_MAX_DAYS: int = Field(0, ge=0, le=7)
     MARKET_CACHE_MAX_DAYS: int = Field(7, ge=1, le=30)

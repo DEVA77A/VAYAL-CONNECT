@@ -59,7 +59,9 @@ class S {
     final key = raw.toLowerCase();
     if (_crops.containsKey(key)) return _crops[key]!;
     for (final entry in _crops.entries) {
-      if (key == entry.key || key.startsWith(entry.key) || key.contains(entry.key)) {
+      if (key == entry.key ||
+          key.startsWith(entry.key) ||
+          key.contains(entry.key)) {
         return entry.value;
       }
     }
@@ -105,6 +107,18 @@ class S {
         'ஜிபிஎஸ் பயன்பாட்டைப் பயன்படுத்தும் போது மட்டுமே பயன்படுத்தப்படுகிறது மற்றும் உங்கள் டெலிவரி முகவரியை மாற்றாது.',
     'Personal Information': 'தனிப்பட்ட தகவல்கள்',
     'Account Actions': 'கணக்கு விருப்பங்கள்',
+    'AGMARKNET': 'அக்மார்க்நெட்',
+    'Uzhavar Santhai': 'உழவர் சந்தை',
+    'Gemini AI': 'ஜெமினி AI',
+    'Budget Exhausted': 'ஒதுக்கீடு முடிந்தது',
+    'Quota Exhausted': 'வரம்பு முடிந்தது',
+    'Ready': 'தயார்',
+    'Standby': 'காத்திருப்பு',
+    'Gemini Requests Today': 'இன்றைய ஜெமினி கோரிக்கைகள்',
+    'Last Provider': 'கடைசி வழங்குநர்',
+    'Fresh': 'புதியது',
+    'Stale': 'பழையது',
+    'Fallback': 'மாற்று விலை',
     'Bank Payout Details': 'வங்கி செலுத்துதல் விவரங்கள்',
     'My Crops': 'என் பயிர்கள்',
     'Overview': 'மேற்பார்வை',
@@ -149,11 +163,13 @@ class S {
     'Image Accepted': 'படம் ஏற்றுக்கொள்ளப்பட்டது',
     'Operations & Marketplace': 'செயல்பாடுகள் & சந்தை',
     'Financial Overview': 'நிதி கண்ணோட்டம்',
-    'Search by name, phone or location...': 'பெயர், தொலைபேசி அல்லது இருப்பிடத்தின்படி தேடுங்கள்...',
+    'Search by name, phone or location...':
+        'பெயர், தொலைபேசி அல்லது இருப்பிடத்தின்படி தேடுங்கள்...',
     'Approval Status': 'அங்கீகார நிலை',
     'Farmer approved successfully': 'விவசாயி வெற்றிகரமாக அங்கீகரிக்கப்பட்டார்',
     'Farmer application rejected': 'விவசாயி விண்ணப்பம் நிராகரிக்கப்பட்டது',
-    'Enter reason for rejecting this application': 'விண்ணப்பத்தை நிராகரிப்பதற்கான காரணத்தை உள்ளிடவும்',
+    'Enter reason for rejecting this application':
+        'விண்ணப்பத்தை நிராகரிப்பதற்கான காரணத்தை உள்ளிடவும்',
     'Crop photograph unavailable': 'பயிரின் புகைப்படம் கிடைக்கவில்லை',
     'Order summary': 'ஆர்டர் சுருக்கம்',
     'Payment breakdown': 'கட்டண விவரங்கள்',
@@ -322,7 +338,6 @@ class S {
     'Stock adjustment': 'இருப்பு மாற்றம்',
     'Add units with a positive number; remove with a negative number.':
         'சேர்க்க நேர்ம எண்ணையும் குறைக்க எதிர்ம எண்ணையும் உள்ளிடவும்.',
-    'Active': 'செயலில்',
     'Inactive': 'செயலற்றது',
     'Publish': 'வெளியிடு',
     'Publishing locked': 'வெளியிடுதல் பூட்டப்பட்டுள்ளது',
@@ -603,12 +618,16 @@ class S {
     'Image Preview': 'பட முன்னோட்டம்',
     'Replace Image': 'படத்தை மாற்றவும்',
     'Remove Image': 'படத்தை நீக்கவும்',
-    'Crop image is required before publishing': 'வெளியிடுவதற்கு முன் பயிரின் படம் கட்டாயம் தேவை',
+    'Crop image is required before publishing':
+        'வெளியிடுவதற்கு முன் பயிரின் படம் கட்டாயம் தேவை',
     'Crop image is required.': 'பயிரின் படம் கட்டாயம் தேவை.',
-    'Please upload a genuine photograph of your crop.': 'உங்கள் பயிரின் உண்மையான புகைப்படத்தைப் பதிவேற்றவும்.',
-    'Please select a valid crop image': 'தயவுசெய்து சரியான பயிர் புகைப்படத்தைத் தேர்ந்தெடுக்கவும்',
+    'Please upload a genuine photograph of your crop.':
+        'உங்கள் பயிரின் உண்மையான புகைப்படத்தைப் பதிவேற்றவும்.',
+    'Please select a valid crop image':
+        'தயவுசெய்து சரியான பயிர் புகைப்படத்தைத் தேர்ந்தெடுக்கவும்',
     'Validating image with AI...': 'படத்தை AI மூலம் சரிபார்க்கிறது...',
-    'Image uploading and AI verification in progress...': 'படம் பதிவேற்றம் மற்றும் AI சரிபார்ப்பு நடைபெறுகிறது...',
+    'Image uploading and AI verification in progress...':
+        'படம் பதிவேற்றம் மற்றும் AI சரிபார்ப்பு நடைபெறுகிறது...',
     'Image verified successfully': 'படம் வெற்றிகரமாகச் சரிபார்க்கப்பட்டது',
     'Verified crop image': 'சரிபார்க்கப்பட்ட பயிரின் படம்',
     'Crop image verified': 'பயிரின் படம் சரிபார்க்கப்பட்டது',

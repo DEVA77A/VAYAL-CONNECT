@@ -26,13 +26,44 @@ class SourcePage(NamedTuple):
     text: str
     url: str
 # Official model and grounding docs checked 2026-10-12. Unknown IDs fail closed.
-GROUNDED_MODELS = frozenset({"gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"})
+GROUNDED_MODELS = frozenset({
+    "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite",
+    "gemini-flash-latest", "gemini-flash-lite-latest",
+})
+
+MODEL_ALIAS_MAP = {
+    "gemini 3.8 flash": "gemini-3.8-flash",
+    "gemini 3.6 flash": "gemini-3.6-flash",
+    "gemini 3.5 flash lite": "gemini-3.5-flash-lite",
+    "gemini 3.1 flash lite": "gemini-3.1-flash-lite",
+    "gemini 3 flash": "gemini-3-flash-preview",
+    "gemini 3 flash preview": "gemini-3-flash-preview",
+    "gemini 2.5 flash": "gemini-2.5-flash",
+    "gemini 2.5 flash lite": "gemini-2.5-flash-lite",
+    "gemini flash latest": "gemini-flash-latest",
+    "gemini flash lite latest": "gemini-flash-lite-latest",
+}
+
+def normalize_model_id(name: str) -> str:
+    cleaned = name.strip().lower().replace("_", " ")
+    if cleaned in MODEL_ALIAS_MAP:
+        return MODEL_ALIAS_MAP[cleaned]
+    return name.strip().lower().replace(" ", "-")
+
+def get_fallback_models() -> list[str]:
+    raw = [m.strip() for m in settings.GEMINI_MARKET_MODELS.split(",") if m.strip()]
+    resolved = []
+    for m in raw:
+        norm = normalize_model_id(m)
+        if norm in GROUNDED_MODELS and norm not in resolved:
+            resolved.append(norm)
+    return resolved or ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3-flash-preview"]
 
 
 def primary_model():
-    return next((m.strip() for m in settings.GEMINI_MARKET_MODELS.split(",")
-                 if m.strip() in GROUNDED_MODELS), None)
+    models = get_fallback_models()
+    return models[0] if models else "gemini-3.8-flash" 
 
 
 def configured_api_key():
@@ -389,7 +420,64 @@ class GeminiMarketPriceProvider:
             raise ValueError("Diagnostic model must support Google Search grounding.")
         return await self._run_discovery(queries, model)
 
-    async def _run_discovery(self, queries, model):
+    async def get_api_usage_today(self, db=None) -> dict:
+        if db is None:
+            return {"request_count": 0, "remaining": getattr(settings, "GEMINI_MAX_REQUESTS_PER_DAY", 50), "is_exhausted": False}
+        today_str = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
+        try:
+            doc = await db["market_api_usage"].find_one({"_id": f"usage:gemini:{today_str}"})
+            count = doc.get("request_count", 0) if doc else 0
+            max_reqs = getattr(settings, "GEMINI_MAX_REQUESTS_PER_DAY", 50)
+            remaining = max(0, max_reqs - count)
+            is_exhausted = bool(doc.get("is_exhausted", False) or count >= max_reqs) if doc else False
+            return {
+                "request_count": count,
+                "max_requests": max_reqs,
+                "remaining": remaining,
+                "date": today_str,
+                "is_exhausted": is_exhausted,
+                "status": "quota_exhausted" if is_exhausted else ("ready" if count > 0 else "standby"),
+            }
+        except Exception as e:
+            logger.warning("Failed to read gemini market_api_usage: %s", e)
+            return {"request_count": 0, "remaining": getattr(settings, "GEMINI_MAX_REQUESTS_PER_DAY", 50), "is_exhausted": False}
+
+    async def is_exhausted_today(self, db=None) -> bool:
+        if db is None:
+            return False
+        usage = await self.get_api_usage_today(db)
+        return usage.get("is_exhausted", False)
+
+    async def _record_usage(self, db=None, status="success", is_exhausted=False, reason=None, model=None):
+        if db is None:
+            return
+        today_str = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
+        now_utc = datetime.now(timezone.utc)
+        try:
+            update = {
+                "$inc": {"request_count": 1},
+                "$set": {
+                    "last_request_at": now_utc,
+                    "last_status": status,
+                    "last_model": model,
+                },
+                "$setOnInsert": {
+                    "created_at": now_utc,
+                    "date": today_str,
+                }
+            }
+            if is_exhausted:
+                update["$set"]["is_exhausted"] = True
+                update["$set"]["exhausted_reason"] = reason or "quota_limit"
+            await db["market_api_usage"].update_one(
+                {"_id": f"usage:gemini:{today_str}"},
+                update,
+                upsert=True
+            )
+        except Exception as e:
+            logger.warning("Failed to record gemini api usage: %s", e)
+
+    async def _run_discovery(self, queries, model=None, db=None):
         unavailable = {"records": [], "live": False, "count": 0, "model": model,
                        "source": "Gemini grounded discovery"}
         if not settings.GEMINI_API_KEY.strip():
@@ -402,27 +490,58 @@ class GeminiMarketPriceProvider:
                     "message": "GEMINI_API_KEY must contain a bare Gemini API key; token/header wrappers are not supported."}
         if not queries:
             return {**unavailable, "message": "No crop contexts registered."}
-        try:
-            async with asyncio.timeout(settings.GEMINI_MARKET_TOTAL_TIMEOUT_SECONDS):
-                async with self._semaphore:
-                    return await self._discover(queries, model)
-        except Exception as exc:
-            # Log only the redacted message and allowlisted error fields.
-            code = getattr(exc, "code", None)
-            diagnostics = error_diagnostics(exc, model)
-            logger.warning("market_discovery_failed category=%s diagnostics=%s", type(exc).__name__, json.dumps(diagnostics))
-            messages = {
-                400: "Gemini rejected the request. Check API key validity, model and grounding configuration; no retry today.",
-                401: "Gemini credentials invalid. Check backend API credentials; no retry today.",
-                403: "Gemini access denied. Check project permissions, restrictions and billing; no retry today.",
-                404: "Configured Gemini model unavailable. Select an eligible model for a later day; no fallback request today.",
-                429: "Gemini rate limit or project quota/billing restriction (HTTP 429). Check project quotas and billing; no retry or fallback today.",
-            }
-            message = messages.get(code, "Gemini request failed or timed out. Daily attempt consumed; no retry or fallback today.")
-            if code == 401 and "ACCESS_TOKEN_TYPE_UNSUPPORTED" in diagnostics["reasons"]:
-                message = "Google rejected the authentication credential type. Developer API key authentication was selected; no retry or fallback. Verify the existing credential's validity and restrictions privately."
-            return {**unavailable, "error_code": code or "DISCOVERY_FAILED", "message": message,
-                    "diagnostics": diagnostics}
+
+        # Check if Gemini quota is already exhausted today
+        if db is not None and await self.is_exhausted_today(db):
+            return {**unavailable, "error_code": "QUOTA_EXHAUSTED",
+                    "message": "Gemini API daily quota limit reached for today. No further calls will be made."}
+
+        models_to_try = [model] if model else get_fallback_models()
+        last_error = None
+        last_code = None
+
+        for candidate in models_to_try:
+            try:
+                async with asyncio.timeout(settings.GEMINI_MARKET_TOTAL_TIMEOUT_SECONDS):
+                    async with self._semaphore:
+                        if db is not None:
+                            await self._record_usage(db, status="attempt", model=candidate)
+                        result = await self._discover(queries, candidate)
+                        if result.get("records"):
+                            if db is not None:
+                                await self._record_usage(db, status="success", model=candidate)
+                            return result
+                        # If candidate returned empty records without error, continue or return
+                        return result
+            except Exception as exc:
+                last_error = exc
+                last_code = getattr(exc, "code", None)
+                msg_str = str(exc)
+                diagnostics = error_diagnostics(exc, candidate)
+                logger.warning("Gemini discovery failed on model=%s category=%s code=%s msg=%s",
+                               candidate, type(exc).__name__, last_code, msg_str[:150])
+
+                if last_code == 429 or "RESOURCE_EXHAUSTED" in msg_str:
+                    if db is not None:
+                        await self._record_usage(db, status="exhausted", is_exhausted=True,
+                                                 reason="HTTP 429 Resource Exhausted", model=candidate)
+                    return {**unavailable, "error_code": 429,
+                            "message": "Gemini rate limit or project quota/billing restriction (HTTP 429). Prior cache preserved.",
+                            "diagnostics": diagnostics}
+
+                if last_code == 404 or "NOT_FOUND" in msg_str or "no longer available" in msg_str:
+                    logger.info("Model %s is unavailable/deprecated; trying next fallback model...", candidate)
+                    continue
+
+                if last_code in (401, 403):
+                    # Permanent auth error
+                    return {**unavailable, "error_code": last_code,
+                            "message": f"Gemini authentication or permission denied (HTTP {last_code}).",
+                            "diagnostics": diagnostics}
+
+        # All candidate models failed
+        return {**unavailable, "error_code": last_code or "DISCOVERY_FAILED",
+                "message": f"All configured Gemini models failed. Last error: {last_error}"}
 
     async def _discover(self, queries, model):
         from google.genai import types
@@ -528,7 +647,7 @@ requested contexts in this one response; never fill missing prices with guesses.
                     continue
                 if query.get("variety") and normalized(raw.get("variety", "")) != normalized(query["variety"]):
                     continue
-                record = validate_candidate({**raw, "source_url": resolved_url}, query["commodity"],
+                record = validate_candidate({**raw, "source_url": resolved_url, "source_provider": "GEMINI_GROUNDED"}, query["commodity"],
                     query.get("state"), query.get("district"), query.get("market"), source_text, cited_text, title)
                 if record:
                     record["category"] = query.get("category") or record.get("category")

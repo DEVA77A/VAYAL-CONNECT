@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
         logger.info("Database connected and indexes created; service ready")
 
         async def market_scheduler_worker():
-            from app.services.market_discovery import MarketDiscoveryService
+            from app.services.market_orchestrator import MarketPriceOrchestrator
             from app.core.database import get_database
             from datetime import datetime, timezone, timedelta
             try:
@@ -83,25 +83,52 @@ async def lifespan(app: FastAPI):
                 kolkata_tz = timezone(timedelta(hours=5, minutes=30))
 
             # Startup recovery check: if service starts or restarts after 08:00 AM IST,
-            # execute recovery check immediately if today's daily batch hasn't run.
+            # execute recovery check ONLY IF today's daily batch has not yet executed.
             try:
                 db = get_database()
                 now_ist = datetime.now(kolkata_tz)
+                today_str = now_ist.date().isoformat()
                 if now_ist.hour >= 8:
-                    logger.info("Executing market price startup recovery check for IST %s", now_ist.date())
-                    await MarketDiscoveryService(db).refresh_daily()
+                    existing = await db["market_daily_runs"].find_one({"_id": f"batch:{today_str}"})
+                    if not existing or existing.get("status") not in ("completed", "fallback_completed"):
+                        logger.info("Executing market price startup recovery check for IST %s", today_str)
+                        await MarketPriceOrchestrator(db).refresh_daily()
+                    else:
+                        logger.info("Market price daily batch for IST %s already executed; skipping startup run.", today_str)
             except Exception as exc:
                 logger.warning("Market scheduler startup recovery check failed: %s", exc)
+
+            last_attempt_date = None
+            consecutive_failures = 0
 
             while True:
                 try:
                     db = get_database()
                     now_ist = datetime.now(kolkata_tz)
+                    today_str = now_ist.date().isoformat()
+
                     # Trigger at or after 08:00 AM IST
                     if now_ist.hour >= 8:
-                        await MarketDiscoveryService(db).refresh_daily()
+                        existing = await db["market_daily_runs"].find_one({"_id": f"batch:{today_str}"})
+                        already_done = existing and existing.get("status") in ("completed", "fallback_completed")
+
+                        if not already_done:
+                            if last_attempt_date == today_str and consecutive_failures >= 3:
+                                pass
+                            else:
+                                logger.info("Triggering scheduled market price refresh for IST %s", today_str)
+                                outcome = await MarketPriceOrchestrator(db).refresh_daily()
+                                last_attempt_date = today_str
+                                if outcome.get("failed") and not outcome.get("completed"):
+                                    consecutive_failures += 1
+                                    logger.warning("Scheduled refresh attempt failed (consecutive=%d); backoff 15m", consecutive_failures)
+                                    await asyncio.sleep(900)
+                                    continue
+                                else:
+                                    consecutive_failures = 0
                 except Exception as exc:
-                    logger.warning("Market scheduler worker category=%s", type(exc).__name__)
+                    logger.warning("Market scheduler worker category=%s: %s", type(exc).__name__, exc)
+
                 await asyncio.sleep(60)
 
         asyncio.create_task(market_scheduler_worker())

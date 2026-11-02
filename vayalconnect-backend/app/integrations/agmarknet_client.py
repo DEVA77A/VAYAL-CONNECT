@@ -68,24 +68,42 @@ class AgmarknetClient:
         self.db = db
         self._custom_client = http_client
 
+    async def is_exhausted_today(self) -> bool:
+        """Check if today's AGMARKNET API quota has already been marked as exhausted or exceeded."""
+        if self.db is None:
+            return False
+        today_str = get_today_kolkata_str()
+        try:
+            doc = await self.db["market_api_usage"].find_one({"_id": f"usage:{today_str}"})
+            if doc and isinstance(doc, dict):
+                if doc.get("is_exhausted") is True:
+                    return True
+                if doc.get("request_count", 0) >= settings.MAX_DAILY_API_REQUESTS:
+                    return True
+        except Exception:
+            pass
+        return False
+
     async def get_api_usage_today(self) -> Dict[str, Any]:
         """Retrieve today's persistent API usage count from MongoDB."""
         if self.db is None:
-            return {"request_count": 0, "remaining": settings.MAX_DAILY_API_REQUESTS}
+            return {"request_count": 0, "remaining": settings.MAX_DAILY_API_REQUESTS, "is_exhausted": False}
         today_str = get_today_kolkata_str()
         try:
             doc = await self.db["market_api_usage"].find_one({"_id": f"usage:{today_str}"})
             count = doc.get("request_count", 0) if doc else 0
             remaining = max(0, settings.MAX_DAILY_API_REQUESTS - count)
+            is_exhausted = bool(doc.get("is_exhausted", False) or count >= settings.MAX_DAILY_API_REQUESTS) if doc else False
             return {
                 "request_count": count,
                 "max_requests": settings.MAX_DAILY_API_REQUESTS,
                 "remaining": remaining,
                 "date": today_str,
+                "is_exhausted": is_exhausted,
             }
         except Exception as e:
             logger.warning("Failed to read market_api_usage: %s", e)
-            return {"request_count": 0, "remaining": settings.MAX_DAILY_API_REQUESTS}
+            return {"request_count": 0, "remaining": settings.MAX_DAILY_API_REQUESTS, "is_exhausted": False}
 
     async def _check_and_increment_budget(self) -> int:
         """Atomically checks and increments the persistent daily request budget in MongoDB."""
@@ -96,16 +114,10 @@ class AgmarknetClient:
         usage_col = self.db["market_api_usage"]
 
         # Pre-check if budget is already exhausted
-        try:
-            existing = await usage_col.find_one({"_id": f"usage:{today_str}"})
-            if existing and isinstance(existing, dict) and existing.get("request_count", 0) >= settings.MAX_DAILY_API_REQUESTS:
-                raise RateLimitBudgetExceededError(
-                    f"Daily API request limit reached ({settings.MAX_DAILY_API_REQUESTS} requests)."
-                )
-        except RateLimitBudgetExceededError:
-            raise
-        except Exception:
-            pass
+        if await self.is_exhausted_today():
+            raise RateLimitBudgetExceededError(
+                f"Daily API request limit reached ({settings.MAX_DAILY_API_REQUESTS} requests)."
+            )
 
         # Atomic increment
         doc = await usage_col.find_one_and_update(
@@ -119,6 +131,7 @@ class AgmarknetClient:
                 "$setOnInsert": {
                     "created_at": now_utc,
                     "date": today_str,
+                    "is_exhausted": False,
                 },
             },
             upsert=True,
@@ -126,10 +139,13 @@ class AgmarknetClient:
         )
         count = int(doc.get("request_count", 1)) if (doc and isinstance(doc, dict)) else 1
         if count > settings.MAX_DAILY_API_REQUESTS:
-            logger.warning(
-                "Daily market API request budget exceeded (%d / %d) for %s",
-                count, settings.MAX_DAILY_API_REQUESTS, today_str
-            )
+            try:
+                await usage_col.update_one(
+                    {"_id": f"usage:{today_str}"},
+                    {"$set": {"is_exhausted": True, "exhausted_reason": "budget_exceeded"}}
+                )
+            except Exception:
+                pass
             raise RateLimitBudgetExceededError(
                 f"Daily API request limit reached ({settings.MAX_DAILY_API_REQUESTS} requests)."
             )
@@ -213,6 +229,14 @@ class AgmarknetClient:
                     if attempts < max_attempts and retry_seconds <= 10:
                         await asyncio.sleep(retry_seconds)
                         continue
+                    if self.db is not None:
+                        try:
+                            await self.db["market_api_usage"].update_one(
+                                {"_id": f"usage:{get_today_kolkata_str()}"},
+                                {"$set": {"is_exhausted": True, "exhausted_reason": "HTTP 429 Rate Limit"}}
+                            )
+                        except Exception:
+                            pass
                     raise RateLimit429Error("data.gov.in rate limit exceeded (HTTP 429).", retry_after=retry_seconds)
 
                 elif status_code in (401, 403):

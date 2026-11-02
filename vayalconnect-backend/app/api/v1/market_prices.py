@@ -17,6 +17,7 @@ from app.repositories.pricing import PricingRepository
 from app.services.pricing_service import PricingEngine
 from app.integrations.groq_market import market_price_provider
 from app.services.market_discovery import MarketDiscoveryService
+from app.services.market_orchestrator import MarketPriceOrchestrator
 from app.schemas.market_price import (
     MarketPriceItem,
     MarketPriceListResponse,
@@ -39,7 +40,7 @@ async def manual_refresh(
     from pymongo.errors import PyMongoError
 
     try:
-        outcome = await MarketDiscoveryService(db).refresh_daily(force=force)
+        outcome = await MarketPriceOrchestrator(db).refresh_daily(force=force)
     except PyMongoError:
         raise HTTPException(
             status_code=503, detail="Market cache unavailable; no retry."
@@ -76,7 +77,7 @@ async def cron_daily_update(
         )
 
     try:
-        outcome = await MarketDiscoveryService(db).refresh_daily(force=force)
+        outcome = await MarketPriceOrchestrator(db).refresh_daily(force=force)
     except PyMongoError:
         raise HTTPException(
             status_code=503, detail="Market database unavailable."
@@ -98,7 +99,7 @@ async def market_refresh_status(
     """Administrative cache/refresh status. This route never refreshes prices."""
     return APIResponse(
         success=True,
-        data=await MarketDiscoveryService(db).status(),
+        data=await MarketPriceOrchestrator(db).status(),
         request_id=get_request_id(request),
     )
 
