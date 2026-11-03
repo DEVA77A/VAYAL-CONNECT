@@ -18,7 +18,7 @@ from app.core.exceptions import ForbiddenError, NotFoundError
 from app.utils.money import format_rupees, percentage_bps_to_display
 
 def fulfillment_view(order):
-    return {k: order.get(k) for k in ("fulfillment_method", "delivery_address", "pickup_address", "delivery_fee_paise", "delivery_estimate", "cancellation_reason", "reservation_expires_at")}
+    return {k: order.get(k) for k in ("fulfillment_method", "delivery_address", "pickup_address", "delivery_fee_paise", "delivery_estimate", "cancellation_reason", "reservation_expires_at", "image_url", "product_image_url", "product_id")}
 
 
 def pricing_view(order):
@@ -99,6 +99,19 @@ async def list_orders(
     dates = ReportService(db)._build_date_filter(period, None, None)
     if dates: filters["created_at"] = dates
 
+    if not order.get("image_url") and not order.get("product_image_url") and order.get("product_id"):
+        from bson import ObjectId
+        pid = str(order.get("product_id"))
+        q = [{"_id": pid}]
+        if ObjectId.is_valid(pid):
+            q.append({"_id": ObjectId(pid)})
+        p_doc = await db["products"].find_one({"$or": q}, {"image_url": 1, "images": 1})
+        if p_doc:
+            p_img = p_doc.get("image_url") or (p_doc.get("images")[0] if p_doc.get("images") else None)
+            if p_img:
+                order["image_url"] = p_img
+                order["product_image_url"] = p_img
+
     if role == "BUYER":
         orders, total = await order_service.list_buyer_orders(current_user["id"], page, limit, filters)
     elif role == "FARMER":
@@ -107,6 +120,30 @@ async def list_orders(
         orders, total = await order_service.list_all_orders(status, page, limit, filters)
     else:
         orders, total = [], 0
+
+    # Resolve product images for historical orders missing image_url
+    missing_ids = [
+        str(o["product_id"]) for o in orders
+        if o.get("product_id") and not (o.get("image_url") or o.get("product_image_url"))
+    ]
+    if missing_ids:
+        from bson import ObjectId
+        query_ids = []
+        for pid in set(missing_ids):
+            query_ids.append(pid)
+            if ObjectId.is_valid(pid):
+                query_ids.append(ObjectId(pid))
+        prod_map = {}
+        async for prod in db["products"].find({"_id": {"$in": query_ids}}, {"image_url": 1, "images": 1}):
+            p_img = prod.get("image_url") or (prod.get("images")[0] if prod.get("images") else None)
+            if p_img:
+                prod_map[str(prod["_id"])] = p_img
+        for o in orders:
+            if not o.get("image_url") and not o.get("product_image_url"):
+                p_id_str = str(o.get("product_id"))
+                if p_id_str in prod_map:
+                    o["image_url"] = prod_map[p_id_str]
+                    o["product_image_url"] = prod_map[p_id_str]
 
     items = []
     for o in orders:

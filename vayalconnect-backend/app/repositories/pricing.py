@@ -271,6 +271,9 @@ class PricingRepository:
             "statewide_source_median",
             "provider_reported_quote",
             "ai_mandi_reference",
+            "median_distinct_market_range_midpoint",
+            "grounding_and_source_excerpt",
+            "gemini_grounded",
         ]
         query: Dict[str, Any] = {
             "verification_status": "verified",
@@ -283,12 +286,20 @@ class PricingRepository:
         if category:
             query["category"] = {"$regex": f"^{re.escape(category)}$", "$options": "i"}
         if commodity:
-            names = commodity_names(commodity)
+            c_clean = commodity.strip()
+            # Partial and case-insensitive matching
+            c_esc = re.escape(c_clean)
+            names = commodity_names(c_clean)
             patterns = [
                 r"\s+".join(re.escape(part) for part in name.split()) for name in names
             ]
-            expression = {"$regex": "^(?:" + "|".join(patterns) + ")$", "$options": "i"}
-            query["$or"] = [{"commodity": expression}, {"crop_aliases": expression}]
+            exact_or_partial = f"(?:^{re.escape(c_clean)}$|{c_esc}|{'|'.join(patterns)})"
+            expression = {"$regex": exact_or_partial, "$options": "i"}
+            query["$or"] = [
+                {"commodity": expression},
+                {"crop_aliases": expression},
+                {"crop_name": expression}
+            ]
         if market:
             query["market"] = {
                 "$regex": f"^{re.escape(market)}(?:\\s|$)",
@@ -325,4 +336,45 @@ class PricingRepository:
         ]:
             if field in doc and isinstance(doc[field], ObjectId):
                 doc[field] = str(doc[field])
+
+        # Standardize price per KG with Decimal arithmetic
+        raw_modal = doc.get("modal_price_paise") or doc.get("price_paise") or 0
+        raw_min = doc.get("min_price_paise")
+        raw_max = doc.get("max_price_paise")
+        unit = str(doc.get("unit", "KG")).strip()
+
+        from decimal import Decimal
+        if unit.lower() in ("quintal", "qtl", "100 kg", "100kg"):
+            doc["price_per_kg_paise"] = int(round(Decimal(str(raw_modal)) / Decimal(100)))
+            doc["min_price_per_kg_paise"] = int(round(Decimal(str(raw_min)) / Decimal(100))) if raw_min is not None else None
+            doc["max_price_per_kg_paise"] = int(round(Decimal(str(raw_max)) / Decimal(100))) if raw_max is not None else None
+            doc["price_per_kg_display"] = f"₹{doc['price_per_kg_paise'] / 100:,.2f} / KG"
+            if raw_min is not None:
+                doc["min_price_display"] = f"₹{doc['min_price_per_kg_paise'] / 100:,.2f} / KG"
+            if raw_max is not None:
+                doc["max_price_display"] = f"₹{doc['max_price_per_kg_paise'] / 100:,.2f} / KG"
+        elif unit.lower() in ("kg", "kilogram"):
+            doc["price_per_kg_paise"] = raw_modal
+            doc["min_price_per_kg_paise"] = raw_min
+            doc["max_price_per_kg_paise"] = raw_max
+            doc["price_per_kg_display"] = f"₹{raw_modal / 100:,.2f} / KG"
+            if raw_min is not None:
+                doc["min_price_display"] = f"₹{raw_min / 100:,.2f} / KG"
+            if raw_max is not None:
+                doc["max_price_display"] = f"₹{raw_max / 100:,.2f} / KG"
+        else:
+            doc["price_per_kg_paise"] = raw_modal
+            doc["min_price_per_kg_paise"] = raw_min
+            doc["max_price_per_kg_paise"] = raw_max
+            doc["price_per_kg_display"] = f"₹{raw_modal / 100:,.2f} / {unit}"
+
+        if not doc.get("price_display") or doc.get("price_display") == "Unavailable":
+            doc["price_display"] = f"₹{raw_modal / 100:,.2f}"
+        if raw_min is not None and "min_price_display" not in doc:
+            doc["min_price_display"] = f"₹{raw_min / 100:,.2f}"
+        if raw_max is not None and "max_price_display" not in doc:
+            doc["max_price_display"] = f"₹{raw_max / 100:,.2f}"
+        if raw_modal:
+            doc["modal_price_display"] = f"₹{raw_modal / 100:,.2f}"
+
         return doc

@@ -141,6 +141,7 @@ class OrderService:
 
             # Create order document with complete financial snapshot
             from app.core.config import settings
+            img_snapshot = product.get("image_url") or (product.get("images")[0] if product.get("images") else None)
             order_doc = {
                 "reservation_expires_at": datetime.now(timezone.utc) + timedelta(minutes=settings.ORDER_RESERVATION_MINUTES),
                 "order_number": order_number,
@@ -157,6 +158,8 @@ class OrderService:
                 "farmer_id": farmer_id,
                 "product_id": product_id,
                 "product_name": product.get("product_name", ""),
+                "image_url": img_snapshot,
+                "product_image_url": img_snapshot,
                 "farmer_name": farmer_name,
                 "buyer_name": buyer_name,
                 "pricing_snapshot_id": product.get("pricing_snapshot_id"),

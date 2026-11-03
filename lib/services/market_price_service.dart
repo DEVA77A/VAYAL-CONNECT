@@ -3,12 +3,13 @@ import 'api_client.dart';
 import '../models/market_price.dart';
 import '../utils/commerce_strings.dart';
 
-/// Reads the backend's daily verified cache; never triggers AI discovery.
+/// Reads the backend's daily verified cache; supports on-demand unified search.
 class MarketPriceService {
   late final ApiClient _api;
   MarketPriceService({http.Client? client}) {
     _api = ApiClient(client: client);
   }
+
   Future<MarketPriceListResponse> fetchMarketPrices(
       {String? commodity,
       String? state,
@@ -40,6 +41,45 @@ class MarketPriceService {
           isLive: false,
           source: 'Market cache',
           message: S.t('Market price unavailable'));
+    }
+  }
+
+  Future<MarketPriceSearchResult> searchMarketPrices(
+    String query, {
+    String? state,
+    String? district,
+    String? market,
+  }) async {
+    final params = <String, String>{
+      'query': query.trim(),
+      if (state?.trim().isNotEmpty == true) 'state': state!.trim(),
+      if (district?.trim().isNotEmpty == true) 'district': district!.trim(),
+      if (market?.trim().isNotEmpty == true) 'market': market!.trim(),
+    };
+    try {
+      final data = await _api.request(
+        Uri(path: '/api/v1/market-prices/search', queryParameters: params)
+            .toString(),
+      );
+      if (data is Map<String, dynamic>) {
+        return MarketPriceSearchResult.fromJson(data);
+      } else if (data is Map) {
+        return MarketPriceSearchResult.fromJson(Map<String, dynamic>.from(data));
+      }
+      return MarketPriceSearchResult(
+        found: false,
+        query: query,
+        commodity: query,
+        message: S.t('Market price unavailable'),
+      );
+    } on ApiException catch (error) {
+      if (error.code != 'MARKET_SOURCE_UNAVAILABLE') rethrow;
+      return MarketPriceSearchResult(
+        found: false,
+        query: query,
+        commodity: query,
+        message: S.t('Verified market price unavailable. Please enter your own price.'),
+      );
     }
   }
 

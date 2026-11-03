@@ -36,6 +36,8 @@ class MarketPriceItem {
   final int? observationCount;
   final List<String> observationDates;
 
+  bool get isFresh => (freshnessStatus.toLowerCase() == 'fresh') && !stale;
+
   MarketPriceItem({
     required this.priceId,
     required this.commodity,
@@ -74,6 +76,10 @@ class MarketPriceItem {
   });
 
   factory MarketPriceItem.fromJson(Map<String, dynamic> json) {
+    final perKgPaise = (json['price_per_kg_paise'] as num?)?.toInt() ?? 0;
+    final perKgDisplay = json['price_per_kg_display'] as String? ??
+        (perKgPaise > 0 ? '₹${(perKgPaise / 100).toStringAsFixed(2)} / KG' : 'Unavailable');
+
     return MarketPriceItem(
       priceId: json['price_id'] as String? ?? json['id'] as String? ?? '',
       commodity: json['commodity'] as String? ?? '',
@@ -89,9 +95,8 @@ class MarketPriceItem {
       maxPriceDisplay: json['max_price_display'] as String? ?? 'Unavailable',
       modalPriceDisplay:
           json['modal_price_display'] as String? ?? 'Unavailable',
-      pricePerKgPaise: (json['price_per_kg_paise'] as num?)?.toInt() ?? 0,
-      pricePerKgDisplay:
-          json['price_per_kg_display'] as String? ?? 'Unavailable',
+      pricePerKgPaise: perKgPaise,
+      pricePerKgDisplay: perKgDisplay,
       unit: json['unit'] as String? ?? 'Unknown',
       arrivalDate: json['arrival_date'] as String?,
       source: json['source'] as String? ?? 'Unknown source',
@@ -220,6 +225,53 @@ class FilterOptions {
               .toList() ??
           [],
       defaultState: json['default_state'] as String? ?? 'Tamil Nadu',
+    );
+  }
+}
+
+class MarketPriceSearchResult {
+  final bool found;
+  final String query;
+  final String commodity;
+  final MarketPriceItem? bestPrice;
+  final List<MarketPriceItem> records;
+  final int count;
+  final List<String> suggestions;
+  final String? message;
+
+  MarketPriceSearchResult({
+    required this.found,
+    required this.query,
+    required this.commodity,
+    this.bestPrice,
+    this.records = const [],
+    this.count = 0,
+    this.suggestions = const [],
+    this.message,
+  });
+
+  factory MarketPriceSearchResult.fromJson(Map<String, dynamic> json) {
+    final rawRecords = json['records'] as List<dynamic>? ?? [];
+    final items = rawRecords
+        .whereType<Map<String, dynamic>>()
+        .map((r) => MarketPriceItem.fromJson(r))
+        .toList();
+    final rawBest = json['best_price'];
+    final best = rawBest is Map<String, dynamic>
+        ? MarketPriceItem.fromJson(rawBest)
+        : (rawBest is Map ? MarketPriceItem.fromJson(Map<String, dynamic>.from(rawBest)) : null);
+    final rawSuggestions = json['suggestions'] as List<dynamic>? ?? [];
+    final suggs = rawSuggestions.map((e) => e.toString()).toList();
+
+    return MarketPriceSearchResult(
+      found: json['found'] == true,
+      query: json['query'] as String? ?? '',
+      commodity: json['commodity'] as String? ?? '',
+      bestPrice: best,
+      records: items,
+      count: (json['count'] as num?)?.toInt() ?? items.length,
+      suggestions: suggs,
+      message: json['message'] as String?,
     );
   }
 }

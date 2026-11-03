@@ -64,6 +64,9 @@ class FulfillmentResponse(BaseModel):
     commission_percentage_bps: Optional[int] = None
     cancellation_reason: Optional[str] = None
     payment_status: str = "PENDING"
+    image_url: Optional[str] = None
+    product_image_url: Optional[str] = None
+    product_id: Optional[str] = None
 
 
 class BuyerOrderResponse(FulfillmentResponse):

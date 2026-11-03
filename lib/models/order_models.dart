@@ -19,6 +19,8 @@ class BuyerOrder {
   final String? fulfillmentMethod;
   final String? pickupAddress;
   final Map<String, dynamic>? deliveryAddress;
+  final String? imageUrl;
+  final String? productImageUrl;
 
   BuyerOrder({
     required this.orderId,
@@ -37,6 +39,8 @@ class BuyerOrder {
     this.fulfillmentMethod,
     this.pickupAddress,
     this.deliveryAddress,
+    this.imageUrl,
+    this.productImageUrl,
   });
 
   factory BuyerOrder.fromJson(Map<String, dynamic> json) {
@@ -57,6 +61,8 @@ class BuyerOrder {
       fulfillmentMethod: json['fulfillment_method'] as String?,
       pickupAddress: json['pickup_address'] as String?,
       deliveryAddress: json['delivery_address'] == null ? null : Map<String, dynamic>.from(json['delivery_address'] as Map),
+      imageUrl: json['image_url'] as String? ?? json['product_image_url'] as String?,
+      productImageUrl: json['product_image_url'] as String? ?? json['image_url'] as String?,
     );
   }
 }
@@ -78,6 +84,8 @@ class FarmerOrder {
   final String? fulfillmentMethod;
   final String? pickupAddress;
   final Map<String, dynamic>? deliveryAddress;
+  final String? imageUrl;
+  final String? productImageUrl;
 
   FarmerOrder({
     required this.orderId,
@@ -96,6 +104,8 @@ class FarmerOrder {
     this.fulfillmentMethod,
     this.pickupAddress,
     this.deliveryAddress,
+    this.imageUrl,
+    this.productImageUrl,
   });
 
   factory FarmerOrder.fromJson(Map<String, dynamic> json) {
@@ -116,6 +126,8 @@ class FarmerOrder {
       fulfillmentMethod: json['fulfillment_method'] as String?,
       pickupAddress: json['pickup_address'] as String?,
       deliveryAddress: json['delivery_address'] == null ? null : Map<String, dynamic>.from(json['delivery_address'] as Map),
+      imageUrl: json['image_url'] as String? ?? json['product_image_url'] as String?,
+      productImageUrl: json['product_image_url'] as String? ?? json['image_url'] as String?,
     );
   }
 }

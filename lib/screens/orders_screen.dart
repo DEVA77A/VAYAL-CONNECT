@@ -215,7 +215,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                             children: [
                               CropSummary(
                                   name: S.crop(o['product_name'] ?? ''),
-                                  imageUrl: o['image_url'] as String?),
+                                  imageUrl: (o['image_url'] ?? o['product_image_url']) as String?),
                               const SizedBox(height: 12),
                               InfoRow('Order ID',
                                   o['order_number'] ?? widget.orderId),
@@ -421,7 +421,7 @@ class OrderRecordCard extends StatelessWidget {
                                 child: SizedBox(
                                     width: 64,
                                     height: 64,
-                                    child: CropImage(o['image_url'] as String?,
+                                    child: CropImage((o['image_url'] ?? o['product_image_url']) as String?,
                                         semanticLabel:
                                             S.crop(o['product_name'] as String?)))),
                             const SizedBox(width: 12),

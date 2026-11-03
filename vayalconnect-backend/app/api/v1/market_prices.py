@@ -105,6 +105,32 @@ async def market_refresh_status(
 
 
 # Common commodities & Tamil Nadu districts for client convenience
+
+BILINGUAL_CROPS = {
+    "tomato": "Tomato", "thakkali": "Tomato", "\u0ba4\u0b95\u0bcd\u0b95\u0bbe\u0bb3\u0bbf": "Tomato",
+    "onion": "Onion", "vengayam": "Onion", "\u0bb5\u0bc6\u0b99\u0bcd\u0b95\u0bbe\u0baf\u0bae\u0bcd": "Onion",
+    "potato": "Potato", "urulaikizhangu": "Potato", "\u0b89\u0bb0\u0bc1\u0bb3\u0bc8\u0b95\u0bcd\u0b95\u0bbf\u0bb4\u0b99\u0bcd\u0b95\u0bc1": "Potato",
+    "paddy": "Paddy", "nel": "Paddy", "\u0ba8\u0bc6\u0bb2\u0bcd": "Paddy",
+    "rice": "Rice", "arisi": "Rice", "\u0b85\u0bb0\u0bbf\u0b9a\u0bbf": "Rice",
+    "banana": "Banana (fruit)", "valapazham": "Banana (fruit)", "\u0bb5\u0bbe\u0bb4\u0bc8\u0baa\u0bcd\u0baa\u0bb4\u0bae\u0bcd": "Banana (fruit)",
+    "brinjal": "Brinjal", "kathirikai": "Brinjal", "\u0b95\u0ba4\u0bcd\u0ba4\u0bb0\u0bbf\u0b95\u0bcd\u0b95\u0bbe\u0baf\u0bcd": "Brinjal",
+    "carrot": "Carrot", "\u0b95\u0bc7\u0bb0\u0b9f\u0bcd": "Carrot",
+    "chilli": "Chilli", "milagai": "Chilli", "\u0bae\u0bbf\u0bb3\u0b95\u0bbe\u0baf\u0bcd": "Chilli",
+    "coconut": "Coconut", "thengai": "Coconut", "\u0ba4\u0bc7\u0b99\u0bcd\u0b95\u0bbe\u0baf\u0bcd": "Coconut",
+    "garlic": "Garlic", "poondu": "Garlic", "\u0baa\u0bc2\u0ba3\u0bcd\u0b9f\u0bc1": "Garlic",
+    "ginger": "Ginger", "inji": "Ginger", "\u0b87\u0b9a\u0bbf": "Ginger",
+    "cabbage": "Cabbage", "\u0bae\u0bc1\u0b9f\u0bcd\u0b9f\u0bc8\u0b95\u0bcd\u0b95\u0bcb\u0bb8\u0bcd": "Cabbage",
+    "drumstick": "Drumstick", "\u0bae\u0bc1\u0bb0\u0bc1\u0b99\u0bcd\u0b95\u0bc8\u0b95\u0bcd\u0b95\u0bbe\u0baf\u0bcd": "Drumstick",
+    "jasmine": "Jasmine", "\u0bae\u0bb2\u0bcd\u0bb2\u0bbf\u0b95\u0bc8": "Jasmine",
+    "marigold": "Marigold", "\u0b9a\u0bbe\u0bae\u0ba8\u0bcd\u0ba4\u0bbf": "Marigold",
+}
+
+DEFAULT_CROPS = [
+    "Tomato", "Onion", "Potato", "Paddy", "Rice", "Carrot", "Brinjal",
+    "Banana (fruit)", "Chilli", "Coconut", "Garlic", "Ginger", "Cabbage",
+    "Drumstick", "Jasmine", "Marigold",
+]
+
 DEFAULT_DISTRICTS = [
     "Madurai",
     "Coimbatore",
@@ -123,6 +149,107 @@ DEFAULT_DISTRICTS = [
     "Cuddalore",
 ]
 
+
+
+@router.get("/search", response_model=APIResponse)
+async def search_market_prices(
+    request: Request,
+    query: str = Query(..., min_length=1, max_length=200, description="Crop name in English or Tamil"),
+    state: Optional[str] = Query("Tamil Nadu", max_length=100),
+    district: Optional[str] = Query(None, max_length=100),
+    market: Optional[str] = Query(None, max_length=100),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """
+    Unified market price search across all roles (Admin, Farmer, Buyer).
+    Translates bilingual query, ensures today's verified price via orchestrator,
+    and returns standardized price per KG.
+    """
+    q_clean = query.strip()
+    canonical = BILINGUAL_CROPS.get(q_clean.lower(), q_clean)
+
+    # 1. On-demand discovery through orchestrator if today's price not in cache
+    orchestrator = MarketPriceOrchestrator(db)
+    try:
+        await orchestrator.get_market_price(
+            commodity=canonical,
+            state=state or "Tamil Nadu",
+            district=district,
+            market=market,
+            unit="KG",
+        )
+    except Exception as e:
+        logger.info("Search on-demand discovery completed or bypassed: %s", e)
+
+    # 2. Query verified records from repository
+    repo = PricingRepository(db)
+    records = await repo.list_market_prices(
+        commodity=canonical,
+        state=state,
+        district=district,
+        market=market,
+        limit=50,
+    )
+    if not records and canonical != q_clean:
+        records = await repo.list_market_prices(
+            commodity=q_clean,
+            state=state,
+            district=district,
+            market=market,
+            limit=50,
+        )
+
+    # Autocomplete suggestions
+    suggestions = [c for c in DEFAULT_CROPS if q_clean.lower() in c.lower()]
+
+    if not records:
+        return APIResponse(
+            success=True,
+            data={
+                "found": False,
+                "query": q_clean,
+                "commodity": canonical,
+                "message": "No verified price is available for this crop and selection. Enter your own selling price.",
+                "records": [],
+                "suggestions": suggestions,
+            },
+            request_id=get_request_id(request),
+        )
+
+    # Find the best record (highest arrival_date / retrieved_at)
+    best_record = records[0]
+    for r in records:
+        if str(r.get("arrival_date", "")) > str(best_record.get("arrival_date", "")):
+            best_record = r
+
+    from datetime import datetime, timezone, timedelta
+    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
+    is_fresh = (str(best_record.get("arrival_date", ""))[:10] == now_ist) and not best_record.get("stale", False)
+
+    return APIResponse(
+        success=True,
+        data={
+            "found": True,
+            "query": q_clean,
+            "commodity": best_record.get("commodity", canonical),
+            "best_price": {
+                **best_record,
+                "freshness_status": "fresh" if is_fresh else "cached",
+                "is_fresh": is_fresh,
+                "is_stale": not is_fresh,
+            },
+            "records": [
+                {
+                    **r,
+                    "freshness_status": "fresh" if (str(r.get("arrival_date", ""))[:10] == now_ist and not r.get("stale", False)) else "cached",
+                }
+                for r in records
+            ],
+            "count": len(records),
+            "suggestions": suggestions,
+        },
+        request_id=get_request_id(request),
+    )
 
 @router.get("", response_model=APIResponse)
 @router.get("/", response_model=APIResponse, include_in_schema=False)
@@ -154,6 +281,12 @@ async def list_market_prices(
     """
     Read source-verified cached prices; this route never calls Gemini.
     """
+    if commodity:
+        try:
+            canonical_c = BILINGUAL_CROPS.get(commodity.strip().lower(), commodity.strip())
+            await MarketPriceOrchestrator(db).get_market_price(commodity=canonical_c, state=state or "Tamil Nadu", district=district, market=market)
+        except Exception:
+            pass
     result = await MarketDiscoveryService(db).lookup(
         commodity=commodity,
         state=state,
@@ -235,6 +368,14 @@ async def get_filter_options(
     Get recommended commodities and districts for filtering in client applications.
     """
     commodities, categories, districts = set(), set(), set()
+    for c in DEFAULT_CROPS:
+        commodities.add(c)
+    async for mp in db["market_prices"].find({}, {"commodity": 1, "district": 1}).limit(200):
+        if mp.get("commodity"):
+            commodities.add(str(mp["commodity"]).strip())
+        if mp.get("district"):
+            districts.add(str(mp["district"]).strip())
+
     async for product in db["products"].find(
         {}, {"product_name": 1, "category": 1, "district": 1}
     ):
