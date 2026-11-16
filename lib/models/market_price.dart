@@ -35,8 +35,16 @@ class MarketPriceItem {
   final String? aggregationMethod;
   final int? observationCount;
   final List<String> observationDates;
+  final String priceCategory;
 
   bool get isFresh => (freshnessStatus.toLowerCase() == 'fresh') && !stale;
+  bool get isRetail =>
+      priceCategory.toUpperCase() == 'RETAIL' ||
+      priceType.toLowerCase() == 'retail' ||
+      market.toLowerCase().contains('uzhavar') ||
+      source.toLowerCase().contains('uzhavar');
+  String get categoryLabel =>
+      isRetail ? 'Retail (Uzhavar Sandhai)' : 'Wholesale (Mandi)';
 
   MarketPriceItem({
     required this.priceId,
@@ -73,12 +81,19 @@ class MarketPriceItem {
     this.aggregationMethod,
     this.observationCount,
     this.observationDates = const [],
+    this.priceCategory = 'WHOLESALE',
   });
 
   factory MarketPriceItem.fromJson(Map<String, dynamic> json) {
     final perKgPaise = (json['price_per_kg_paise'] as num?)?.toInt() ?? 0;
     final perKgDisplay = json['price_per_kg_display'] as String? ??
         (perKgPaise > 0 ? '₹${(perKgPaise / 100).toStringAsFixed(2)} / KG' : 'Unavailable');
+    final pCat = json['price_category'] as String? ??
+        (json['source']?.toString().toLowerCase().contains('uzhavar') == true ||
+                json['price_type']?.toString().toLowerCase() == 'retail' ||
+                json['market']?.toString().toLowerCase().contains('uzhavar') == true
+            ? 'RETAIL'
+            : 'WHOLESALE');
 
     return MarketPriceItem(
       priceId: json['price_id'] as String? ?? json['id'] as String? ?? '',
@@ -123,6 +138,7 @@ class MarketPriceItem {
               ?.map((v) => v.toString())
               .toList() ??
           const [],
+      priceCategory: pCat,
     );
   }
 

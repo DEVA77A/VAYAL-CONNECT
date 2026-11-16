@@ -693,13 +693,16 @@ class _AddProductScreenState extends State<AddProductScreen>
         'unit': _unit,
         if (_fields['variety']!.text.trim().isNotEmpty)
           'variety': _fields['variety']!.text.trim(),
+        if (_fields['district']!.text.trim().isNotEmpty)
+          'district': _fields['district']!.text.trim(),
       });
       // Backend reads MongoDB only. Upload registers crops for future daily runs.
       final r = await _api.request(uri.toString());
       if (mounted && request == _referenceRequest) {
         setState(() {
           _reference = Map<String, dynamic>.from(r);
-          final suggested = r['reference_price_per_listing_unit_paise'];
+          final suggested = r['recommended_farmer_price_paise'] ??
+              r['reference_price_per_listing_unit_paise'];
           final isStale = r['reference_price_stale'] == true;
           if (!_manualPrice &&
               r['reference_price_available'] == true &&
@@ -1018,6 +1021,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                               ],
                             ),
                           ),
+                          _buildSmartPriceRecommendation(context),
                           const FormSection('Farm location',
                               icon: Icons.location_on_outlined),
                           _field('location', 'Farm location',
@@ -1069,5 +1073,195 @@ class _AddProductScreenState extends State<AddProductScreen>
                                   (_busy || _imageUploading) ? null : _save,
                               child: Text(S.t(_editing ? 'Save' : 'Publish'))),
                         ])))));
+  }
+
+  Widget _buildSmartPriceRecommendation(BuildContext context) {
+    if (_reference == null) return const SizedBox.shrink();
+    final rec = _reference!;
+    final costBreakdown = rec['cost_breakdown'] as Map<String, dynamic>?;
+    final minSustainable = rec['minimum_sustainable_price_display'] as String?;
+    final recommended = rec['recommended_farmer_price_display'] as String?;
+    final wholesaleRef = rec['wholesale_reference'] as Map<String, dynamic>?;
+    final retailRef = rec['retail_reference'] as Map<String, dynamic>?;
+    final suggestedAboveRetail = rec['suggested_above_retail'] == true;
+    final reviewNotes = rec['review_notes'] as String?;
+
+    final wholesaleDisplay = wholesaleRef?['price_per_kg_display'] ??
+        (rec['reference_price_per_listing_unit_paise'] != null
+            ? '₹${((rec['reference_price_per_listing_unit_paise'] as int) / 100).toStringAsFixed(2)} / $_unit'
+            : null);
+
+    if (wholesaleDisplay == null && costBreakdown == null && minSustainable == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceCream,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.cardBorder, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.psychology_alt_outlined,
+                  color: AppTheme.primaryDarkGreen, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  S.t('Smart Agricultural Pricing Intelligence'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: AppTheme.primaryDarkGreen),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (wholesaleDisplay != null) ...[
+            _costRow(
+              context,
+              S.t('Wholesale Mandi Reference:'),
+              wholesaleDisplay,
+              sub: wholesaleRef?['market'] != null
+                  ? '${wholesaleRef!['market']} (${wholesaleRef['source'] ?? 'AGMARKNET'})'
+                  : null,
+            ),
+            const Divider(height: 14),
+          ],
+          if (costBreakdown != null) ...[
+            _costRow(context,
+                S.t('Est. Operating Costs (Harvest, Packing, Transit):'),
+                costBreakdown['total_operating_cost_display'] ?? '—'),
+            const SizedBox(height: 4),
+          ],
+          if (minSustainable != null) ...[
+            _costRow(context,
+                S.t('Minimum Sustainable Farmer Price:'), minSustainable,
+                isBold: true),
+            const SizedBox(height: 4),
+          ],
+          if (recommended != null) ...[
+            _costRow(context,
+                S.t('Recommended Farmer Price (with margin):'), recommended,
+                isHighlighted: true),
+            const SizedBox(height: 8),
+          ],
+          if (retailRef != null && retailRef['available'] == true) ...[
+            _costRow(
+              context,
+              S.t('Local Retail Benchmark:'),
+              retailRef['price_per_kg_display'] ?? '—',
+              sub: S.t('Tamil Nadu Uzhavar Sandhai direct retail'),
+            ),
+            const SizedBox(height: 6),
+          ],
+          if (suggestedAboveRetail && reviewNotes != null) ...[
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.sandBeige.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: AppTheme.earthBrown.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      size: 16, color: AppTheme.darkBrown),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      S.t(reviewNotes),
+                      style:
+                          const TextStyle(fontSize: 11, color: AppTheme.darkBrown),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (rec['recommended_farmer_price_paise'] is int &&
+              (rec['recommended_farmer_price_paise'] as int) > 0) ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  backgroundColor: AppTheme.softGreen,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: const Icon(Icons.check_circle_outline,
+                    size: 16, color: AppTheme.primaryDarkGreen),
+                label: Text(
+                  S.t('Use Recommended Price'),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryDarkGreen),
+                ),
+                onPressed: () {
+                  final p = rec['recommended_farmer_price_paise'] as int;
+                  setState(() {
+                    _fields['selling_price']!.text =
+                        (p / 100).toStringAsFixed(2);
+                    _manualPrice = true;
+                  });
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _costRow(BuildContext context, String label, String value,
+      {bool isBold = false, bool isHighlighted = false, String? sub}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight:
+                      isHighlighted || isBold ? FontWeight.bold : FontWeight.w500,
+                  color: isHighlighted
+                      ? AppTheme.primaryDarkGreen
+                      : AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: isHighlighted ? 14 : 12,
+                fontWeight:
+                    isHighlighted || isBold ? FontWeight.bold : FontWeight.w600,
+                color: isHighlighted
+                    ? AppTheme.primaryDarkGreen
+                    : AppTheme.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        if (sub != null)
+          Text(sub,
+              style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+      ],
+    );
   }
 }

@@ -30,6 +30,12 @@ class _OrdersScreenState extends State<OrdersScreen>
       if (_status.isNotEmpty) 'status': _status,
       if (_period.isNotEmpty) 'period': _period
     }).query;
+    final role = SessionManager().activeRole;
+    final emptyMsg = role == AppRole.farmer
+        ? S.t('No orders received yet. Incoming orders for your crops will appear here.')
+        : (role == AppRole.buyer
+            ? S.t("You haven't placed any orders yet. Explore fresh produce from local farmers!")
+            : S.t('No orders found in the system.'));
     return Scaffold(
         appBar: VayalAppBar(title: S.t('Orders'), showBack: true),
         body: PageBody(
@@ -84,6 +90,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                   key: ValueKey(query),
                   title: 'Orders',
                   embedded: true,
+                  emptyMessage: emptyMsg,
                   api: widget.api,
                   path: '/api/v1/orders/?$query',
                   itemBuilder: (ctx, o, reload) => OrderRecordCard(

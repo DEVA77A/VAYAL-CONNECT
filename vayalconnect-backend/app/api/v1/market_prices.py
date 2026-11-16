@@ -370,15 +370,19 @@ async def get_filter_options(
     commodities, categories, districts = set(), set(), set()
     for c in DEFAULT_CROPS:
         commodities.add(c)
-    async for mp in db["market_prices"].find({}, {"commodity": 1, "district": 1}).limit(200):
+    mp_cursor = db["market_prices"].find({}, {"commodity": 1, "district": 1})
+    if hasattr(mp_cursor, "limit"):
+        mp_cursor = mp_cursor.limit(200)
+    async for mp in mp_cursor:
         if mp.get("commodity"):
             commodities.add(str(mp["commodity"]).strip())
         if mp.get("district"):
             districts.add(str(mp["district"]).strip())
 
-    async for product in db["products"].find(
-        {}, {"product_name": 1, "category": 1, "district": 1}
-    ):
+    prod_cursor = db["products"].find({}, {"product_name": 1, "category": 1, "district": 1})
+    if hasattr(prod_cursor, "limit"):
+        prod_cursor = prod_cursor.limit(200)
+    async for product in prod_cursor:
         for field, values in (
             ("product_name", commodities),
             ("category", categories),

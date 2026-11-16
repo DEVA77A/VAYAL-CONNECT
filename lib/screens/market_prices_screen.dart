@@ -469,6 +469,33 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                 ),
               ),
               const SizedBox(width: 8),
+              // Category badge (Wholesale vs Retail)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: item.isRetail
+                      ? AppTheme.primaryGreen.withOpacity(0.12)
+                      : AppTheme.sandBeige,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: item.isRetail
+                        ? AppTheme.primaryDarkGreen.withOpacity(0.3)
+                        : AppTheme.earthBrown.withOpacity(0.3),
+                  ),
+                ),
+                child: Text(
+                  S.t(item.isRetail ? 'Retail' : 'Wholesale'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: item.isRetail
+                        ? AppTheme.primaryDarkGreen
+                        : AppTheme.darkBrown,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

@@ -99,19 +99,6 @@ async def list_orders(
     dates = ReportService(db)._build_date_filter(period, None, None)
     if dates: filters["created_at"] = dates
 
-    if not order.get("image_url") and not order.get("product_image_url") and order.get("product_id"):
-        from bson import ObjectId
-        pid = str(order.get("product_id"))
-        q = [{"_id": pid}]
-        if ObjectId.is_valid(pid):
-            q.append({"_id": ObjectId(pid)})
-        p_doc = await db["products"].find_one({"$or": q}, {"image_url": 1, "images": 1})
-        if p_doc:
-            p_img = p_doc.get("image_url") or (p_doc.get("images")[0] if p_doc.get("images") else None)
-            if p_img:
-                order["image_url"] = p_img
-                order["product_image_url"] = p_img
-
     if role == "BUYER":
         orders, total = await order_service.list_buyer_orders(current_user["id"], page, limit, filters)
     elif role == "FARMER":
@@ -193,7 +180,6 @@ async def list_orders(
                 buyer_name=o.get("buyer_name", ""),
                 farmer_id=o.get("farmer_id", ""),
                 farmer_name=o.get("farmer_name", ""),
-                product_id=o.get("product_id", ""),
                 product_name=o.get("product_name", ""),
                 quantity=o.get("quantity", 0),
                 unit=o.get("quantity_unit", ""),
@@ -263,6 +249,19 @@ async def get_order(
         raise NotFoundError("Order")  # 404 instead of 403 to avoid info leak
     if role == "FARMER" and order["farmer_id"] != current_user["id"]:
         raise NotFoundError("Order")
+
+    if not order.get("image_url") and not order.get("product_image_url") and order.get("product_id"):
+        from bson import ObjectId
+        pid = str(order.get("product_id"))
+        q = [{"_id": pid}]
+        if ObjectId.is_valid(pid):
+            q.append({"_id": ObjectId(pid)})
+        p_doc = await db["products"].find_one({"$or": q}, {"image_url": 1, "images": 1})
+        if p_doc:
+            p_img = p_doc.get("image_url") or (p_doc.get("images")[0] if p_doc.get("images") else None)
+            if p_img:
+                order["image_url"] = p_img
+                order["product_image_url"] = p_img
 
     if role == "BUYER":
         data = BuyerOrderResponse(

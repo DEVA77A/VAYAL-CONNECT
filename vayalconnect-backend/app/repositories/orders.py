@@ -29,9 +29,12 @@ class OrderRepository:
         return str(result.inserted_id)
 
     async def find_by_id(self, order_id: str) -> Optional[Dict[str, Any]]:
-        if not ObjectId.is_valid(order_id):
+        if not order_id:
             return None
-        doc = await self.collection.find_one({"_id": ObjectId(order_id)})
+        if ObjectId.is_valid(order_id):
+            doc = await self.collection.find_one({"$or": [{"_id": ObjectId(order_id)}, {"_id": order_id}]})
+        else:
+            doc = await self.collection.find_one({"_id": order_id})
         return self._serialize(doc)
 
     async def find_by_order_number(self, order_number: str) -> Optional[Dict[str, Any]]:
@@ -45,7 +48,8 @@ class OrderRepository:
     async def list_by_buyer(
         self, buyer_id: str, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        query = {**(filters or {}), "buyer_id": ObjectId(buyer_id)}
+        b_query = {"$in": [ObjectId(buyer_id), str(buyer_id)]} if ObjectId.is_valid(buyer_id) else str(buyer_id)
+        query = {**(filters or {}), "buyer_id": b_query}
         total = await self.collection.count_documents(query)
         cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
         docs = [self._serialize(doc) async for doc in cursor]
@@ -54,7 +58,8 @@ class OrderRepository:
     async def list_by_farmer(
         self, farmer_id: str, page: int = 1, limit: int = 50, filters=None
     ) -> tuple[List[Dict[str, Any]], int]:
-        query = {**(filters or {}), "farmer_id": ObjectId(farmer_id)}
+        f_query = {"$in": [ObjectId(farmer_id), str(farmer_id)]} if ObjectId.is_valid(farmer_id) else str(farmer_id)
+        query = {**(filters or {}), "farmer_id": f_query}
         total = await self.collection.count_documents(query)
         cursor = self.collection.find(query).sort("created_at", -1).skip((page - 1) * limit).limit(limit)
         docs = [self._serialize(doc) async for doc in cursor]
@@ -83,8 +88,9 @@ class OrderRepository:
             "updated_at": datetime.now(timezone.utc),
             **extra_fields,
         }
+        match_id = {"$or": [{"_id": ObjectId(order_id)}, {"_id": order_id}]} if ObjectId.is_valid(order_id) else {"_id": order_id}
         result = await self.collection.update_one(
-            {"_id": ObjectId(order_id)},
+            match_id,
             {"$set": update}
         )
         return result.modified_count > 0
@@ -92,8 +98,9 @@ class OrderRepository:
     async def update_payment_status(
         self, order_id: str, payment_status: str
     ) -> bool:
+        match_id = {"$or": [{"_id": ObjectId(order_id)}, {"_id": order_id}]} if ObjectId.is_valid(order_id) else {"_id": order_id}
         result = await self.collection.update_one(
-            {"_id": ObjectId(order_id)},
+            match_id,
             {"$set": {
                 "payment_status": payment_status,
                 "updated_at": datetime.now(timezone.utc),
@@ -104,8 +111,9 @@ class OrderRepository:
     async def update_payout_status(
         self, order_id: str, payout_status: str
     ) -> bool:
+        match_id = {"$or": [{"_id": ObjectId(order_id)}, {"_id": order_id}]} if ObjectId.is_valid(order_id) else {"_id": order_id}
         result = await self.collection.update_one(
-            {"_id": ObjectId(order_id)},
+            match_id,
             {"$set": {
                 "payout_status": payout_status,
                 "updated_at": datetime.now(timezone.utc),
@@ -120,7 +128,8 @@ class OrderRepository:
         return await self.collection.count_documents(query)
 
     async def count_by_farmer(self, farmer_id: str, status: Optional[str] = None) -> int:
-        query: Dict[str, Any] = {"farmer_id": ObjectId(farmer_id)}
+        f_query = {"$in": [ObjectId(farmer_id), str(farmer_id)]} if ObjectId.is_valid(farmer_id) else str(farmer_id)
+        query: Dict[str, Any] = {"farmer_id": f_query}
         if status:
             query["order_status"] = status
         return await self.collection.count_documents(query)

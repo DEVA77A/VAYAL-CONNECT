@@ -271,6 +271,61 @@ async def get_commission_history(
     )
 
 
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, Field, ConfigDict
+
+class UpdateCostConfigRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    harvesting_cost_paise: Optional[int] = Field(None, ge=0)
+    sorting_cost_paise: Optional[int] = Field(None, ge=0)
+    packaging_cost_paise: Optional[int] = Field(None, ge=0)
+    transport_cost_paise: Optional[int] = Field(None, ge=0)
+    handling_cost_paise: Optional[int] = Field(None, ge=0)
+    wastage_allowance_bps: Optional[int] = Field(None, ge=0, le=5000)
+    default_farmer_margin_bps: Optional[int] = Field(None, ge=0, le=10000)
+    crop_adjustments: Optional[dict] = None
+    district_adjustments: Optional[dict] = None
+
+
+@router.get("/pricing-cost-config", response_model=APIResponse)
+async def get_pricing_cost_config(
+    request: Request,
+    current_user: dict = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """Retrieve active farmer operating cost configuration."""
+    from app.services.farmer_cost_service import FarmerCostService
+    config = await FarmerCostService(db).get_active_config()
+    return APIResponse(success=True, data=config, request_id=get_request_id(request))
+
+
+@router.put("/pricing-cost-config", response_model=APIResponse)
+async def update_pricing_cost_config(
+    data: UpdateCostConfigRequest,
+    request: Request,
+    current_user: dict = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """Update farmer operating cost model parameters with audit trail."""
+    from app.services.farmer_cost_service import FarmerCostService
+    updates = data.model_dump(exclude_none=True)
+    updated = await FarmerCostService(db).update_config(current_user["id"], updates)
+    return APIResponse(success=True, data=updated, request_id=get_request_id(request))
+
+
+@router.get("/pricing-cost-config/audit", response_model=APIResponse)
+async def get_pricing_cost_config_audit(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(get_current_admin),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """Audit log of farmer operating cost model changes."""
+    from app.services.farmer_cost_service import FarmerCostService
+    history = await FarmerCostService(db).get_audit_history(limit=limit)
+    return APIResponse(success=True, data={"items": history}, request_id=get_request_id(request))
+
+
 @router.get("/users/{user_id}/activity", response_model=APIResponse)
 async def user_activity(user_id: str, request: Request, current_user=Depends(get_current_admin), db=Depends(get_database)):
     from app.repositories.orders import OrderRepository

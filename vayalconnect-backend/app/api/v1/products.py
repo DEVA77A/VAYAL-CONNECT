@@ -76,6 +76,102 @@ async def price_reference(request: Request, commodity: str = Query(..., min_leng
                           current_user: dict = Depends(get_current_farmer),
                           db: AsyncIOMotorDatabase = Depends(get_database)):
     reference = await PricingEngine(db).get_verified_reference(commodity, market, unit, state=state, district=district, category=category, variety=variety)
+
+    # 1. Determine wholesale price per KG
+    wholesale_per_kg = reference.get("reference_price_per_listing_unit_paise") or 0
+    raw_wholesale = reference.get("government_reference_price_paise") or 0
+    if wholesale_per_kg == 0 and raw_wholesale > 0:
+        if str(reference.get("reference_price_unit", "")).upper() in ("QUINTAL", "QTL"):
+            wholesale_per_kg = raw_wholesale // 100
+        else:
+            wholesale_per_kg = raw_wholesale
+
+    # 2. Look up local retail benchmark (e.g. Uzhavar Sandhai / direct retail)
+    retail_per_kg = None
+    retail_doc = None
+    retail_source = None
+    try:
+        import re
+        query_retail = {
+            "commodity": {"$regex": f"^{re.escape(commodity)}$", "$options": "i"},
+            "$or": [
+                {"price_category": "RETAIL"},
+                {"source_provider": "UZHAVAR_SANDHAI"},
+                {"market_type": "retail"},
+                {"market": {"$regex": "Uzhavar", "$options": "i"}},
+                {"source": {"$regex": "Uzhavar", "$options": "i"}},
+            ]
+        }
+        if district:
+            query_retail["district"] = {"$regex": f"^{re.escape(district)}$", "$options": "i"}
+        retail_cursor = db["market_prices"].find(query_retail).sort([("arrival_date", -1), ("retrieved_at", -1)]).limit(1)
+        retail_doc = await retail_cursor.to_list(1) if hasattr(retail_cursor, "to_list") else None
+        if not retail_doc and district:
+            query_retail.pop("district", None)
+            retail_cursor = db["market_prices"].find(query_retail).sort([("arrival_date", -1), ("retrieved_at", -1)]).limit(1)
+            retail_doc = await retail_cursor.to_list(1) if hasattr(retail_cursor, "to_list") else None
+        if retail_doc and len(retail_doc) > 0:
+            doc = retail_doc[0]
+            retail_per_kg = doc.get("price_per_kg_paise") or doc.get("modal_price_paise") or doc.get("price_paise")
+            retail_source = f"{doc.get('market', 'Uzhavar Sandhai')}, {doc.get('district', 'Tamil Nadu')}"
+    except Exception as e:
+        logger.info("Retail benchmark lookup skipped: %s", e)
+
+    # 3. Calculate Farmer Cost Model
+    from app.services.farmer_cost_service import FarmerCostService
+    cost_service = FarmerCostService(db)
+    cost_model = await cost_service.calculate_farmer_pricing(
+        commodity=commodity,
+        unit=unit,
+        district=district,
+        wholesale_price_per_kg_paise=wholesale_per_kg,
+        retail_price_per_kg_paise=retail_per_kg,
+        retail_source=retail_source,
+    )
+
+    # 4. Attach rich smart price recommendation fields
+    reference["cost_breakdown"] = cost_model["cost_breakdown"]
+    reference["minimum_sustainable_price_paise"] = cost_model["minimum_sustainable_price_paise"]
+    reference["minimum_sustainable_price_display"] = cost_model["minimum_sustainable_price_display"]
+    reference["recommended_farmer_price_paise"] = cost_model["recommended_farmer_price_paise"]
+    reference["recommended_farmer_price_display"] = cost_model["recommended_farmer_price_display"]
+    reference["local_retail_comparison_paise"] = cost_model["local_retail_comparison_paise"]
+    reference["local_retail_comparison_display"] = cost_model["local_retail_comparison_display"]
+    reference["local_retail_source"] = cost_model["local_retail_source"]
+    reference["suggested_above_retail"] = cost_model["suggested_above_retail"]
+    reference["review_notes"] = cost_model["review_notes"]
+
+    # 5. Three distinct price categories
+    reference["wholesale_reference"] = {
+        "price_paise": raw_wholesale,
+        "price_display": format_rupees(raw_wholesale) if raw_wholesale else "Unavailable",
+        "price_per_kg_paise": wholesale_per_kg,
+        "price_per_kg_display": format_rupees(wholesale_per_kg) if wholesale_per_kg else "Unavailable",
+        "unit": reference.get("reference_price_unit") or unit,
+        "market": reference.get("reference_market") or market or "Regulated Mandi",
+        "district": reference.get("reference_district") or district,
+        "source": reference.get("reference_price_source") or "AGMARKNET",
+        "arrival_date": reference.get("reference_price_date"),
+        "stale": reference.get("reference_price_stale", False),
+        "category": "WHOLESALE",
+    }
+    reference["retail_reference"] = {
+        "price_per_kg_paise": retail_per_kg,
+        "price_per_kg_display": format_rupees(retail_per_kg) if retail_per_kg else "Unavailable",
+        "market": retail_source or "Uzhavar Sandhai",
+        "district": district or "Tamil Nadu",
+        "source": "Tamil Nadu Uzhavar Sandhai",
+        "available": retail_per_kg is not None,
+        "category": "RETAIL",
+    }
+    reference["farmer_direct_reference"] = {
+        "minimum_sustainable_price_paise": cost_model["minimum_sustainable_price_paise"],
+        "minimum_sustainable_price_display": cost_model["minimum_sustainable_price_display"],
+        "recommended_selling_price_paise": cost_model["recommended_farmer_price_paise"],
+        "recommended_selling_price_display": cost_model["recommended_farmer_price_display"],
+        "category": "FARMER_DIRECT",
+    }
+
     return APIResponse(success=True, data=reference, request_id=get_request_id(request))
 
 
@@ -91,6 +187,7 @@ async def create_product(
     Farmer creates a product.
     Backend validates an official reference and adds commission to the selected payout.
     Response shows ONLY farmer payout — no buyer price, no commission.
+    Triggers asynchronous market price discovery in background without blocking listing.
     """
     await validate_owned_image(db, data.image_url, current_user["id"], product_name=data.product_name)
     pricing_engine = PricingEngine(db)
@@ -110,6 +207,22 @@ async def create_product(
         selling_price_per_unit_paise=data.selling_price_per_unit_paise,
         state=data.state, district=data.district, variety=data.variety,
     )
+
+    # Asynchronous background price discovery for the new commodity (never blocks response)
+    import asyncio
+    async def _async_discovery(database, crop_name, st, dist, mkt):
+        try:
+            from app.services.market_orchestrator import MarketPriceOrchestrator
+            await MarketPriceOrchestrator(database).get_market_price(
+                commodity=crop_name,
+                state=st or "Tamil Nadu",
+                district=dist,
+                market=mkt,
+            )
+        except Exception as e:
+            logger.info("Background market discovery completed or skipped for %s: %s", crop_name, e)
+
+    asyncio.create_task(_async_discovery(db, data.product_name, data.state, data.district, data.market))
 
     # Build product document
     product_doc = {

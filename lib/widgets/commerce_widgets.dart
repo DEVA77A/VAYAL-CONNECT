@@ -176,6 +176,7 @@ class RecordPage extends StatefulWidget {
   final String title;
   final String path;
   final bool embedded;
+  final String? emptyMessage;
   final ApiClient? api;
   final Widget Function(BuildContext, Map<String, dynamic>, VoidCallback)
       itemBuilder;
@@ -184,6 +185,7 @@ class RecordPage extends StatefulWidget {
       required this.title,
       required this.path,
       this.embedded = false,
+      this.emptyMessage,
       this.api,
       required this.itemBuilder});
   @override
@@ -214,7 +216,7 @@ class _RecordPageState extends State<RecordPage>
     if (_busy) return;
     setState(() {
       _busy = true;
-      _error = null;
+      if (!more && _items.isEmpty) _error = null;
     });
     try {
       final page = more ? _page + 1 : 1;
@@ -227,9 +229,22 @@ class _RecordPageState extends State<RecordPage>
             (data['items'] as List).map((e) => Map<String, dynamic>.from(e)));
         _page = page;
         _total = data['total'] as int? ?? _items.length;
+        _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        if (_items.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(S.message(e.toString())),
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(label: S.t('Retry'), onPressed: () => _load()),
+            ),
+          );
+        } else {
+          setState(() => _error = e.toString());
+        }
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -248,9 +263,9 @@ class _RecordPageState extends State<RecordPage>
                   padding: const EdgeInsets.all(16),
                   children: [
                     if (_busy) const LinearProgressIndicator(),
-                    if (_error != null) ErrorPanel(_error!, () => _load()),
+                    if (_error != null && _items.isEmpty) ErrorPanel(_error!, () => _load()),
                     if (!_busy && _items.isEmpty && _error == null)
-                      const EmptyPanel('No records yet.'),
+                      EmptyPanel(widget.emptyMessage ?? 'No records yet.'),
                     for (final item in _items)
                       Padding(
                           padding: const EdgeInsets.only(bottom: 12),
