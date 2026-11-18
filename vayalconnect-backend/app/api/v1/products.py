@@ -285,9 +285,10 @@ async def create_product(
             location=data.location,
             market=data.market,
             harvest_date=data.harvest_date,
-            market_reference=reference_view({**pricing, "pricing_mode": "FARMER_SELECTED"}),
+            market_reference=reference_view({**pricing, "pricing_mode": mode}),
             farmer_payout_per_unit_paise=pricing["farmer_payout_per_unit_paise"],
             farmer_payout_per_unit_display=format_rupees(pricing["farmer_payout_per_unit_paise"]),
+            pricing_mode=mode,
             status="ACTIVE",
         ).model_dump(),
         request_id=get_request_id(request),
@@ -386,6 +387,7 @@ async def list_products(
                 farm_coordinates=application.get("coordinates"), market_reference=reference_view(p),
                 buyer_price_per_unit_paise=p.get("buyer_price_per_unit_paise", 0),
                 buyer_price_per_unit_display=format_rupees(p.get("buyer_price_per_unit_paise", 0)),
+                pricing_mode=p.get("pricing_mode", "FARMER_SELECTED"),
                 harvest_date=p.get("harvest_date"),
             ).model_dump())
         elif role == "ADMIN":
@@ -418,6 +420,7 @@ async def list_products(
                 commission_per_unit_display=format_rupees(p.get("commission_per_unit_paise", 0)),
                 pricing_policy_id=p.get("pricing_policy_id"),
                 pricing_policy_version=p.get("pricing_policy_version"),
+                pricing_mode=p.get("pricing_mode", "FARMER_SELECTED"),
                 status=p.get("status", ""),
                 created_at=p.get("created_at"),
                 updated_at=p.get("updated_at"),
@@ -497,6 +500,7 @@ async def get_product(
             farm_coordinates=application.get("coordinates"), market_reference=reference_view(product),
             buyer_price_per_unit_paise=product.get("buyer_price_per_unit_paise", 0),
             buyer_price_per_unit_display=format_rupees(product.get("buyer_price_per_unit_paise", 0)),
+            pricing_mode=product.get("pricing_mode", "FARMER_SELECTED"),
             harvest_date=product.get("harvest_date"),
         ).model_dump()
     else:
@@ -530,6 +534,7 @@ async def get_product(
             commission_per_unit_display=format_rupees(product.get("commission_per_unit_paise", 0)),
             pricing_policy_id=product.get("pricing_policy_id"),
             pricing_policy_version=product.get("pricing_policy_version"),
+            pricing_mode=product.get("pricing_mode", "FARMER_SELECTED"),
             status=product.get("status", ""),
             created_at=product.get("created_at"),
             updated_at=product.get("updated_at"),
@@ -562,9 +567,33 @@ async def update_product(
         from app.core.exceptions import ValidationError
         raise ValidationError("Use stock_adjustment to add or remove available units safely.")
     price = update_fields.pop("selling_price_per_unit_paise", None)
-    if price is not None:
+    mode = update_fields.get("pricing_mode")
+    if mode == "MARKET_BASED":
+        from app.services.farmer_cost_service import FarmerCostService
+        comm = product.get("commodity") or product.get("product_name") or ""
+        dist = product.get("district") or product.get("location")
+        u = product.get("quantity_unit") or product.get("unit") or "KG"
+        ref_paise = product.get("government_reference_price_paise") or product.get("market_reference_price_paise") or 0
+        cost_res = await FarmerCostService(db).calculate_farmer_pricing(
+            commodity=comm,
+            unit=u,
+            district=dist,
+            wholesale_price_per_kg_paise=ref_paise,
+        )
+        rec_price = cost_res.get("recommended_farmer_price_paise") or (price if price is not None else product.get("farmer_payout_per_unit_paise", 0))
+        amounts = await PricingEngine(db).selling_amounts(rec_price)
+        update_fields.update({
+            **amounts,
+            "commission_percentage": amounts["commission_percentage_bps"],
+            "pricing_mode": "MARKET_BASED",
+        })
+    elif price is not None:
         amounts = await PricingEngine(db).selling_amounts(price)
-        update_fields.update({**amounts, "commission_percentage": amounts["commission_percentage_bps"], "pricing_mode": "FARMER_SELECTED"})
+        update_fields.update({
+            **amounts,
+            "commission_percentage": amounts["commission_percentage_bps"],
+            "pricing_mode": "FARMER_SELECTED",
+        })
     adjustment = update_fields.pop("stock_adjustment", None)
     if adjustment is not None:
         from bson import ObjectId

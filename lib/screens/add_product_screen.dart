@@ -75,6 +75,7 @@ class _AddProductScreenState extends State<AddProductScreen>
   Timer? _referenceTimer;
   int _referenceRequest = 0;
   bool _manualPrice = false;
+  String _pricingMode = 'MARKET_BASED';
   bool _referenceLoading = false;
   final Set<String> _registeredCategories = {};
   bool get _editing => widget.product != null;
@@ -98,6 +99,7 @@ class _AddProductScreenState extends State<AddProductScreen>
       }
       _fields['selling_price']!.text =
           ((p['farmer_payout_per_unit_paise'] as num) / 100).toStringAsFixed(2);
+      _pricingMode = p['pricing_mode'] as String? ?? 'FARMER_SELECTED';
       _fields['stock_adjustment']!.text = '0';
       _unit = (p['quantity_unit'] as String? ?? 'KG').toUpperCase();
       _category = p['category'];
@@ -760,6 +762,7 @@ class _AddProductScreenState extends State<AddProductScreen>
         'harvest_date': _date.toIso8601String().substring(0, 10),
         'quality_grade': _grade,
         'image_url': _image!,
+        'pricing_mode': _pricingMode,
       };
       if (_editing) {
         body.addAll({
@@ -1022,6 +1025,7 @@ class _AddProductScreenState extends State<AddProductScreen>
                             ),
                           ),
                           _buildSmartPriceRecommendation(context),
+                          _buildPricingModeSelector(context),
                           const FormSection('Farm location',
                               icon: Icons.location_on_outlined),
                           _field('location', 'Farm location',
@@ -1213,12 +1217,163 @@ class _AddProductScreenState extends State<AddProductScreen>
                   setState(() {
                     _fields['selling_price']!.text =
                         (p / 100).toStringAsFixed(2);
+                    _pricingMode = 'MARKET_BASED';
                     _manualPrice = true;
                   });
                 },
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPricingModeSelector(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune, size: 16, color: AppTheme.primaryDarkGreen),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  S.t('Pricing Mode'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: AppTheme.darkBrown),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => setState(() => _pricingMode = 'MARKET_BASED'),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _pricingMode == 'MARKET_BASED'
+                    ? AppTheme.primaryGreen.withOpacity(0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _pricingMode == 'MARKET_BASED'
+                      ? AppTheme.primaryGreen
+                      : AppTheme.cardBorder,
+                  width: _pricingMode == 'MARKET_BASED' ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    _pricingMode == 'MARKET_BASED'
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    size: 18,
+                    color: _pricingMode == 'MARKET_BASED'
+                        ? AppTheme.primaryGreen
+                        : AppTheme.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          S.t('Market-Based (Recommended)'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: _pricingMode == 'MARKET_BASED'
+                                ? AppTheme.primaryDarkGreen
+                                : AppTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          S.t('Daily 8 AM auto-sync with Mandi rates & costs'),
+                          style: const TextStyle(
+                              fontSize: 11, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => setState(() => _pricingMode = 'FARMER_SELECTED'),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _pricingMode == 'FARMER_SELECTED'
+                    ? AppTheme.earthBrown.withOpacity(0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _pricingMode == 'FARMER_SELECTED'
+                      ? AppTheme.darkBrown
+                      : AppTheme.cardBorder,
+                  width: _pricingMode == 'FARMER_SELECTED' ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    _pricingMode == 'FARMER_SELECTED'
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    size: 18,
+                    color: _pricingMode == 'FARMER_SELECTED'
+                        ? AppTheme.darkBrown
+                        : AppTheme.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          S.t('Fixed Price'),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: _pricingMode == 'FARMER_SELECTED'
+                                ? AppTheme.darkBrown
+                                : AppTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          S.t('Manual price chosen by you; stays unchanged'),
+                          style: const TextStyle(
+                              fontSize: 11, color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

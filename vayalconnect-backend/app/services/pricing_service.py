@@ -411,15 +411,45 @@ class PricingEngine:
     async def buyer_pricing(self, product: dict) -> dict:
         daily_ref = await self.resolve_daily_market_price(product)
 
-        # If product is in MARKET_BASED pricing mode and has a valid daily market price:
-        if (
-            product.get("pricing_mode") == "MARKET_BASED"
-            and daily_ref.get("reference_price_available")
-            and (daily_ref.get("reference_price_per_listing_unit_paise") or 0) > 0
-        ):
-            base_price = daily_ref["reference_price_per_listing_unit_paise"]
+        # If product is in MARKET_BASED pricing mode:
+        if product.get("pricing_mode") == "MARKET_BASED":
+            payout = product.get("farmer_payout_per_unit_paise")
+            # If product has pre-calculated payout from daily batch, use it;
+            # otherwise calculate dynamically using FarmerCostService on the reference price:
+            if payout and payout > 0:
+                base_price = payout
+            elif daily_ref.get("reference_price_available") and (daily_ref.get("reference_price_per_listing_unit_paise") or 0) > 0:
+                try:
+                    from app.services.farmer_cost_service import FarmerCostService
+                    cost_service = FarmerCostService(self.db)
+                    comm = product.get("commodity") or product.get("product_name") or ""
+                    dist = product.get("district") or product.get("location") or ""
+                    u = product.get("quantity_unit") or product.get("unit") or "KG"
+                    ref_paise = daily_ref.get("reference_price_per_listing_unit_paise") or 0
+                    cost_res = await cost_service.calculate_farmer_pricing(
+                        commodity=comm,
+                        unit=u,
+                        district=dist,
+                        wholesale_price_per_kg_paise=ref_paise,
+                    )
+                    base_price = cost_res.get("recommended_farmer_price_paise") or ref_paise
+                except Exception:
+                    base_price = daily_ref["reference_price_per_listing_unit_paise"]
+            else:
+                base_price = (
+                    product.get("farmer_payout_per_unit_paise")
+                    or product.get("farmer_price_per_unit_paise")
+                    or product.get("farmer_base_price_paise")
+                    or daily_ref.get("reference_price_per_listing_unit_paise")
+                )
         else:
-            base_price = (product.get("farmer_payout_per_unit_paise") or product.get("farmer_price_per_unit_paise") or product.get("farmer_base_price_paise") or daily_ref.get("reference_price_per_listing_unit_paise"))
+            # FARMER_SELECTED: strictly preserve the farmer's manually entered selling price
+            base_price = (
+                product.get("farmer_payout_per_unit_paise")
+                or product.get("farmer_price_per_unit_paise")
+                or product.get("farmer_base_price_paise")
+                or daily_ref.get("reference_price_per_listing_unit_paise")
+            )
 
         if not base_price or base_price <= 0:
             raise ValidationError("Listing has no valid base price.")

@@ -18,6 +18,7 @@ class FarmerProduct {
   final String? harvestDate;
   final int farmerPayoutPerUnitPaise;
   final String farmerPayoutPerUnitDisplay;
+  final String pricingMode;
   final String status;
 
   FarmerProduct({
@@ -33,6 +34,7 @@ class FarmerProduct {
     this.harvestDate,
     required this.farmerPayoutPerUnitPaise,
     required this.farmerPayoutPerUnitDisplay,
+    this.pricingMode = 'FARMER_SELECTED',
     this.status = 'ACTIVE',
   });
 
@@ -52,6 +54,7 @@ class FarmerProduct {
           (json['farmer_payout_per_unit_paise'] as num?)?.toInt() ?? 0,
       farmerPayoutPerUnitDisplay:
           json['farmer_payout_per_unit_display'] as String? ?? '₹0.00',
+      pricingMode: json['pricing_mode'] as String? ?? 'FARMER_SELECTED',
       status: json['status'] as String? ?? 'ACTIVE',
     );
   }
@@ -78,7 +81,11 @@ class BuyerProduct {
   final bool deliveryAvailable;
   final int buyerPricePerUnitPaise;
   final String buyerPricePerUnitDisplay;
+  final String pricingMode;
   final String? harvestDate;
+
+  bool get isMarketBased => pricingMode == 'MARKET_BASED';
+  bool get isFarmerSelected => pricingMode == 'FARMER_SELECTED';
 
   int? get marketReferencePricePaise {
     final ref = marketReference;
@@ -119,6 +126,7 @@ class BuyerProduct {
     this.deliveryAvailable = false,
     required this.buyerPricePerUnitPaise,
     this.buyerPricePerUnitDisplay = '',
+    this.pricingMode = 'FARMER_SELECTED',
     this.harvestDate,
   });
 
@@ -149,6 +157,7 @@ class BuyerProduct {
           (json['buyer_price_per_unit_paise'] as num?)?.toInt() ?? 0,
       buyerPricePerUnitDisplay:
           json['buyer_price_per_unit_display'] as String? ?? '₹0.00',
+      pricingMode: json['pricing_mode'] as String? ?? 'FARMER_SELECTED',
       harvestDate: json['harvest_date'] as String?,
     );
   }
@@ -165,6 +174,7 @@ class CreateProductPayload {
   final String market;
   final String? harvestDate;
   final String? imageUrl;
+  final String pricingMode;
 
   CreateProductPayload({
     required this.productName,
@@ -177,6 +187,7 @@ class CreateProductPayload {
     required this.market,
     this.harvestDate,
     this.imageUrl,
+    this.pricingMode = 'FARMER_SELECTED',
   });
 
   Map<String, dynamic> toJson() {
@@ -189,6 +200,7 @@ class CreateProductPayload {
       'quality_grade': qualityGrade,
       'location': location,
       'market': market,
+      'pricing_mode': pricingMode,
       if (harvestDate != null) 'harvest_date': harvestDate,
       if (imageUrl != null) 'image_url': imageUrl,
     };

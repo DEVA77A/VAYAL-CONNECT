@@ -352,3 +352,46 @@ async def farmer_review_detail(user_id: str, request: Request, current_user=Depe
     return APIResponse(data={"user_id": user_id, **{k: user.get(k) for k in ("name", "email", "phone", "address", "area_location", "is_active", "email_verified")},
         "profile_present": profile_present,
         "approval_status": profile.get("approval_status"), **application_view(profile), "bank_details_present": bool(profile.get("bank_account_number"))}, request_id=get_request_id(request))
+
+
+@router.get("/market-monitoring", response_model=APIResponse)
+async def get_market_monitoring(
+    request: Request,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(get_current_admin),
+):
+    """Admin endpoint for detailed daily market price monitoring and provider telemetry."""
+    from app.services.market_orchestrator import MarketPriceOrchestrator
+    status_data = await MarketPriceOrchestrator(db).status()
+    return APIResponse(
+        success=True,
+        data=status_data,
+        request_id=get_request_id(request),
+    )
+
+
+@router.get("/price-history", response_model=APIResponse)
+async def get_price_history(
+    request: Request,
+    commodity: Optional[str] = Query(None),
+    product_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(get_current_admin),
+):
+    """Admin endpoint to inspect historical market price changes across days."""
+    query = {}
+    if commodity:
+        query["commodity"] = {"$regex": f"^{commodity.strip()}$", "$options": "i"}
+    if product_id:
+        query["product_id"] = product_id
+    cursor = db["market_price_history"].find(query).sort("fetched_at", -1).limit(limit)
+    items = []
+    async for doc in cursor:
+        doc["id"] = str(doc.pop("_id"))
+        items.append(doc)
+    return APIResponse(
+        success=True,
+        data={"items": items, "total": len(items)},
+        request_id=get_request_id(request),
+    )

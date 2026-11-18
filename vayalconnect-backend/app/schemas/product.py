@@ -44,6 +44,7 @@ class UpdateProductRequest(BaseModel):
     harvest_date: Optional[date] = None
     image_url: Optional[str] = None
     status: Optional[ProductStatus] = None
+    pricing_mode: Optional[str] = Field(None, pattern="^(FARMER_SELECTED|MARKET_BASED)$")
 
 
 # ============================================================
@@ -69,6 +70,7 @@ class FarmerProductResponse(BaseModel):
     market_reference: Optional[dict] = None
     farmer_payout_per_unit_paise: int
     farmer_payout_per_unit_display: str
+    pricing_mode: str = "FARMER_SELECTED"
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -99,6 +101,7 @@ class BuyerProductResponse(BaseModel):
     farm_coordinates: Optional[dict] = None
     buyer_price_per_unit_paise: int
     buyer_price_per_unit_display: str
+    pricing_mode: str = "FARMER_SELECTED"
     harvest_date: Optional[date] = None
 
 
@@ -135,6 +138,7 @@ class AdminProductResponse(BaseModel):
     commission_per_unit_display: str
     pricing_policy_id: Optional[str] = None
     pricing_policy_version: Optional[int] = None
+    pricing_mode: str = "FARMER_SELECTED"
     status: str
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

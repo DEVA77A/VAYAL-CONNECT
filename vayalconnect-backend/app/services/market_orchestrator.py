@@ -460,16 +460,39 @@ class MarketPriceOrchestrator:
         primary_failed = False
         primary_exhausted = False
 
-        # Gather target commodities from products collection
+        # 1. Gather and deduplicate active farmer products by pricing dimensions
+        # Pricing dimensions: (commodity, district, variety, unit)
+        grouped_targets: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+        active_products: List[Dict[str, Any]] = []
         target_crops = ["Tomato", "Banana", "Onion", "Coconut", "Carrot", "Brinjal", "Paddy", "Rice"]
+
         try:
-            cursor = self.db["products"].find({"status": "ACTIVE"}, {"product_name": 1, "commodity": 1})
+            cursor = self.db["products"].find({"status": "ACTIVE"})
             async for p in cursor:
-                c = p.get("product_name") or p.get("commodity")
-                if c and c not in target_crops:
+                active_products.append(p)
+                c = (p.get("commodity") or p.get("product_name") or "").strip()
+                if not c:
+                    continue
+                if c not in target_crops:
                     target_crops.append(c)
-        except Exception:
-            pass
+                d = (p.get("district") or p.get("location") or "Tamil Nadu").strip()
+                v = (p.get("variety") or "").strip()
+                u = normalize_unit(p.get("quantity_unit") or p.get("unit") or "KG")
+                gk = (c.lower(), d.lower(), v.lower(), u)
+                if gk not in grouped_targets:
+                    grouped_targets[gk] = {
+                        "commodity": c,
+                        "district": d,
+                        "variety": v,
+                        "unit": u,
+                        "products": [],
+                    }
+                grouped_targets[gk]["products"].append(p)
+        except Exception as exc:
+            logger.warning("Error gathering active products for daily refresh: %s", exc)
+
+        stats["total_active_products"] = len(active_products)
+        stats["unique_groups_processed"] = len(grouped_targets)
 
         # -------------------------------------------------------------
         # STAGE 1: Primary Provider (AGMARKNET data.gov.in)
@@ -574,34 +597,176 @@ class MarketPriceOrchestrator:
             logger.info("Stored %d verified multi-provider records in market_prices", len(all_records))
 
         # -------------------------------------------------------------
-        # STAGE 5: Update active MARKET_BASED products
+        # STAGE 5: Farmer Cost Recalculation, Product Updates & Price History
         # -------------------------------------------------------------
+        market_based_updated = 0
+        farmer_selected_skipped = 0
+        price_history_entries = []
+
         try:
+            from app.services.farmer_cost_service import FarmerCostService
             from app.services.pricing_service import PricingEngine
-            engine = PricingEngine(self.db)
-            cursor = self.db["products"].find({"status": "ACTIVE", "pricing_mode": "MARKET_BASED"})
-            async for prod in cursor:
+
+            cost_service = FarmerCostService(self.db)
+            pricing_engine = PricingEngine(self.db)
+
+            # Process every unique commodity/district/unit group
+            for gk, group in grouped_targets.items():
+                crop_name = group["commodity"]
+                dist_name = group["district"]
+                unit_name = group["unit"]
+
                 try:
-                    pricing = await engine.buyer_pricing(prod)
-                    await self.db["products"].update_one(
-                        {"_id": prod["_id"]},
-                        {
-                            "$set": {
-                                "buyer_price_per_unit_paise": pricing["buyer_price_per_unit_paise"],
-                                "farmer_payout_per_unit_paise": pricing["farmer_payout_per_unit_paise"],
-                                "commission_per_unit_paise": pricing["commission_per_unit_paise"],
-                                "market_reference_price_paise": pricing.get("reference_price_per_listing_unit_paise"),
-                                "market_price_date": pricing.get("reference_price_date"),
-                                "is_market_price_stale": pricing.get("reference_price_stale", False),
-                                "source_provider": pricing.get("source_provider", "AGMARKNET"),
-                                "updated_at": datetime.now(timezone.utc),
-                            }
-                        },
+                    # 1. Retrieve latest verified observation for this group
+                    market_obs = await self.get_market_price(
+                        commodity=crop_name,
+                        state="Tamil Nadu",
+                        district=dist_name if dist_name != "Tamil Nadu" else None,
+                        unit=unit_name,
                     )
+
+                    raw_wholesale = market_obs.get("government_reference_price_paise", 0)
+                    src_unit = market_obs.get("reference_price_unit", "KG")
+                    wholesale_per_kg = convert_price_unit(raw_wholesale, src_unit, "KG")
+
+                    # 2. Retrieve local retail observation (Uzhavar Sandhai)
+                    retail_per_kg = None
+                    retail_source = "Uzhavar Sandhai"
+                    try:
+                        if self.tn_market:
+                            retail_quotes, _ = await self.tn_market.retrieve(
+                                [{"commodity": crop_name, "state": "Tamil Nadu", "district": dist_name}]
+                            )
+                            if retail_quotes:
+                                retail_per_kg = retail_quotes[0].price_paise
+                                retail_source = retail_quotes[0].market or "Uzhavar Sandhai"
+                    except Exception:
+                        retail_per_kg = None
+
+                    # 3. Compute Farmer Operating Cost Model
+                    cost_model = await cost_service.calculate_farmer_pricing(
+                        commodity=crop_name,
+                        unit="KG",
+                        district=dist_name,
+                        wholesale_price_per_kg_paise=wholesale_per_kg,
+                        retail_price_per_kg_paise=retail_per_kg,
+                        retail_source=retail_source,
+                    )
+
+                    rec_farmer_kg = cost_model["recommended_farmer_price_paise"]
+                    rec_farmer_listing_unit = convert_price_unit(rec_farmer_kg, "KG", unit_name)
+                    obs_date = market_obs.get("reference_price_date") or day
+                    is_stale = market_obs.get("reference_price_stale", False)
+                    provider = market_obs.get("source_provider", "AGMARKNET")
+
+                    rich_market_reference = {
+                        "government_reference_price_paise": raw_wholesale,
+                        "reference_price_per_listing_unit_paise": market_obs.get("reference_price_per_listing_unit_paise") or raw_wholesale,
+                        "reference_price_unit": src_unit,
+                        "reference_listing_unit": unit_name,
+                        "reference_price_date": obs_date,
+                        "reference_price_source": market_obs.get("reference_price_source", "AGMARKNET"),
+                        "reference_price_stale": is_stale,
+                        "source_provider": provider,
+                        "cost_breakdown": cost_model.get("cost_breakdown", {}),
+                        "minimum_sustainable_price_paise": cost_model["minimum_sustainable_price_paise"],
+                        "recommended_farmer_price_paise": rec_farmer_listing_unit,
+                        "local_retail_comparison_paise": cost_model.get("local_retail_comparison_paise"),
+                        "suggested_above_retail": cost_model.get("suggested_above_retail", False),
+                        "review_notes": cost_model.get("review_notes"),
+                    }
+
+                    # 4. Update each product belonging to this unique group
+                    for prod in group["products"]:
+                        is_market_based = (prod.get("pricing_mode") == "MARKET_BASED")
+
+                        if is_market_based:
+                            new_farmer_payout = rec_farmer_listing_unit
+                            amounts = await pricing_engine.selling_amounts(new_farmer_payout)
+                            new_buyer_price = amounts["buyer_price_per_unit_paise"]
+                            commission_paise = amounts["commission_per_unit_paise"]
+                            comm_bps = amounts["commission_percentage_bps"]
+
+                            await self.db["products"].update_one(
+                                {"_id": prod["_id"]},
+                                {
+                                    "$set": {
+                                        "farmer_payout_per_unit_paise": new_farmer_payout,
+                                        "buyer_price_per_unit_paise": new_buyer_price,
+                                        "commission_per_unit_paise": commission_paise,
+                                        "commission_percentage": comm_bps,
+                                        "government_reference_price_paise": raw_wholesale,
+                                        "market_reference_price_paise": wholesale_per_kg,
+                                        "market_price_date": obs_date,
+                                        "is_market_price_stale": is_stale,
+                                        "source_provider": provider,
+                                        "market_reference": rich_market_reference,
+                                        "updated_at": now_utc,
+                                    }
+                                },
+                            )
+                            market_based_updated += 1
+                        else:
+                            # FARMER_SELECTED: strictly preserve the farmer's manually entered selling price
+                            farmer_selected_skipped += 1
+                            new_farmer_payout = prod.get("farmer_payout_per_unit_paise") or prod.get("selling_price_per_unit_paise", 0)
+                            new_buyer_price = prod.get("buyer_price_per_unit_paise", 0)
+                            commission_paise = prod.get("commission_per_unit_paise", 0)
+
+                            await self.db["products"].update_one(
+                                {"_id": prod["_id"]},
+                                {
+                                    "$set": {
+                                        "government_reference_price_paise": raw_wholesale,
+                                        "market_reference_price_paise": wholesale_per_kg,
+                                        "market_price_date": obs_date,
+                                        "is_market_price_stale": is_stale,
+                                        "source_provider": provider,
+                                        "market_reference": rich_market_reference,
+                                        "updated_at": now_utc,
+                                    }
+                                },
+                            )
+
+                        # 5. Append price history entry
+                        price_history_entries.append({
+                            "product_id": str(prod["_id"]),
+                            "product_name": prod.get("product_name"),
+                            "commodity": crop_name,
+                            "district": dist_name,
+                            "market": prod.get("market") or market_obs.get("reference_market"),
+                            "wholesale_reference_price_paise": raw_wholesale,
+                            "retail_reference_price_paise": retail_per_kg,
+                            "farmer_recommended_price_paise": rec_farmer_listing_unit,
+                            "farmer_payout_per_unit_paise": new_farmer_payout,
+                            "buyer_price_per_unit_paise": new_buyer_price,
+                            "commission_per_unit_paise": commission_paise,
+                            "currency": "INR",
+                            "unit": unit_name,
+                            "source_provider": provider,
+                            "source_date": obs_date,
+                            "fetched_at": now_utc,
+                            "effective_date": day,
+                            "pricing_mode": prod.get("pricing_mode", "FARMER_SELECTED"),
+                            "is_fresh": not is_stale,
+                            "is_fallback": market_obs.get("is_fallback", False),
+                            "calculation_version": cost_model.get("cost_breakdown", {}).get("version", 1),
+                        })
                 except Exception as e:
-                    logger.warning("Error refreshing product %s pricing snapshot: %s", prod.get("_id"), e)
+                    logger.warning("Error processing daily pricing for group %s: %s", gk, e)
+
+            # Store price history entries in bulk
+            if price_history_entries and self.db is not None:
+                try:
+                    await self.db["market_price_history"].insert_many(price_history_entries, ordered=False)
+                except Exception as e:
+                    logger.warning("Error storing price history: %s", e)
+
         except Exception as e:
-            logger.warning("Error updating active MARKET_BASED products: %s", e)
+            logger.warning("Error updating active marketplace products: %s", e)
+
+        stats["market_based_updated"] = market_based_updated
+        stats["farmer_selected_skipped"] = farmer_selected_skipped
 
         # -------------------------------------------------------------
         # STAGE 6: Finalize batch run outcome
@@ -637,6 +802,10 @@ class MarketPriceOrchestrator:
                     "successful_at": datetime.now(timezone.utc),
                     "verified_records": len(all_records),
                     "commodities_updated": len(distinct_commodities),
+                    "total_active_products": len(active_products),
+                    "market_based_updated": market_based_updated,
+                    "farmer_selected_skipped": farmer_selected_skipped,
+                    "unique_groups_processed": len(grouped_targets),
                     "primary_records": stats["primary_records"],
                     "secondary_records": stats["secondary_records"],
                     "gemini_records": stats["gemini_records"],
@@ -689,17 +858,20 @@ class MarketPriceOrchestrator:
 
         secondary_status = "active"
 
-        # Distinct commodities in DB
+        # Distinct commodities & products in DB
         commodities_count = 0
         fresh_count = 0
         stale_count = 0
         fallback_count = 0
+        total_active_prods = 0
         latest_source_date = None
 
         if self.db is not None:
             try:
                 distinct_commodities = await self.db["market_prices"].distinct("commodity")
                 commodities_count = len(distinct_commodities)
+                total_active_prods = await self.db["products"].count_documents({"status": "ACTIVE"})
+
                 latest_doc = await self.db["market_prices"].find_one(
                     {"verification_status": "verified"},
                     sort=[("arrival_date", -1)],
@@ -730,11 +902,13 @@ class MarketPriceOrchestrator:
 
         return {
             "status": "ready",
+            "daily_job_status": successful.get("status") if successful else "standby",
             "daily_update_schedule": "08:00 Asia/Kolkata daily",
             "next_scheduled_update": next_update_str,
             "last_attempted_update": attempted.get("started_at").isoformat() if attempted and attempted.get("started_at") else None,
             "last_successful_update": successful.get("successful_at").isoformat() if successful and successful.get("successful_at") else None,
             "last_successful_provider": last_successful_provider,
+            "last_failure_reason": attempted.get("message") if attempted and attempted.get("status") == "failed" else None,
             "primary_provider": "Government AGMARKNET (data.gov.in)",
             "primary_provider_status": primary_status,
             "secondary_provider": "Tamil Nadu Uzhavar Santhai",
@@ -745,10 +919,17 @@ class MarketPriceOrchestrator:
             "api_requests_remaining": agmarknet_usage.get("remaining", settings.MAX_DAILY_API_REQUESTS),
             "remaining_daily_budget": agmarknet_usage.get("remaining", settings.MAX_DAILY_API_REQUESTS),
             "gemini_requests_today": gemini_usage.get("request_count", 0),
+            "total_active_products": total_active_prods,
+            "unique_commodities_processed": successful.get("unique_groups_processed", commodities_count) if successful else commodities_count,
             "commodities_tracked": commodities_count,
             "commodities_updated": commodities_updated,
+            "successful_commodity_updates": commodities_updated,
             "commodities_failed": commodities_failed,
+            "failed_commodity_updates": commodities_failed,
+            "market_based_updated": successful.get("market_based_updated", 0) if successful else 0,
+            "farmer_selected_skipped": successful.get("farmer_selected_skipped", 0) if successful else 0,
             "fresh_prices_count": fresh_count,
+            "cached_prices_count": stale_count,
             "stale_prices_count": stale_count,
             "fallback_prices_count": fallback_count,
             "latest_source_date": latest_source_date or today_str,
