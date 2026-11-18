@@ -82,28 +82,31 @@ class BrevoEmailService:
         Returns True if sent successfully, False otherwise.
         """
         to_name = escape(to_name)
-        subject = "VayalConnect - Email Verification OTP"
+        subject = f"{otp} is your VayalConnect verification code"
         html_content = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; padding: 20px;">
-            <div style="max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
-                <h2 style="color: #2d7a3a;">🌾 VayalConnect / வயல் Connect</h2>
-                <p>Hello {to_name},</p>
-                <p>Your One-Time Password (OTP) for email verification is:</p>
-                <div style="background: #2d7a3a; color: white; font-size: 32px; font-weight: bold;
-                            text-align: center; padding: 20px; border-radius: 8px; letter-spacing: 8px;
-                            margin: 20px 0;">
+        <body style="font-family: Arial, sans-serif; padding: 20px; color: #333; background-color: #f4eee5;">
+            <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 32px; border-radius: 12px; border: 1px solid #e0e0e0;">
+                <h2 style="color: #2d7a3a; margin-top: 0;">🌾 VayalConnect / வயல் Connect</h2>
+                <p style="font-size: 16px;">Hello {to_name},</p>
+                <p style="font-size: 15px; line-height: 1.5;">
+                    Your verification code for VayalConnect registration is:
+                </p>
+                <div style="background: #2d7a3a; color: white; font-size: 34px; font-weight: bold;
+                            text-align: center; padding: 18px 24px; border-radius: 8px; letter-spacing: 10px;
+                            margin: 24px 0; font-family: monospace;">
                     {otp}
                 </div>
-                <p>This OTP is valid for <strong>10 minutes</strong>.</p>
-                <p style="color: #888; font-size: 12px;">
-                    If you did not request this OTP, please ignore this email.
-                    Do not share your OTP with anyone.
+                <p style="font-size: 14px; color: #555;">
+                    Use this one-time code to complete your verification. This code is valid for <strong>10 minutes</strong>.
                 </p>
-                <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-                <p style="color: #888; font-size: 11px;">
+                <p style="color: #d9534f; font-size: 13px; font-weight: 500;">
+                    ⚠️ Security Notice: Do not share this OTP with anyone. VayalConnect staff will never ask for your verification code.
+                </p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+                <p style="color: #888; font-size: 12px; margin-bottom: 0;">
                     நம்ம வயல், நேரடி CONNECT<br>
-                    VayalConnect - Agricultural Marketplace
+                    VayalConnect — Direct Farmer-to-Buyer Marketplace
                 </p>
             </div>
         </body>
@@ -143,21 +146,32 @@ class BrevoEmailService:
     ) -> bool:
         """Send password reset OTP email."""
         to_name = escape(to_name)
-        subject = "VayalConnect - Password Reset OTP"
+        subject = f"{otp} is your VayalConnect password reset code"
         html_content = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; padding: 20px;">
-            <div style="max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 30px; border-radius: 10px;">
-                <h2 style="color: #2d7a3a;">🌾 VayalConnect / வயல் Connect</h2>
-                <p>Hello {to_name},</p>
-                <p>Your OTP for password reset is:</p>
-                <div style="background: #d9534f; color: white; font-size: 32px; font-weight: bold;
-                            text-align: center; padding: 20px; border-radius: 8px; letter-spacing: 8px;
-                            margin: 20px 0;">
+        <body style="font-family: Arial, sans-serif; padding: 20px; color: #333; background-color: #f4eee5;">
+            <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 32px; border-radius: 12px; border: 1px solid #e0e0e0;">
+                <h2 style="color: #2d7a3a; margin-top: 0;">🌾 VayalConnect / வயல் Connect</h2>
+                <p style="font-size: 16px;">Hello {to_name},</p>
+                <p style="font-size: 15px; line-height: 1.5;">
+                    We received a request to reset your password. Your password reset verification code is:
+                </p>
+                <div style="background: #174b2a; color: white; font-size: 34px; font-weight: bold;
+                            text-align: center; padding: 18px 24px; border-radius: 8px; letter-spacing: 10px;
+                            margin: 24px 0; font-family: monospace;">
                     {otp}
                 </div>
-                <p>This OTP is valid for <strong>10 minutes</strong>.</p>
-                <p style="color: #888;">If you did not request a password reset, please secure your account immediately.</p>
+                <p style="font-size: 14px; color: #555;">
+                    Use this one-time code to verify your identity. This code is valid for <strong>10 minutes</strong>.
+                </p>
+                <p style="color: #d9534f; font-size: 13px; font-weight: 500;">
+                    ⚠️ Security Notice: Do not share this OTP with anyone. If you did not request a password reset, please secure your account immediately.
+                </p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+                <p style="color: #888; font-size: 12px; margin-bottom: 0;">
+                    நம்ம வயல், நேரடி CONNECT<br>
+                    VayalConnect — Direct Farmer-to-Buyer Marketplace
+                </p>
             </div>
         </body>
         </html>

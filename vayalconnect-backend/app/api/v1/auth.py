@@ -12,7 +12,8 @@ from app.api.deps import get_current_user, get_request_id
 from app.services.auth_service import AuthService
 from app.schemas.auth import (
     RegisterRequest, RegisterResponse, OTPRequest, OTPVerifyRequest,
-    OTPResponse, OTPVerifyResponse, RoleSelectRequest, RoleSelectResponse,
+    OTPResponse, OTPVerifyResponse, VerifyResetOtpRequest, VerifyResetOtpResponse,
+    RoleSelectRequest, RoleSelectResponse,
     LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
     ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest,
 )
@@ -59,12 +60,35 @@ async def verify_otp(
     request: Request,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
-    """Verify email OTP."""
+    """Verify email OTP for registration or password reset."""
     service = AuthService(db)
+    if getattr(data.purpose, "value", str(data.purpose)) == "PASSWORD_RESET":
+        result = await service.verify_reset_otp(data.email, data.otp)
+        return APIResponse(
+            success=True,
+            data=result,
+            request_id=get_request_id(request),
+        )
     verified = await service.verify_otp(data.email, data.otp, data.purpose.value)
     return APIResponse(
         success=True,
         data=OTPVerifyResponse(verified=verified, message="OTP verified successfully.").model_dump(),
+        request_id=get_request_id(request),
+    )
+
+
+@router.post("/verify-reset-otp", response_model=APIResponse)
+async def verify_reset_otp(
+    data: VerifyResetOtpRequest,
+    request: Request,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    """Verify password reset OTP and return short-lived reset authorization token."""
+    service = AuthService(db)
+    result = await service.verify_reset_otp(data.email, data.otp)
+    return APIResponse(
+        success=True,
+        data=result,
         request_id=get_request_id(request),
     )
 
@@ -156,11 +180,17 @@ async def reset_password(
     request: Request,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
-    """Reset password using OTP."""
+    """Reset password using reset authorization token or OTP."""
     service = AuthService(db)
-    await service.reset_password(data.email, data.otp, data.new_password)
+    await service.reset_password(
+        new_password=data.new_password,
+        confirm_password=data.confirm_password,
+        reset_token=data.reset_token,
+        email=data.email,
+        otp=data.otp,
+    )
     return APIResponse(
         success=True,
-        data={"message": "Password reset successfully."},
+        data={"message": "Password reset successfully. You can now login with your new password."},
         request_id=get_request_id(request),
     )

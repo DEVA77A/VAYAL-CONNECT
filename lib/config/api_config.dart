@@ -45,6 +45,7 @@ class ApiConfig {
   static String get refreshUrl => '$baseUrl/api/v1/auth/refresh';
   static String get logoutUrl => '$baseUrl/api/v1/auth/logout';
   static String get forgotPasswordUrl => '$baseUrl/api/v1/auth/forgot-password';
+  static String get verifyResetOtpUrl => '$baseUrl/api/v1/auth/verify-reset-otp';
   static String get resetPasswordUrl => '$baseUrl/api/v1/auth/reset-password';
 
   // Products endpoints

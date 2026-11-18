@@ -187,10 +187,44 @@ class ForgotPasswordRequest(BaseModel):
         return v.lower().strip()
 
 
-class ResetPasswordRequest(BaseModel):
+class VerifyResetOtpRequest(BaseModel):
     email: str = Field(..., max_length=255)
     otp: str = Field(..., min_length=6, max_length=6)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        return v.lower().strip()
+
+    @field_validator("otp")
+    @classmethod
+    def validate_otp(cls, v: str) -> str:
+        v = v.strip()
+        if not v.isdigit() or len(v) != 6:
+            raise ValueError("OTP must be exactly 6 digits.")
+        return v
+
+
+class VerifyResetOtpResponse(BaseModel):
+    verified: bool
+    reset_token: str
+    message: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: Optional[str] = Field(None, max_length=255)
+    otp: Optional[str] = Field(None, min_length=6, max_length=6)
+    reset_token: Optional[str] = None
     new_password: str = Field(..., min_length=8, max_length=128)
+    confirm_password: Optional[str] = Field(None, min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_request_payload(self):
+        if not self.reset_token and not (self.email and self.otp):
+            raise ValueError("Either reset_token or both email and otp must be provided.")
+        if self.confirm_password is not None and self.confirm_password != self.new_password:
+            raise ValueError("Passwords do not match.")
+        return self
 
     @field_validator("new_password")
     @classmethod
@@ -199,5 +233,5 @@ class ResetPasswordRequest(BaseModel):
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, v: str) -> str:
-        return v.lower().strip()
+    def validate_email(cls, v: Optional[str]) -> Optional[str]:
+        return v.lower().strip() if v else None

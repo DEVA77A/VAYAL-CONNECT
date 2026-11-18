@@ -77,6 +77,27 @@ def create_refresh_token(
     return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
+def create_password_reset_token(
+    user_id: str,
+    email: str,
+    jti: Optional[str] = None,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """Create a short-lived cryptographically signed password reset authorization token."""
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=15)
+    )
+    to_encode = {
+        "sub": user_id,
+        "email": email.lower().strip(),
+        "type": "password_reset",
+        "jti": jti or secrets.token_urlsafe(32),
+        "iat": datetime.now(timezone.utc),
+        "exp": expire,
+    }
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
 def decode_token(token: str) -> Dict[str, Any]:
     """
     Decode and validate a JWT token.

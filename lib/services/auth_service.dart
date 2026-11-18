@@ -239,13 +239,12 @@ class AuthService {
     }
   }
 
-  /// Reset password using OTP
-  Future<String> resetPassword({
+  /// Verify OTP specifically for Password Reset and return the cryptographic reset_token
+  Future<String> verifyResetOtp({
     required String email,
     required String otp,
-    required String newPassword,
   }) async {
-    final uri = Uri.parse(ApiConfig.resetPasswordUrl);
+    final uri = Uri.parse(ApiConfig.verifyResetOtpUrl);
 
     try {
       final response = await _client.post(
@@ -254,8 +253,66 @@ class AuthService {
         body: json.encode({
           'email': email.trim().toLowerCase(),
           'otp': otp.trim(),
-          'new_password': newPassword,
         }),
+      ).timeout(const Duration(seconds: 12));
+
+      final decoded = _decodeResponse(response);
+      if (response.statusCode == 200 && decoded['success'] == true) {
+        final resetToken = decoded['data']?['reset_token'] as String?;
+        if (resetToken != null && resetToken.isNotEmpty) {
+          return resetToken;
+        }
+        throw Exception('Server did not return a valid reset token.');
+      } else {
+        final error = decoded['error'];
+        if (error is Map && error['message'] is String && (error['message'] as String).isNotEmpty) {
+          throw Exception(error['message'] as String);
+        }
+        throw Exception('Invalid or expired OTP. Please try again.');
+      }
+    } on SocketException catch (_) {
+      throw Exception(VayalStrings.errorNoNetwork);
+    } on http.ClientException catch (_) {
+      throw Exception(VayalStrings.errorBackendUnavailable);
+    } on TimeoutException catch (_) {
+      throw Exception(VayalStrings.errorTimeout);
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('OTP verification failed: $e');
+    }
+  }
+
+  /// Reset password using either resetToken OR (email + otp)
+  Future<String> resetPassword({
+    String? resetToken,
+    String? email,
+    String? otp,
+    required String newPassword,
+    String? confirmPassword,
+  }) async {
+    final uri = Uri.parse(ApiConfig.resetPasswordUrl);
+
+    try {
+      final payload = <String, dynamic>{
+        'new_password': newPassword,
+      };
+      if (confirmPassword != null && confirmPassword.isNotEmpty) {
+        payload['confirm_password'] = confirmPassword;
+      }
+      if (resetToken != null && resetToken.isNotEmpty) {
+        payload['reset_token'] = resetToken;
+      }
+      if (email != null && email.isNotEmpty) {
+        payload['email'] = email.trim().toLowerCase();
+      }
+      if (otp != null && otp.isNotEmpty) {
+        payload['otp'] = otp.trim();
+      }
+
+      final response = await _client.post(
+        uri,
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        body: json.encode(payload),
       ).timeout(const Duration(seconds: 12));
 
       final decoded = _decodeResponse(response);

@@ -10,11 +10,13 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 import secrets
 import hashlib
+import re
 import logging
 
+from jose import JWTError
 from app.core.security import (
     hash_password, verify_password,
-    create_access_token, create_refresh_token, decode_token,
+    create_access_token, create_refresh_token, create_password_reset_token, decode_token,
     hash_otp, verify_otp as verify_otp_hash,
 )
 from app.core.config import settings
@@ -98,24 +100,65 @@ class AuthService:
         """
         email = email.lower().strip()
 
-        # Generate OTP (handles cooldown internally)
-        otp = await self.otp_service.create_otp(email, purpose)
+        # For password reset, protect against email enumeration
+        if purpose == "PASSWORD_RESET":
+            user = await self.user_repo.find_by_email(email)
+            if not user:
+                return {
+                    "message": "If an account exists with this email, a verification code has been sent. Check your inbox and spam folder."
+                }
+            name = user.get("name", "User")
+            otp = await self.otp_service.create_otp(email, purpose)
+            accepted = await brevo_service.send_password_reset_email(email, name, otp)
+            if not accepted:
+                await self.otp_service.invalidate(email, purpose)
+                raise EmailDeliveryError()
+            return {
+                "message": "If an account exists with this email, a verification code has been sent. Check your inbox and spam folder."
+            }
 
-        # Find user for name (optional — still send generic response)
+        # Registration OTP
+        otp = await self.otp_service.create_otp(email, purpose)
         user = await self.user_repo.find_by_email(email)
         name = user["name"] if user else "User"
 
-        # Send OTP via Brevo
-        if purpose == "PASSWORD_RESET":
-            accepted = await brevo_service.send_password_reset_email(email, name, otp)
-        else:
-            accepted = await brevo_service.send_otp_email(email, name, otp)
-
+        accepted = await brevo_service.send_otp_email(email, name, otp)
         if not accepted:
             await self.otp_service.invalidate(email, purpose)
             raise EmailDeliveryError()
 
         return {"message": "Email provider accepted the OTP email. Check your inbox and spam folder; delivery may take a few minutes."}
+
+    async def verify_reset_otp(self, email: str, otp: str) -> Dict[str, Any]:
+        """
+        Verify password reset OTP and return short-lived reset authorization token.
+        """
+        email = email.lower().strip()
+        await self.otp_service.verify(email, otp, "PASSWORD_RESET")
+
+        user = await self.user_repo.find_by_email(email)
+        if not user:
+            raise NotFoundError("User")
+
+        user_id = str(user["id"] if isinstance(user, dict) else getattr(user, "id"))
+        jti = secrets.token_urlsafe(32)
+        reset_token = create_password_reset_token(user_id, email, jti=jti)
+
+        user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+        await self.db["password_resets"].insert_one({
+            "jti": jti,
+            "user_id": user_oid,
+            "email": email,
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=15),
+            "is_used": False,
+            "created_at": datetime.now(timezone.utc),
+        })
+
+        return {
+            "verified": True,
+            "reset_token": reset_token,
+            "message": "Code verified successfully. Please enter your new password.",
+        }
 
     async def verify_otp(self, email: str, otp: str, purpose: str) -> bool:
         """Verify OTP and mark email as verified if registration OTP."""
@@ -302,20 +345,99 @@ class AuthService:
             entity_id=user_id,
         )
 
-    async def reset_password(self, email: str, otp: str, new_password: str):
-        """Reset password using OTP."""
-        email = email.lower().strip()
+    async def reset_password(
+        self,
+        new_password: str,
+        confirm_password: Optional[str] = None,
+        reset_token: Optional[str] = None,
+        email: Optional[str] = None,
+        otp: Optional[str] = None,
+    ):
+        """Reset password using reset authorization token or legacy OTP."""
+        # Upfront password policy verification
+        if len(new_password) < 8:
+            raise ValidationError("Password must be at least 8 characters long.")
+        if len(new_password.encode("utf-8")) > 72:
+            raise ValidationError("Password cannot exceed 72 bytes.")
+        if not re.search(r"[A-Z]", new_password):
+            raise ValidationError("Password must contain at least one uppercase letter.")
+        if not re.search(r"[0-9]", new_password):
+            raise ValidationError("Password must contain at least one number.")
+        if confirm_password is not None and new_password != confirm_password:
+            raise ValidationError("Passwords do not match.")
 
-        # Verify OTP
-        await self.otp_service.verify(email, otp, "PASSWORD_RESET")
+        user_id = None
+        user_email = None
 
-        user = await self.user_repo.find_by_email(email)
+        if reset_token:
+            try:
+                payload = decode_token(reset_token)
+            except Exception:
+                raise InvalidTokenError()
+
+            if payload.get("type") != "password_reset":
+                raise UnauthorizedError("Invalid token type for password reset.")
+
+            jti = payload.get("jti")
+            user_id = payload.get("sub")
+            user_email = payload.get("email")
+
+            if not jti or not user_id:
+                raise InvalidTokenError()
+
+            # Atomically claim the reset authorization record
+            record = await self.db["password_resets"].find_one_and_update(
+                {
+                    "jti": jti,
+                    "is_used": False,
+                    "expires_at": {"$gt": datetime.now(timezone.utc)},
+                },
+                {"$set": {"is_used": True, "used_at": datetime.now(timezone.utc)}},
+            )
+            if not record:
+                raise UnauthorizedError("Password reset authorization has expired or already been used.")
+
+        elif email and otp:
+            user_email = email.lower().strip()
+            await self.otp_service.verify(user_email, otp, "PASSWORD_RESET")
+            user = await self.user_repo.find_by_email(user_email)
+            if not user:
+                raise NotFoundError("User")
+            user_id = user["id"] if isinstance(user, dict) else getattr(user, "id")
+        else:
+            raise ValidationError("Either reset_token or email and otp must be provided.")
+
+        user = await self.user_repo.find_by_id(user_id)
         if not user:
             raise NotFoundError("User")
 
         new_hash = hash_password(new_password)
-        await self.user_repo.update(user["id"], {"password_hash": new_hash})
-        await self.logout(user["id"])
+        await self.user_repo.update(user_id, {"password_hash": new_hash})
+
+        # Revoke all active user sessions & refresh tokens
+        await self.logout(user_id)
+
+        # Invalidate any outstanding reset tokens and OTPs
+        user_oid = ObjectId(user_id) if ObjectId.is_valid(user_id) else user_id
+        if user_email:
+            await self.otp_service.invalidate(user_email, "PASSWORD_RESET")
+            await self.db["password_resets"].update_many(
+                {"user_id": user_oid, "is_used": False},
+                {"$set": {"is_used": True}},
+            )
+
+        actor_role = user.get("role", "USER") if isinstance(user, dict) else getattr(user, "role", "USER")
+        await self.audit_service.log(
+            actor_id=user_id,
+            actor_role=actor_role,
+            action="PASSWORD_RESET_COMPLETED",
+            entity_type="user",
+            entity_id=user_id,
+        )
+        return {
+            "success": True,
+            "message": "Password reset successfully. Please sign in with your new password.",
+        }
 
     async def _store_refresh_token(self, user_id: str, token: str):
         """Store a hashed refresh token."""

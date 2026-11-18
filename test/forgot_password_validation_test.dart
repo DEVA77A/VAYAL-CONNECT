@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -11,7 +12,7 @@ import 'package:vayalconnect_flutter/utils/localization.dart';
 void main() {
   tearDown(() => VayalStrings.setLanguage(false));
 
-  testWidgets('forgot password sheet validates password policy and confirmation',
+  testWidgets('forgot password 3-step flow validates OTP autofill, password policy and confirmation',
       (tester) async {
     final mockAuth = AuthService(
       client: MockClient((r) async {
@@ -19,6 +20,30 @@ void main() {
           return http.Response(
               jsonEncode({'success': true, 'data': {'message': 'OTP sent.'}}),
               200);
+        }
+        if (r.url.path.endsWith('/verify-reset-otp')) {
+          final body = jsonDecode(r.body);
+          if (body['otp'] == '123456') {
+            return http.Response(
+                jsonEncode({
+                  'success': true,
+                  'data': {
+                    'verified': true,
+                    'reset_token': 'mock.crypto.reset.token',
+                    'message': 'Code verified.'
+                  }
+                }),
+                200);
+          }
+          return http.Response(
+              jsonEncode({
+                'success': false,
+                'error': {
+                  'code': 'INVALID_OTP',
+                  'message': 'Invalid or expired OTP entered.'
+                }
+              }),
+              400);
         }
         if (r.url.path.endsWith('/reset-password')) {
           final body = jsonDecode(r.body);
@@ -66,31 +91,43 @@ void main() {
 
     expect(find.text('Reset Password'), findsOneWidget);
 
-    // 2. Request OTP
+    // 2. Request OTP (Step 1)
     final emailField = find.widgetWithText(TextField, 'Phone or Email');
     await tester.enterText(emailField, 'farmer@example.com');
     await tester.tap(find.text('Send OTP'));
     await tester.pumpAndSettle();
 
-    // 3. OTP and Password fields should now appear
+    // 3. Step 2: OTP screen with AutofillHints.oneTimeCode & Paste code helper
+    expect(find.text('Verify Code'), findsNWidgets(2));
     expect(find.text('Enter OTP'), findsOneWidget);
-    expect(find.text('New Password'), findsOneWidget);
-    expect(find.text('Confirm Password'), findsOneWidget);
+    expect(find.text('Paste code'), findsOneWidget);
 
+    final otpWidget = tester.widget<TextField>(find.widgetWithText(TextField, 'Enter OTP'));
+    expect(otpWidget.autofillHints, contains(AutofillHints.oneTimeCode));
+    expect(otpWidget.keyboardType, equals(TextInputType.number));
+
+    // Test invalid OTP (< 6 digits)
     final otpField = find.widgetWithText(TextField, 'Enter OTP');
-    final newPassField = find.widgetWithText(TextField, 'New Password');
-    final confirmPassField = find.widgetWithText(TextField, 'Confirm Password');
-
-    // 4. Test invalid OTP (< 6 digits)
     await tester.enterText(otpField, '123');
-    await tester.enterText(newPassField, 'ValidPass1');
-    await tester.enterText(confirmPassField, 'ValidPass1');
-    await tester.tap(find.text('Confirm Reset'));
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Verify Code'));
     await tester.pumpAndSettle();
     expect(find.text('Enter a valid 6-digit OTP.'), findsOneWidget);
 
-    // 5. Test lowercase-only password ('mypassword')
+    // Test valid OTP (123456)
     await tester.enterText(otpField, '123456');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Verify Code'));
+    await tester.pumpAndSettle();
+
+    // 4. Step 3: New Password and Confirm Password screen
+    expect(find.text('Set New Password'), findsOneWidget);
+    expect(find.text('New Password'), findsOneWidget);
+    expect(find.text('Confirm Password'), findsOneWidget);
+    expect(find.text('Password Requirements:'), findsOneWidget);
+
+    final newPassField = find.widgetWithText(TextField, 'New Password');
+    final confirmPassField = find.widgetWithText(TextField, 'Confirm Password');
+
+    // 5. Test lowercase-only password ('mypassword')
     await tester.enterText(newPassField, 'mypassword');
     await tester.enterText(confirmPassField, 'mypassword');
     await tester.tap(find.text('Confirm Reset'));
@@ -138,11 +175,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // Sheet should close and success snackbar should show
-    expect(find.text('Reset Password'), findsNothing);
-    expect(find.text('Password reset successfully! Please login.'),
+    expect(find.text('Set New Password'), findsNothing);
+    expect(find.text('Password reset successfully! Please sign in.'),
         findsOneWidget);
 
     mockAuth.dispose();
   });
 }
-

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/services.dart';
 import '../widgets/brand_widgets.dart';
 import '../utils/commerce_strings.dart';
 import '../utils/form_examples.dart';
@@ -230,11 +232,15 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     final otpController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
-    bool otpSent = false;
+
+    int currentStep = 1; // 1 = Email, 2 = Verify OTP, 3 = New Password
+    String? resetToken;
     bool isSubmitting = false;
     bool obscureNewPassword = true;
     bool obscureConfirmPassword = true;
     String? dialogError;
+    Timer? resendTimer;
+    int resendCountdown = 0;
 
     String? validateNewPasswordPolicy(String pwd) {
       if (pwd.length < 8) {
@@ -253,6 +259,20 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       return null;
     }
 
+    void startCountdown(void Function(void Function()) setSheetState) {
+      resendTimer?.cancel();
+      resendCountdown = 60;
+      resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (resendCountdown > 1) {
+          setSheetState(() => resendCountdown--);
+        } else {
+          timer.cancel();
+          resendTimer = null;
+          setSheetState(() => resendCountdown = 0);
+        }
+      });
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -263,255 +283,486 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final newPass = newPasswordController.text;
+            final has8Chars = newPass.length >= 8;
+            final hasUpper = RegExp(r'[A-Z]').hasMatch(newPass);
+            final hasDigit = RegExp(r'[0-9]').hasMatch(newPass);
+
             return ConstrainedBox(
-                constraints: BoxConstraints(
-                    maxHeight: MediaQuery.sizeOf(context).height * 0.9),
-                child: SingleChildScrollView(
-                    child: Padding(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+              ),
+              child: SingleChildScrollView(
+                child: Padding(
                   padding: EdgeInsets.only(
                     left: 20,
                     right: 20,
                     top: 20,
                     bottom: MediaQuery.of(context).viewInsets.bottom + 24,
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SheetTitle(
-                          title: VayalStrings.resetPasswordTitle,
-                          icon: Icons.lock_reset,
-                          onClose: () => Navigator.pop(ctx)),
-                      const SizedBox(height: 6),
-                      Text(
-                        VayalStrings.resetPasswordSubtitle,
-                        style: const TextStyle(
-                            fontSize: 13, color: AppTheme.textSecondary),
-                      ),
-                      const SizedBox(height: 16),
-                      if (dialogError != null)
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFEBEE),
-                            borderRadius: BorderRadius.circular(8),
+                  child: AutofillGroup(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SheetTitle(
+                          title: currentStep == 3
+                              ? S.t('Set New Password')
+                              : currentStep == 2
+                                  ? S.t('Verify Code')
+                                  : VayalStrings.resetPasswordTitle,
+                          icon: currentStep == 3
+                              ? Icons.lock_open
+                              : currentStep == 2
+                                  ? Icons.mark_email_read_outlined
+                                  : Icons.lock_reset,
+                          onClose: () {
+                            resendTimer?.cancel();
+                            Navigator.pop(ctx);
+                          },
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          currentStep == 3
+                              ? S.t('Create a new strong password for your account.')
+                              : currentStep == 2
+                                  ? '${S.t("Enter the 6-digit code sent to")}\n${emailController.text.trim()}'
+                                  : VayalStrings.resetPasswordSubtitle,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppTheme.textSecondary,
                           ),
-                          child: Text(
-                            S.message(dialogError!),
+                        ),
+                        const SizedBox(height: 16),
+                        if (dialogError != null)
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFEBEE),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              S.message(dialogError!),
+                              style: const TextStyle(
+                                color: AppTheme.errorRed,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        if (currentStep == 1) ...[
+                          TextField(
+                            controller: emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            autofillHints: const [AutofillHints.email],
+                            onChanged: (_) {
+                              if (dialogError != null) {
+                                setSheetState(() => dialogError = null);
+                              }
+                            },
+                            decoration: InputDecoration(
+                              labelText: VayalStrings.phoneOrEmail,
+                              prefixIcon:
+                                  const Icon(Icons.email_outlined, size: 20),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          ElevatedButton(
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    final email = emailController.text.trim();
+                                    if (email.isEmpty) {
+                                      setSheetState(() => dialogError =
+                                          VayalStrings.emailRequired);
+                                      return;
+                                    }
+                                    setSheetState(() {
+                                      isSubmitting = true;
+                                      dialogError = null;
+                                    });
+                                    try {
+                                      await _authService.forgotPassword(email);
+                                      startCountdown(setSheetState);
+                                      setSheetState(() {
+                                        currentStep = 2;
+                                        isSubmitting = false;
+                                      });
+                                    } catch (e) {
+                                      setSheetState(() {
+                                        dialogError = e
+                                            .toString()
+                                            .replaceFirst('Exception: ', '');
+                                        isSubmitting = false;
+                                      });
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: isSubmitting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : Text(VayalStrings.sendOtp),
+                          ),
+                        ] else if (currentStep == 2) ...[
+                          TextField(
+                            controller: otpController,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            autofillHints: const [AutofillHints.oneTimeCode],
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
-                                color: AppTheme.errorRed, fontSize: 12),
-                          ),
-                        ),
-                      TextField(
-                        controller: emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        enabled: !otpSent,
-                        onChanged: (_) {
-                          if (dialogError != null) {
-                            setSheetState(() => dialogError = null);
-                          }
-                        },
-                        decoration: InputDecoration(
-                          labelText: VayalStrings.phoneOrEmail,
-                          prefixIcon:
-                              const Icon(Icons.email_outlined, size: 20),
-                        ),
-                      ),
-                      if (otpSent) ...[
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: otpController,
-                          keyboardType: TextInputType.number,
-                          maxLength: 6,
-                          onChanged: (_) {
-                            if (dialogError != null) {
-                              setSheetState(() => dialogError = null);
-                            }
-                          },
-                          decoration: InputDecoration(
-                            labelText: VayalStrings.enterOtp,
-                            prefixIcon: const Icon(Icons.security, size: 20),
-                            hintText: FormExamples.hint('otp'),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: newPasswordController,
-                          obscureText: obscureNewPassword,
-                          onChanged: (_) {
-                            if (dialogError != null) {
-                              setSheetState(() => dialogError = null);
-                            }
-                          },
-                          decoration: InputDecoration(
-                            labelText: VayalStrings.newPassword,
-                            prefixIcon:
-                                const Icon(Icons.lock_outline, size: 20),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                obscureNewPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                size: 20,
-                                color: AppTheme.textSecondary,
-                              ),
-                              onPressed: () => setSheetState(() =>
-                                  obscureNewPassword = !obscureNewPassword),
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 8,
+                            ),
+                            onChanged: (_) {
+                              if (dialogError != null) {
+                                setSheetState(() => dialogError = null);
+                              }
+                            },
+                            decoration: InputDecoration(
+                              labelText: VayalStrings.enterOtp,
+                              counterText: '',
+                              prefixIcon:
+                                  const Icon(Icons.security, size: 20),
+                              hintText: '••••••',
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: confirmPasswordController,
-                          obscureText: obscureConfirmPassword,
-                          onChanged: (_) {
-                            if (dialogError != null) {
-                              setSheetState(() => dialogError = null);
-                            }
-                          },
-                          decoration: InputDecoration(
-                            labelText: VayalStrings.confirmPassword,
-                            prefixIcon:
-                                const Icon(Icons.lock_outline, size: 20),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                obscureConfirmPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                size: 20,
-                                color: AppTheme.textSecondary,
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              TextButton.icon(
+                                icon: const Icon(Icons.content_paste, size: 16),
+                                label: Text(S.t('Paste code')),
+                                onPressed: () async {
+                                  try {
+                                    final data = await Clipboard.getData(
+                                        Clipboard.kTextPlain);
+                                    final text = data?.text
+                                            ?.replaceAll(RegExp(r'\D'), '') ??
+                                        '';
+                                    if (text.length == 6) {
+                                      setSheetState(() {
+                                        otpController.text = text;
+                                        dialogError = null;
+                                      });
+                                    } else {
+                                      setSheetState(() {
+                                        dialogError = S.t(
+                                            'No 6-digit code found on clipboard.');
+                                      });
+                                    }
+                                  } catch (_) {}
+                                },
                               ),
-                              onPressed: () => setSheetState(() =>
-                                  obscureConfirmPassword =
-                                      !obscureConfirmPassword),
+                              if (resendCountdown > 0)
+                                Text(
+                                  '${S.t("Resend in")} ${resendCountdown}s',
+                                  style: const TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 13,
+                                  ),
+                                )
+                              else
+                                TextButton(
+                                  onPressed: isSubmitting
+                                      ? null
+                                      : () async {
+                                          setSheetState(() {
+                                            isSubmitting = true;
+                                            dialogError = null;
+                                          });
+                                          try {
+                                            await _authService.forgotPassword(
+                                                emailController.text.trim());
+                                            startCountdown(setSheetState);
+                                            setSheetState(() =>
+                                                isSubmitting = false);
+                                          } catch (e) {
+                                            setSheetState(() {
+                                              dialogError = e
+                                                  .toString()
+                                                  .replaceFirst(
+                                                      'Exception: ', '');
+                                              isSubmitting = false;
+                                            });
+                                          }
+                                        },
+                                  child: Text(S.t('Resend OTP')),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    final otp = otpController.text.trim();
+                                    if (otp.length != 6 ||
+                                        !RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
+                                      setSheetState(() {
+                                        dialogError =
+                                            S.t('Enter a valid 6-digit OTP.');
+                                      });
+                                      return;
+                                    }
+                                    setSheetState(() {
+                                      isSubmitting = true;
+                                      dialogError = null;
+                                    });
+                                    try {
+                                      final token =
+                                          await _authService.verifyResetOtp(
+                                        email: emailController.text.trim(),
+                                        otp: otp,
+                                      );
+                                      setSheetState(() {
+                                        resetToken = token;
+                                        currentStep = 3;
+                                        isSubmitting = false;
+                                        dialogError = null;
+                                      });
+                                    } catch (e) {
+                                      setSheetState(() {
+                                        dialogError = e
+                                            .toString()
+                                            .replaceFirst('Exception: ', '');
+                                        isSubmitting = false;
+                                      });
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: isSubmitting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : Text(S.t('Verify Code')),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                currentStep = 1;
+                                dialogError = null;
+                              });
+                            },
+                            child: Text(S.t('Change email address')),
+                          ),
+                        ] else ...[
+                          TextField(
+                            controller: newPasswordController,
+                            obscureText: obscureNewPassword,
+                            autofillHints: const [AutofillHints.newPassword],
+                            onChanged: (_) {
+                              setSheetState(() {});
+                            },
+                            decoration: InputDecoration(
+                              labelText: VayalStrings.newPassword,
+                              prefixIcon:
+                                  const Icon(Icons.lock_outline, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  obscureNewPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 20,
+                                  color: AppTheme.textSecondary,
+                                ),
+                                onPressed: () => setSheetState(() =>
+                                    obscureNewPassword = !obscureNewPassword),
+                              ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: confirmPasswordController,
+                            obscureText: obscureConfirmPassword,
+                            autofillHints: const [AutofillHints.newPassword],
+                            onChanged: (_) {
+                              setSheetState(() {});
+                            },
+                            decoration: InputDecoration(
+                              labelText: VayalStrings.confirmPassword,
+                              prefixIcon:
+                                  const Icon(Icons.lock_outline, size: 20),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  obscureConfirmPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  size: 20,
+                                  color: AppTheme.textSecondary,
+                                ),
+                                onPressed: () => setSheetState(() =>
+                                    obscureConfirmPassword =
+                                        !obscureConfirmPassword),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Live password policy checklist
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.sandBeige),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  S.t('Password Requirements:'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                _buildPasswordPolicyRow(
+                                  S.t('At least 8 characters'),
+                                  has8Chars,
+                                ),
+                                _buildPasswordPolicyRow(
+                                  S.t('At least one uppercase letter (A-Z)'),
+                                  hasUpper,
+                                ),
+                                _buildPasswordPolicyRow(
+                                  S.t('At least one number (0-9)'),
+                                  hasDigit,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          ElevatedButton(
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    final pError = validateNewPasswordPolicy(
+                                        newPasswordController.text);
+                                    if (pError != null) {
+                                      setSheetState(() => dialogError = pError);
+                                      return;
+                                    }
+                                    if (confirmPasswordController.text.isEmpty) {
+                                      setSheetState(() => dialogError =
+                                          VayalStrings.pleaseConfirmPassword);
+                                      return;
+                                    }
+                                    if (newPasswordController.text !=
+                                        confirmPasswordController.text) {
+                                      setSheetState(() => dialogError =
+                                          VayalStrings.passwordsDoNotMatch);
+                                      return;
+                                    }
+
+                                    setSheetState(() {
+                                      isSubmitting = true;
+                                      dialogError = null;
+                                    });
+
+                                    try {
+                                      await _authService.resetPassword(
+                                        resetToken: resetToken,
+                                        newPassword: newPasswordController.text,
+                                        confirmPassword:
+                                            confirmPasswordController.text,
+                                      );
+                                      resendTimer?.cancel();
+                                      if (!context.mounted) return;
+                                      Navigator.pop(ctx);
+                                      _emailPhoneController.text =
+                                          emailController.text.trim();
+                                      _passwordController.clear();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(S.t(
+                                              'Password reset successfully! Please sign in.')),
+                                          backgroundColor: AppTheme.successGreen,
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      setSheetState(() {
+                                        dialogError = e
+                                            .toString()
+                                            .replaceFirst('Exception: ', '');
+                                        isSubmitting = false;
+                                      });
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: isSubmitting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : Text(VayalStrings.resetPasswordBtn),
+                          ),
+                        ],
                       ],
-                      const SizedBox(height: 18),
-                      ElevatedButton(
-                        onPressed: isSubmitting
-                            ? null
-                            : () async {
-                                final email = emailController.text.trim();
-                                if (email.isEmpty) {
-                                  setSheetState(() =>
-                                      dialogError = VayalStrings.emailRequired);
-                                  return;
-                                }
-
-                                setSheetState(() {
-                                  isSubmitting = true;
-                                  dialogError = null;
-                                });
-
-                                if (!otpSent) {
-                                  try {
-                                    await _authService.forgotPassword(email);
-                                    setSheetState(() {
-                                      otpSent = true;
-                                      isSubmitting = false;
-                                    });
-                                  } catch (e) {
-                                    setSheetState(() {
-                                      dialogError = e
-                                          .toString()
-                                          .replaceFirst('Exception: ', '');
-                                      isSubmitting = false;
-                                    });
-                                  }
-                                } else {
-                                  final otp = otpController.text.trim();
-                                  final newPass = newPasswordController.text;
-                                  final confirmPass =
-                                      confirmPasswordController.text;
-
-                                  if (otp.length != 6 ||
-                                      !RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
-                                    setSheetState(() {
-                                      isSubmitting = false;
-                                      dialogError = S.t('Enter a valid 6-digit OTP.');
-                                    });
-                                    return;
-                                  }
-
-                                  final policyError =
-                                      validateNewPasswordPolicy(newPass);
-                                  if (policyError != null) {
-                                    setSheetState(() {
-                                      isSubmitting = false;
-                                      dialogError = policyError;
-                                    });
-                                    return;
-                                  }
-
-                                  if (confirmPass.isEmpty) {
-                                    setSheetState(() {
-                                      isSubmitting = false;
-                                      dialogError =
-                                          VayalStrings.pleaseConfirmPassword;
-                                    });
-                                    return;
-                                  }
-
-                                  if (newPass != confirmPass) {
-                                    setSheetState(() {
-                                      isSubmitting = false;
-                                      dialogError =
-                                          VayalStrings.passwordsDoNotMatch;
-                                    });
-                                    return;
-                                  }
-
-                                  try {
-                                    await _authService.resetPassword(
-                                      email: email,
-                                      otp: otp,
-                                      newPassword: newPass,
-                                    );
-                                    if (!context.mounted) return;
-                                    Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(S.t(
-                                            'Password reset successfully! Please login.')),
-                                        backgroundColor: AppTheme.successGreen,
-                                      ),
-                                    );
-                                  } catch (e) {
-                                    setSheetState(() {
-                                      dialogError = e
-                                          .toString()
-                                          .replaceFirst('Exception: ', '');
-                                      isSubmitting = false;
-                                    });
-                                  }
-                                }
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: isSubmitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : Text(otpSent
-                                ? VayalStrings.resetPasswordBtn
-                                : VayalStrings.sendOtp),
-                      ),
-                    ],
+                    ),
                   ),
-                )));
+                ),
+              ),
+            );
           },
         );
       },
+    ).whenComplete(() => resendTimer?.cancel());
+  }
+
+  Widget _buildPasswordPolicyRow(String label, bool satisfied) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(
+            satisfied ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 15,
+            color: satisfied ? AppTheme.successGreen : AppTheme.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color:
+                    satisfied ? AppTheme.successGreen : AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -920,115 +1171,196 @@ class _AuthGatewayScreenState extends State<AuthGatewayScreen> {
     bool verified = false;
     bool roleAssigned = false;
     String? error;
-    DateTime resendAfter = DateTime.now().add(const Duration(seconds: 60));
+    int resendCountdown = 60;
+    Timer? countdownTimer;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-          builder: (ctx, update) => AlertDialog(
-                title: Text(S.t('Email OTP Verification')),
-                scrollable: true,
-                content: Column(mainAxisSize: MainAxisSize.min, children: [
+        builder: (ctx, update) {
+          countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (t) {
+            if (resendCountdown > 1) {
+              update(() => resendCountdown--);
+            } else {
+              t.cancel();
+              countdownTimer = null;
+              update(() => resendCountdown = 0);
+            }
+          });
+
+          return AlertDialog(
+            title: Text(S.t('Email OTP Verification')),
+            scrollable: true,
+            content: AutofillGroup(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   Text(
-                      '${S.t('Email provider accepted the OTP email.')}\n$email\n${S.t('Check your inbox and spam folder. Delivery may take a few minutes.')}'),
+                    '${S.t("Verification code sent to:")}\n$email\n${S.t("Check your inbox and spam folder.")}',
+                    style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                  ),
+                  const SizedBox(height: 12),
                   if (error != null)
-                    Text(S.message(error!),
-                        style: const TextStyle(color: AppTheme.errorRed)),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFEBEE),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        S.message(error!),
+                        style: const TextStyle(color: AppTheme.errorRed, fontSize: 12),
+                      ),
+                    ),
                   TextField(
-                      controller: otpController,
-                      enabled: !busy && !verified,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      decoration: InputDecoration(
-                          labelText: VayalStrings.enterOtp,
-                          hintText: FormExamples.hint('otp'))),
-                ]),
-                actions: [
-                  TextButton(
-                      onPressed: busy ? null : () => Navigator.pop(ctx),
-                      child: Text(S.t('Cancel'))),
-                  TextButton(
-                      onPressed: busy || verified
-                          ? null
-                          : () async {
-                              if (DateTime.now().isBefore(resendAfter)) {
-                                update(() => error = S.t(
-                                    'Please wait 60 seconds between OTP requests.'));
-                                return;
-                              }
-                              update(() {
-                                busy = true;
-                                error = null;
-                              });
-                              try {
-                                await _authService.requestOtp(email);
-                                resendAfter = DateTime.now()
-                                    .add(const Duration(seconds: 60));
-                              } catch (e) {
-                                if (ctx.mounted) {
-                                  update(() => error = e
-                                      .toString()
-                                      .replaceFirst('Exception: ', ''));
-                                }
-                              } finally {
-                                if (ctx.mounted) update(() => busy = false);
-                              }
-                            },
-                      child: Text(S.t('Resend OTP'))),
-                  ElevatedButton(
-                      onPressed: busy
-                          ? null
-                          : () async {
-                              if (!verified &&
-                                  !RegExp(r'^\d{6}$')
-                                      .hasMatch(otpController.text.trim())) {
-                                update(() =>
-                                    error = S.t('Enter a valid 6-digit OTP.'));
-                                return;
-                              }
-                              update(() {
-                                busy = true;
-                                error = null;
-                              });
-                              try {
-                                if (!verified) {
-                                  if (!await _authService.verifyOtp(
-                                      email, otpController.text.trim())) {
-                                    throw Exception(S.t(
-                                        'Email verification was not confirmed.'));
+                    controller: otpController,
+                    enabled: !busy && !verified,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    autofillHints: const [AutofillHints.oneTimeCode],
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 8,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: VayalStrings.enterOtp,
+                      counterText: '',
+                      prefixIcon: const Icon(Icons.security, size: 20),
+                      hintText: '••••••',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.content_paste, size: 16),
+                        label: Text(S.t('Paste code')),
+                        onPressed: busy || verified
+                            ? null
+                            : () async {
+                                try {
+                                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                                  final text = data?.text?.replaceAll(RegExp(r'\D'), '') ?? '';
+                                  if (text.length == 6) {
+                                    update(() {
+                                      otpController.text = text;
+                                      error = null;
+                                    });
+                                  } else {
+                                    update(() {
+                                      error = S.t('No 6-digit code found on clipboard.');
+                                    });
                                   }
-                                  verified = true;
-                                }
-                                final initial =
-                                    await _authService.login(email, password);
-                                if (!roleAssigned &&
-                                    !initial.user.hasAssignedRole) {
-                                  await _authService.selectRole(role);
-                                  roleAssigned = true;
-                                }
-                                final session =
-                                    await _authService.login(email, password);
-                                if (!ctx.mounted) return;
-                                Navigator.pop(ctx);
-                                _navigateToRoleHome(session.user.role);
-                              } catch (e) {
-                                if (ctx.mounted) {
-                                  update(() => error = e
-                                      .toString()
-                                      .replaceFirst('Exception: ', ''));
-                                }
-                              } finally {
-                                if (ctx.mounted) update(() => busy = false);
-                              }
-                            },
-                      child: Text(busy
-                          ? S.t('Please wait...')
-                          : verified
-                              ? S.t('Continue')
-                              : S.t('Verify'))),
+                                } catch (_) {}
+                              },
+                      ),
+                      if (resendCountdown > 0)
+                        Text(
+                          '${S.t("Resend in")} ${resendCountdown}s',
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                        )
+                      else
+                        TextButton(
+                          onPressed: busy || verified
+                              ? null
+                              : () async {
+                                  update(() {
+                                    busy = true;
+                                    error = null;
+                                  });
+                                  try {
+                                    await _authService.requestOtp(email);
+                                    resendCountdown = 60;
+                                    countdownTimer?.cancel();
+                                    countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+                                      if (resendCountdown > 1) {
+                                        update(() => resendCountdown--);
+                                      } else {
+                                        t.cancel();
+                                        countdownTimer = null;
+                                        update(() => resendCountdown = 0);
+                                      }
+                                    });
+                                  } catch (e) {
+                                    if (ctx.mounted) {
+                                      update(() => error = e.toString().replaceFirst('Exception: ', ''));
+                                    }
+                                  } finally {
+                                    if (ctx.mounted) update(() => busy = false);
+                                  }
+                                },
+                          child: Text(S.t('Resend OTP')),
+                        ),
+                    ],
+                  ),
                 ],
-              )),
-    );
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () {
+                        countdownTimer?.cancel();
+                        Navigator.pop(ctx);
+                      },
+                child: Text(S.t('Cancel')),
+              ),
+              ElevatedButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        if (!verified && !RegExp(r'^\d{6}$').hasMatch(otpController.text.trim())) {
+                          update(() => error = S.t('Enter a valid 6-digit OTP.'));
+                          return;
+                        }
+                        update(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
+                          if (!verified) {
+                            if (!await _authService.verifyOtp(email, otpController.text.trim())) {
+                              throw Exception(S.t('Email verification was not confirmed.'));
+                            }
+                            verified = true;
+                          }
+                          final initial = await _authService.login(email, password);
+                          if (!roleAssigned && !initial.user.hasAssignedRole) {
+                            await _authService.selectRole(role);
+                            roleAssigned = true;
+                          }
+                          final session = await _authService.login(email, password);
+                          countdownTimer?.cancel();
+                          if (!ctx.mounted) return;
+                          Navigator.pop(ctx);
+                          _navigateToRoleHome(session.user.role);
+                        } catch (e) {
+                          if (ctx.mounted) {
+                            update(() => error = e.toString().replaceFirst('Exception: ', ''));
+                          }
+                        } finally {
+                          if (ctx.mounted) update(() => busy = false);
+                        }
+                      },
+                child: Text(busy
+                    ? S.t('Please wait...')
+                    : verified
+                        ? S.t('Continue')
+                        : S.t('Verify')),
+              ),
+            ],
+          );
+        },
+      ),
+    ).then((_) => countdownTimer?.cancel());
   }
 
   void _showDemoPreviewSheet(SessionManager session) {
