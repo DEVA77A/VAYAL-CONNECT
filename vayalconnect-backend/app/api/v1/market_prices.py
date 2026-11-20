@@ -17,6 +17,9 @@ from app.repositories.pricing import PricingRepository
 from app.services.pricing_service import PricingEngine
 from app.integrations.groq_market import market_price_provider
 from app.services.market_discovery import MarketDiscoveryService
+from app.services.farmer_cost_service import FarmerCostService
+from app.utils.tn_locations import resolve_tn_location, is_valid_tn_location
+from app.utils.money import format_rupees
 from app.services.market_orchestrator import MarketPriceOrchestrator
 from app.schemas.market_price import (
     MarketPriceItem,
@@ -154,28 +157,56 @@ DEFAULT_DISTRICTS = [
 @router.get("/search", response_model=APIResponse)
 async def search_market_prices(
     request: Request,
-    query: str = Query(..., min_length=1, max_length=200, description="Crop name in English or Tamil"),
+    query: Optional[str] = Query(None, max_length=200, description="Crop name in English or Tamil"),
+    commodity: Optional[str] = Query(None, max_length=200, description="Crop name"),
+    location: Optional[str] = Query(None, max_length=200, description="Farm or market location"),
+    district: Optional[str] = Query(None, max_length=100, description="District name"),
+    market: Optional[str] = Query(None, max_length=100, description="Market name"),
     state: Optional[str] = Query("Tamil Nadu", max_length=100),
-    district: Optional[str] = Query(None, max_length=100),
-    market: Optional[str] = Query(None, max_length=100),
+    variety: Optional[str] = Query(None, max_length=100),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     """
     Unified market price search across all roles (Admin, Farmer, Buyer).
-    Translates bilingual query, ensures today's verified price via orchestrator,
-    and returns standardized price per KG.
+    Requires BOTH crop name AND farm/market location.
+    Translates bilingual query, resolves location hierarchy, fetches or retrieves
+    verified market price, and calculates farmer selling recommendation.
     """
-    q_clean = query.strip()
-    canonical = BILINGUAL_CROPS.get(q_clean.lower(), q_clean)
+    raw_crop = (commodity or query or "").strip()
+    if not raw_crop:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Crop name is required.",
+        )
 
-    # 1. On-demand discovery through orchestrator if today's price not in cache
+    raw_location = (location or district or market or "").strip()
+    if not raw_location:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Both crop name and farm/market location are required for market price search.",
+        )
+
+    # Validate location for Tamil Nadu coverage
+    res_district, res_market, is_valid = resolve_tn_location(raw_location)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unrecognized location '{raw_location}'. Please select a valid Tamil Nadu district, town, or market.",
+        )
+
+    canonical = BILINGUAL_CROPS.get(raw_crop.lower(), raw_crop)
+    target_district = res_district if (res_district and res_district != "Tamil Nadu") else None
+    target_market = res_market or market
+
+    # 1. On-demand discovery through orchestrator
     orchestrator = MarketPriceOrchestrator(db)
+    obs = {}
     try:
-        await orchestrator.get_market_price(
+        obs = await orchestrator.get_market_price(
             commodity=canonical,
             state=state or "Tamil Nadu",
-            district=district,
-            market=market,
+            district=target_district,
+            market=target_market,
             unit="KG",
         )
     except Exception as e:
@@ -186,67 +217,138 @@ async def search_market_prices(
     records = await repo.list_market_prices(
         commodity=canonical,
         state=state,
-        district=district,
-        market=market,
+        district=target_district,
+        market=target_market,
         limit=50,
     )
-    if not records and canonical != q_clean:
+    if not records and canonical != raw_crop:
         records = await repo.list_market_prices(
-            commodity=q_clean,
+            commodity=raw_crop,
             state=state,
-            district=district,
-            market=market,
+            district=target_district,
+            market=target_market,
             limit=50,
         )
 
     # Autocomplete suggestions
-    suggestions = [c for c in DEFAULT_CROPS if q_clean.lower() in c.lower()]
+    suggestions = [c for c in DEFAULT_CROPS if raw_crop.lower() in c.lower()]
 
-    if not records:
+    # 3. Calculate Farmer Recommendation via FarmerCostService
+    cost_service = FarmerCostService(db)
+    ref_kg_paise = (
+        obs.get("reference_price_per_listing_unit_paise")
+        or obs.get("government_reference_price_paise")
+        or 0
+    )
+    if not ref_kg_paise and records:
+        ref_kg_paise = records[0].get("price_per_kg_paise") or records[0].get("price_paise", 0)
+
+    recommended_farmer_price_paise = ref_kg_paise
+    cost_model = {}
+    if ref_kg_paise > 0:
+        try:
+            cost_model = await cost_service.calculate_farmer_pricing(
+                commodity=canonical,
+                unit="KG",
+                district=target_district or "Tamil Nadu",
+                wholesale_price_per_kg_paise=ref_kg_paise,
+            )
+            recommended_farmer_price_paise = cost_model.get("recommended_farmer_price_paise") or ref_kg_paise
+        except Exception as e:
+            logger.warning("FarmerCostService calculation failed in search: %s", e)
+
+    from datetime import datetime, timezone, timedelta
+    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
+    if obs.get("reference_price_available"):
+        obs_date = str(obs.get("reference_price_date") or now_ist)[:10]
+        is_stale = bool(obs.get("reference_price_stale", False))
+    elif records:
+        obs_date = str(records[0].get("arrival_date") or now_ist)[:10]
+        is_stale = bool(records[0].get("stale", False))
+    else:
+        obs_date = now_ist
+        is_stale = True
+
+    is_fresh = (obs_date == now_ist) and not is_stale
+    freshness_status = "FRESH" if is_fresh else ("STALE" if is_stale else "CACHED")
+
+    if not records and not obs.get("reference_price_available"):
         return APIResponse(
             success=True,
             data={
                 "found": False,
-                "query": q_clean,
+                "query": raw_crop,
                 "commodity": canonical,
-                "message": "No verified price is available for this crop and selection. Enter your own selling price.",
+                "location": raw_location,
+                "district": target_district,
+                "market": target_market,
+                "freshness_status": "UNAVAILABLE",
+                "message": "No verified price is available for this crop and location. Enter your own selling price.",
                 "records": [],
                 "suggestions": suggestions,
             },
             request_id=get_request_id(request),
         )
 
-    # Find the best record (highest arrival_date / retrieved_at)
-    best_record = records[0]
-    for r in records:
-        if str(r.get("arrival_date", "")) > str(best_record.get("arrival_date", "")):
-            best_record = r
-
-    from datetime import datetime, timezone, timedelta
-    now_ist = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
-    is_fresh = (str(best_record.get("arrival_date", ""))[:10] == now_ist) and not best_record.get("stale", False)
+    best_record = records[0] if records else {
+        "price_id": "live_ref",
+        "commodity": canonical,
+        "market": target_market or obs.get("reference_market") or "Tamil Nadu",
+        "district": target_district or "Tamil Nadu",
+        "state": state or "Tamil Nadu",
+        "variety": variety or "Common",
+        "unit": "KG",
+        "price_paise": ref_kg_paise,
+        "price_per_kg_paise": ref_kg_paise,
+        "price_per_kg_display": format_rupees(ref_kg_paise) + " / KG" if ref_kg_paise > 0 else "Unavailable",
+        "arrival_date": obs_date,
+        "source": obs.get("reference_price_source", "AGMARKNET"),
+        "freshness_status": freshness_status,
+        "is_fresh": is_fresh,
+        "is_stale": is_stale,
+    }
 
     return APIResponse(
         success=True,
         data={
             "found": True,
-            "query": q_clean,
-            "commodity": best_record.get("commodity", canonical),
+            "query": raw_crop,
+            "commodity": canonical,
+            "location": raw_location,
+            "district": target_district,
+            "market": target_market or obs.get("reference_market") or best_record.get("market"),
+            "reference_price_per_kg_paise": ref_kg_paise,
+            "reference_price_per_kg_display": format_rupees(ref_kg_paise) + " / KG" if ref_kg_paise > 0 else "Unavailable",
+            "recommended_farmer_price_paise": recommended_farmer_price_paise,
+            "recommended_farmer_price_display": format_rupees(recommended_farmer_price_paise) + " / KG" if recommended_farmer_price_paise > 0 else "Unavailable",
+            "freshness_status": freshness_status,
+            "is_fresh": is_fresh,
+            "is_stale": is_stale,
+            "source_provider": obs.get("source_provider") or best_record.get("source_provider", "AGMARKNET"),
+            "source_date": obs_date,
+            "reference_price_source": obs.get("reference_price_source") or best_record.get("source"),
+            "reference_market": obs.get("reference_market") or best_record.get("market"),
+            "is_fallback": obs.get("is_fallback", False),
+            "fallback_reason": obs.get("fallback_reason"),
+            "cost_breakdown": cost_model.get("cost_breakdown", {}),
             "best_price": {
                 **best_record,
-                "freshness_status": "fresh" if is_fresh else "cached",
+                "freshness_status": freshness_status,
                 "is_fresh": is_fresh,
-                "is_stale": not is_fresh,
+                "is_stale": is_stale,
+                "recommended_farmer_price_paise": recommended_farmer_price_paise,
+                "recommended_farmer_price_display": format_rupees(recommended_farmer_price_paise) + " / KG" if recommended_farmer_price_paise > 0 else "Unavailable",
             },
             "records": [
                 {
                     **r,
-                    "freshness_status": "fresh" if (str(r.get("arrival_date", ""))[:10] == now_ist and not r.get("stale", False)) else "cached",
+                    "freshness_status": "FRESH" if (str(r.get("arrival_date", ""))[:10] == now_ist and not r.get("stale", False)) else "CACHED",
                 }
                 for r in records
             ],
             "count": len(records),
             "suggestions": suggestions,
+            "message": obs.get("market_price_status_message"),
         },
         request_id=get_request_id(request),
     )

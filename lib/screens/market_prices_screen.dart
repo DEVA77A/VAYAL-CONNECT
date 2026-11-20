@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/auth_models.dart';
 import '../models/market_price.dart';
 import '../services/market_price_service.dart';
-import '../services/session_manager.dart';
 import '../theme/app_theme.dart';
 import '../utils/commerce_strings.dart';
 import '../utils/language_rebuild.dart';
@@ -25,6 +23,23 @@ const List<String> _kDefaultCrops = [
   'Drumstick',
 ];
 
+const List<String> _kDefaultLocations = [
+  'Mettupalayam',
+  'Coimbatore',
+  'Ooty',
+  'Oddanchatram',
+  'Madurai',
+  'Salem',
+  'Dharmapuri',
+  'Erode',
+  'Tiruchirappalli',
+  'Dindigul',
+  'Tirunelveli',
+  'Theni',
+  'Hosur',
+  'Panruti',
+];
+
 class MarketPricesScreen extends StatefulWidget {
   final MarketPriceService? service;
   const MarketPricesScreen({super.key, this.service});
@@ -37,39 +52,43 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
     with LanguageRebuild<MarketPricesScreen> {
   late final _service = widget.service ?? MarketPriceService();
   final _commodity = TextEditingController();
+  final _location = TextEditingController();
   final _searchFocus = FocusNode();
+  final _locationFocus = FocusNode();
 
   MarketPriceListResponse? _data;
   MarketPriceSearchResult? _searchResult;
   List<String> _allCropSuggestions = _kDefaultCrops;
-  List<String> _suggestions = _kDefaultCrops;
+  List<String> _cropSuggestions = _kDefaultCrops;
+  List<String> _locationSuggestions = _kDefaultLocations;
   bool _busy = true;
   String? _error;
+  String? _locationError;
   int _request = 0;
-
-  AppRole get _role => SessionManager().activeRole;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadBrowse();
   }
 
   @override
   void dispose() {
     _commodity.dispose();
+    _location.dispose();
     _searchFocus.dispose();
+    _locationFocus.dispose();
     if (widget.service == null) _service.dispose();
     super.dispose();
   }
 
-  void _onQueryChanged(String query) {
+  void _onCropChanged(String query) {
     final q = query.trim().toLowerCase();
     setState(() {
       if (q.isEmpty) {
-        _suggestions = _allCropSuggestions.take(8).toList();
+        _cropSuggestions = _allCropSuggestions.take(8).toList();
       } else {
-        _suggestions = _allCropSuggestions
+        _cropSuggestions = _allCropSuggestions
             .where((c) => c.toLowerCase().contains(q))
             .take(8)
             .toList();
@@ -77,77 +96,148 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
     });
   }
 
-  void _selectSuggestion(String crop) {
+  void _onLocationChanged(String query) {
+    final q = query.trim().toLowerCase();
+    setState(() {
+      _locationError = null;
+      if (q.isEmpty) {
+        _locationSuggestions = _kDefaultLocations.take(8).toList();
+      } else {
+        _locationSuggestions = _kDefaultLocations
+            .where((l) => l.toLowerCase().contains(q))
+            .take(8)
+            .toList();
+      }
+    });
+  }
+
+  void _selectCropSuggestion(String crop) {
     _commodity.text = crop;
     _commodity.selection =
         TextSelection.fromPosition(TextPosition(offset: crop.length));
-    _onQueryChanged(crop);
-    _load();
+    _onCropChanged(crop);
+    if (_location.text.trim().isNotEmpty) {
+      _performSearch();
+    } else {
+      _locationFocus.requestFocus();
+    }
+  }
+
+  void _selectLocationSuggestion(String loc) {
+    _location.text = loc;
+    _location.selection =
+        TextSelection.fromPosition(TextPosition(offset: loc.length));
+    _onLocationChanged(loc);
+    if (_commodity.text.trim().isNotEmpty) {
+      _performSearch();
+    }
   }
 
   void _clearSearch() {
     _commodity.clear();
-    _onQueryChanged('');
+    _location.clear();
+    _onCropChanged('');
+    _onLocationChanged('');
     setState(() {
+      _locationError = null;
       _searchResult = null;
     });
-    _load();
+    _loadBrowse();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadBrowse() async {
     final request = ++_request;
     setState(() {
       _busy = true;
       _error = null;
+      _locationError = null;
     });
 
-    final queryText = _commodity.text.trim();
+    try {
+      final d = await _service.fetchMarketPrices(
+        commodity: '',
+        state: 'Tamil Nadu',
+        limit: 50,
+      );
+      if (mounted && request == _request) {
+        setState(() {
+          _searchResult = null;
+          _data = d;
+          if (d.records.isNotEmpty) {
+            final newCrops =
+                d.records.map((r) => r.commodity).where((c) => c.isNotEmpty);
+            _allCropSuggestions = {..._kDefaultCrops, ...newCrops}.toList();
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted && request == _request) {
+        setState(() => _error =
+            S.t('Unable to load verified market prices. Please retry.'));
+      }
+    } finally {
+      if (mounted && request == _request) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _performSearch() async {
+    final cropText = _commodity.text.trim();
+    final locationText = _location.text.trim();
+
+    // 1. Validate Crop Name
+    if (cropText.isEmpty) {
+      setState(() {
+        _error = S.t('Enter crop name.');
+      });
+      _searchFocus.requestFocus();
+      return;
+    }
+
+    // 2. Strict Requirement: Location cannot be empty for farmer search
+    if (locationText.isEmpty) {
+      setState(() {
+        _locationError =
+            S.t('Please select or enter your farm or market location.');
+        _busy = false;
+      });
+      _locationFocus.requestFocus();
+      return;
+    }
+
+    final request = ++_request;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _locationError = null;
+    });
 
     try {
-      if (queryText.isNotEmpty) {
-        // Use dedicated unified search endpoint
-        final searchRes = await _service.searchMarketPrices(
-          queryText,
-          state: 'Tamil Nadu',
-        );
-        if (mounted && request == _request) {
-          setState(() {
-            _searchResult = searchRes;
-            _data = MarketPriceListResponse(
-              records: searchRes.records,
-              count: searchRes.count,
-              isLive: searchRes.bestPrice?.isFresh ?? false,
-              source: searchRes.bestPrice?.source ?? 'Market cache',
-              message: searchRes.message,
-            );
-            if (searchRes.records.isNotEmpty) {
-              final newCrops = searchRes.records
-                  .map((r) => r.commodity)
-                  .where((c) => c.isNotEmpty);
-              _allCropSuggestions =
-                  {..._kDefaultCrops, ...newCrops, ...searchRes.suggestions}
-                      .toList();
-            }
-          });
-        }
-      } else {
-        // Browse default statewide market cache
-        final d = await _service.fetchMarketPrices(
-          commodity: '',
-          state: 'Tamil Nadu',
-          limit: 50,
-        );
-        if (mounted && request == _request) {
-          setState(() {
-            _searchResult = null;
-            _data = d;
-            if (d.records.isNotEmpty) {
-              final newCrops =
-                  d.records.map((r) => r.commodity).where((c) => c.isNotEmpty);
-              _allCropSuggestions = {..._kDefaultCrops, ...newCrops}.toList();
-            }
-          });
-        }
+      final searchRes = await _service.searchMarketPrices(
+        cropText,
+        location: locationText,
+        state: 'Tamil Nadu',
+      );
+      if (mounted && request == _request) {
+        setState(() {
+          _searchResult = searchRes;
+          _data = MarketPriceListResponse(
+            records: searchRes.records,
+            count: searchRes.count,
+            isLive: searchRes.bestPrice?.isFresh ?? false,
+            source: searchRes.bestPrice?.source ?? 'Market cache',
+            message: searchRes.message,
+          );
+          if (searchRes.records.isNotEmpty) {
+            final newCrops = searchRes.records
+                .map((r) => r.commodity)
+                .where((c) => c.isNotEmpty);
+            _allCropSuggestions =
+                {..._kDefaultCrops, ...newCrops, ...searchRes.suggestions}
+                    .toList();
+          }
+        });
       }
     } catch (e) {
       if (mounted && request == _request) {
@@ -166,7 +256,14 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
         appBar: VayalAppBar(title: S.t('Market prices'), showBack: true),
         body: PageBody(
           child: RefreshIndicator(
-            onRefresh: _load,
+            onRefresh: () async {
+              if (_commodity.text.trim().isNotEmpty &&
+                  _location.text.trim().isNotEmpty) {
+                await _performSearch();
+              } else {
+                await _loadBrowse();
+              }
+            },
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -177,19 +274,19 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                   icon: Icons.analytics_outlined,
                 ),
                 Text(
-                  S.t('Tamil Nadu Uzhavar Santhai market observations'),
+                  S.t('Tamil Nadu agricultural market observations & recommendations'),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                 ),
                 const SizedBox(height: 12),
-                _buildSearchBar(context),
+                _buildSearchForm(context),
                 const SizedBox(height: 16),
                 if (_busy) const LinearProgressIndicator(),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  ErrorPanel(_error!, _load),
+                  ErrorPanel(_error!, _performSearch),
                 ],
                 if (_error == null && !_busy) ...[
                   const SizedBox(height: 8),
@@ -201,10 +298,11 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
         ),
       );
 
-  Widget _buildSearchBar(BuildContext context) {
+  Widget _buildSearchForm(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 1. Crop Name Input
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -221,22 +319,25 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
           child: TextField(
             controller: _commodity,
             focusNode: _searchFocus,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _load(),
-            onChanged: _onQueryChanged,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _locationFocus.requestFocus(),
+            onChanged: _onCropChanged,
             decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search_rounded,
+              prefixIcon: const Icon(Icons.eco_rounded,
                   color: AppTheme.primaryDarkGreen),
               suffixIcon: _commodity.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear_rounded,
                           color: AppTheme.textSecondary),
-                      onPressed: _clearSearch,
+                      onPressed: () {
+                        _commodity.clear();
+                        _onCropChanged('');
+                      },
                       tooltip: S.t('Clear'),
                     )
                   : null,
               hintText:
-                  S.t('Search crop in English or Tamil (e.g. Tomato, தக்காளி)'),
+                  S.t('Crop name (e.g. Tomato, தக்காளி, Onion)'),
               hintStyle:
                   const TextStyle(color: AppTheme.textMuted, fontSize: 13),
               border: InputBorder.none,
@@ -245,22 +346,22 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
             ),
           ),
         ),
-        if (_suggestions.isNotEmpty) ...[
-          const SizedBox(height: 10),
+        if (_cropSuggestions.isNotEmpty) ...[
+          const SizedBox(height: 8),
           SizedBox(
-            height: 36,
+            height: 32,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: _suggestions.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemCount: _cropSuggestions.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
               itemBuilder: (context, index) {
-                final crop = _suggestions[index];
+                final crop = _cropSuggestions[index];
                 final isSelected =
                     _commodity.text.trim().toLowerCase() == crop.toLowerCase();
                 return ActionChip(
                   label: Text(crop),
                   labelStyle: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                     color:
                         isSelected ? Colors.white : AppTheme.primaryDarkGreen,
@@ -273,35 +374,153 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                         : AppTheme.primaryGreen.withOpacity(0.3),
                   ),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  onPressed: () => _selectSuggestion(crop),
+                      borderRadius: BorderRadius.circular(16)),
+                  onPressed: () => _selectCropSuggestion(crop),
                 );
               },
             ),
           ),
         ],
+
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _busy ? null : _load,
-          icon: const Icon(Icons.search_rounded, size: 18),
-          label: Text(S.t('Search')),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppTheme.primaryGreen,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+
+        // 2. Location Input (District, Town, or Mandi)
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _locationError != null ? Colors.red : AppTheme.cardBorder,
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.darkBrown.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
+          child: TextField(
+            controller: _location,
+            focusNode: _locationFocus,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _performSearch(),
+            onChanged: _onLocationChanged,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.location_on_rounded,
+                  color: AppTheme.primaryDarkGreen),
+              suffixIcon: _location.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear_rounded,
+                          color: AppTheme.textSecondary),
+                      onPressed: () {
+                        _location.clear();
+                        _onLocationChanged('');
+                      },
+                      tooltip: S.t('Clear'),
+                    )
+                  : null,
+              hintText: S.t('Farm / Market Location (e.g. Mettupalayam, Coimbatore)'),
+              hintStyle:
+                  const TextStyle(color: AppTheme.textMuted, fontSize: 13),
+              border: InputBorder.none,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+        ),
+        if (_locationError != null) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Text(
+              _locationError!,
+              style: const TextStyle(
+                color: Colors.red,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+        if (_locationSuggestions.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 32,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _locationSuggestions.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (context, index) {
+                final loc = _locationSuggestions[index];
+                final isSelected =
+                    _location.text.trim().toLowerCase() == loc.toLowerCase();
+                return ActionChip(
+                  label: Text(loc),
+                  labelStyle: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? Colors.white : AppTheme.darkBrown,
+                  ),
+                  backgroundColor:
+                      isSelected ? AppTheme.darkBrown : AppTheme.warmCreamSecondary,
+                  side: BorderSide(
+                    color: isSelected
+                        ? AppTheme.darkBrown
+                        : AppTheme.cardBorder,
+                  ),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  onPressed: () => _selectLocationSuggestion(loc),
+                );
+              },
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 14),
+
+        // Action Buttons Row
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _performSearch,
+                icon: const Icon(Icons.search_rounded, size: 18),
+                label: Text(S.t('Search Market Price')),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            if (_commodity.text.isNotEmpty || _location.text.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _busy ? null : _clearSearch,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Text(S.t('Clear')),
+              ),
+            ],
+          ],
         ),
       ],
     );
   }
 
   Widget _buildResultsContent(BuildContext context) {
-    if (_data == null) return const SizedBox.shrink();
+    if (_data == null && _searchResult == null) return const SizedBox.shrink();
 
-    // If searching and we have a best price
+    // 1. Search Result Mode (Location-specific recommendation)
     if (_searchResult != null) {
-      if (!_searchResult!.found || _searchResult!.bestPrice == null) {
+      if (!_searchResult!.found) {
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -316,13 +535,13 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
               const SizedBox(height: 8),
               Text(
                 S.t(_searchResult!.message ??
-                    'No verified price is available for this crop and selection. Enter your own selling price.'),
+                    'No verified price is available for this crop and location. Enter your own selling price.'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 16),
               TextButton(
-                onPressed: _busy ? null : _load,
+                onPressed: _busy ? null : _performSearch,
                 child: Text(S.t('Retry')),
               ),
             ],
@@ -330,28 +549,52 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
         );
       }
 
-      final best = _searchResult!.bestPrice!;
+      final res = _searchResult!;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            S.t(best.isFresh
-                ? 'Retrieved verified market records'
-                : 'Cached verified records'),
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                S.t(res.freshnessStatus == 'FRESH'
+                    ? 'Retrieved verified market records'
+                    : 'Preserved verified cache'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              if (res.isFallback && res.fallbackReason != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade400),
+                  ),
+                  child: Text(
+                    res.fallbackReason == 'STATEWIDE_FALLBACK'
+                        ? S.t('Statewide Reference')
+                        : S.t('District Reference'),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
-          _buildHeroResultCard(context, best),
-          _buildSecondaryObservations(context, _searchResult!.records),
+          _buildSearchHeroCard(context, res),
+          _buildSecondaryObservations(context, res.records),
         ],
       );
     }
 
-    // Default browse mode
+    // 2. Default Browse Mode
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -393,23 +636,228 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                 ),
                 const SizedBox(height: 16),
                 TextButton(
-                  onPressed: _busy ? null : _load,
+                  onPressed: _busy ? null : _loadBrowse,
                   child: Text(S.t('Retry')),
                 ),
               ],
             ),
           ),
         for (final r in _data!.records) _buildHeroResultCard(context, r),
-        if (_data!.records.length >= 50)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              S.t('First 50 matching records. Search by crop for more specific results.'),
-              style:
-                  const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+      ],
+    );
+  }
+
+  Widget _buildSearchHeroCard(BuildContext context, MarketPriceSearchResult res) {
+    final isFresh = res.freshnessStatus == 'FRESH';
+    final refPriceDisplay = res.referencePricePerKgDisplay ??
+        (res.referencePricePerKgPaise != null && res.referencePricePerKgPaise! > 0
+            ? '₹${(res.referencePricePerKgPaise! / 100).toStringAsFixed(2)} / KG'
+            : 'Unavailable');
+
+    final recPriceDisplay = res.recommendedFarmerPriceDisplay ??
+        (res.recommendedFarmerPricePaise != null && res.recommendedFarmerPricePaise! > 0
+            ? '₹${(res.recommendedFarmerPricePaise! / 100).toStringAsFixed(2)} / KG'
+            : refPriceDisplay);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceCream,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.cardBorder, width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.darkBrown.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title & Status
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      res.commodity,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AppTheme.primaryDarkGreen,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    if (res.location != null && res.location!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on,
+                              size: 14, color: AppTheme.primaryGreen),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${S.t('Farm location')}: ${res.location}',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: AppTheme.darkBrown,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: isFresh ? AppTheme.softGreen : AppTheme.sandBeige,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isFresh
+                        ? AppTheme.primaryGreen.withOpacity(0.4)
+                        : AppTheme.earthBrown.withOpacity(0.4),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isFresh
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.history_rounded,
+                      size: 14,
+                      color: isFresh
+                          ? AppTheme.primaryDarkGreen
+                          : AppTheme.darkBrown,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isFresh ? S.t('Fresh') : S.t('Cached'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: isFresh
+                            ? AppTheme.primaryDarkGreen
+                            : AppTheme.darkBrown,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Recommended Farmer Selling Price (Hero Banner)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGreen.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  S.t('Recommended farmer selling price'),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryDarkGreen,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  recPriceDisplay,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryDarkGreen,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  S.t('Includes harvesting, sorting, packaging, transport and farmer margin.'),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
-      ],
+          const SizedBox(height: 12),
+
+          // Market Reference Box
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceCream,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                detailLine('Market reference', refPriceDisplay),
+                detailLine('Reference market', res.market ?? 'Tamil Nadu'),
+                detailLine('Reference district', res.district ?? 'Tamil Nadu'),
+                detailLine('Reference date', res.sourceDate ?? '—'),
+                detailLine('Source provider', res.sourceProvider ?? 'AGMARKNET'),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+          _buildFarmerPerspectiveNote(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFarmerPerspectiveNote(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.lightGreenDashboard.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryLightGreen.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.lightbulb_outline_rounded,
+              size: 20, color: AppTheme.primaryGreen),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              S.t('Verified mandi rates serve as an official baseline. Farmers have full freedom to set their own selling prices in the marketplace.'),
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.primaryDarkGreen,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -439,7 +887,6 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title Row: Commodity Name and Fresh/Cached Status Pill
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -449,11 +896,10 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                   children: [
                     Text(
                       item.commodity,
-                      style:
-                          Theme.of(context).textTheme.titleLarge?.copyWith(
-                                color: AppTheme.primaryDarkGreen,
-                                fontWeight: FontWeight.w800,
-                              ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AppTheme.primaryDarkGreen,
+                            fontWeight: FontWeight.w800,
+                          ),
                     ),
                     if (item.variety.isNotEmpty &&
                         item.variety != 'Unknown') ...[
@@ -469,33 +915,6 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                 ),
               ),
               const SizedBox(width: 8),
-              // Category badge (Wholesale vs Retail)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: item.isRetail
-                      ? AppTheme.primaryGreen.withOpacity(0.12)
-                      : AppTheme.sandBeige,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: item.isRetail
-                        ? AppTheme.primaryDarkGreen.withOpacity(0.3)
-                        : AppTheme.earthBrown.withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  S.t(item.isRetail ? 'Retail' : 'Wholesale'),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: item.isRetail
-                        ? AppTheme.primaryDarkGreen
-                        : AppTheme.darkBrown,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -538,7 +957,6 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
           ),
           const SizedBox(height: 14),
 
-          // Light-green Price Highlight Banner
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -568,156 +986,20 @@ class _MarketPricesScreenState extends State<MarketPricesScreen>
                     letterSpacing: -0.5,
                   ),
                 ),
-                if (item.minPriceDisplay != 'Unavailable' &&
-                    item.maxPriceDisplay != 'Unavailable' &&
-                    item.minPriceDisplay != item.maxPriceDisplay) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '${S.t('Range')}: ${item.minPriceDisplay} – ${item.maxPriceDisplay}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.primaryDarkGreen,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
           const SizedBox(height: 14),
 
-          // Mandi observations details
           detailLine('Market', item.market),
           detailLine('District', item.district),
           detailLine('State', item.state),
           detailLine('Source', item.source),
           detailLine('Reported date', item.arrivalDate ?? '—'),
           detailLine('Trade type', S.t(item.priceType)),
-
-          // Role Perspective Banner
-          const SizedBox(height: 10),
-          _buildRolePerspective(context, item),
         ],
       ),
     );
-  }
-
-  Widget _buildRolePerspective(BuildContext context, MarketPriceItem item) {
-    final role = _role;
-    if (role == AppRole.admin) {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppTheme.warmCreamSecondary.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.cardBorder),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.admin_panel_settings_outlined,
-                    size: 16, color: AppTheme.earthBrown),
-                const SizedBox(width: 6),
-                Text(
-                  S.t('Verification & Discovery Details'),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.darkBrown,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            detailLine('Verification status', item.verificationStatus),
-            if (item.verificationMethod.isNotEmpty)
-              detailLine('Verification method', S.t(item.verificationMethod)),
-            detailLine('Quote type', S.t(item.quoteType)),
-            if (item.observationCount != null)
-              detailLine(
-                  'Eligible observations', item.observationCount.toString()),
-            if (item.aggregationMethod != null)
-              detailLine('Aggregation method', S.t(item.aggregationMethod!)),
-            if (item.sourceUrl != null && item.sourceUrl!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                '${S.t('Source URL')}:',
-                style: const TextStyle(
-                    fontSize: 12, color: AppTheme.textSecondary),
-              ),
-              SelectableText(
-                item.sourceUrl!,
-                style: const TextStyle(fontSize: 12, color: AppTheme.infoBlue),
-              ),
-            ],
-          ],
-        ),
-      );
-    } else if (role == AppRole.farmer) {
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppTheme.lightGreenDashboard.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: AppTheme.primaryLightGreen.withOpacity(0.3)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.lightbulb_outline_rounded,
-                size: 20, color: AppTheme.primaryGreen),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                S.t('Selling price guidance: Verified mandi rates serve as an official baseline. Farmers have full freedom to set their own listing prices based on harvest quality.'),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.primaryDarkGreen,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Buyer perspective
-      return Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(top: 6),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceCream,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.cardBorder),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.info_outline_rounded,
-                size: 20, color: AppTheme.earthBrown),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                S.t('Fair reference price: Reflects official mandi transactions in ${item.district}. Direct farm orders avoid wholesale middleman costs.'),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.textSecondary,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
   }
 
   Widget _buildSecondaryObservations(

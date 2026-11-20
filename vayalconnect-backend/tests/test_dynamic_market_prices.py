@@ -192,10 +192,10 @@ async def test_market_based_buyer_pricing_calculation(mock_db):
 
             # In MARKET_BASED mode, farmer payout tracks market reference (3000 paise = ₹30)
             assert priced["farmer_payout_per_unit_paise"] == 3000
-            # Commission is 10% of 3000 = 300 paise
-            assert priced["commission_per_unit_paise"] == 300
-            # Buyer pays 3000 + 300 = 3300 paise = ₹33.00 / kg
-            assert priced["buyer_price_per_unit_paise"] == 3300
+            # Commission absorbs rounding up to ₹5: buyer price 3500 - farmer payout 3000 = 500 paise
+            assert priced["commission_per_unit_paise"] == 500
+            # Buyer pays 3000 + 300 rounded up to next multiple of ₹5 = 3500 paise = ₹35.00 / kg
+            assert priced["buyer_price_per_unit_paise"] == 3500
             # Reference metadata attached
             assert priced["reference_price_stale"] is False
             assert priced["government_reference_price_paise"] == 3000

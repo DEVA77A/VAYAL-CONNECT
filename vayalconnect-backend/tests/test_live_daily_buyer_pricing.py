@@ -247,7 +247,7 @@ async def test_commodity_deduplication_and_market_based_update(mock_db):
 
     assert updated_a["farmer_payout_per_unit_paise"] == 4952
     assert updated_a["buyer_price_per_unit_paise"] > updated_a["farmer_payout_per_unit_paise"]
-    assert updated_a["buyer_price_per_unit_paise"] == 5942
+    assert updated_a["buyer_price_per_unit_paise"] == 6000
     assert updated_a["government_reference_price_paise"] == 3200
 
     # Farmer B has the exact same price as Farmer A

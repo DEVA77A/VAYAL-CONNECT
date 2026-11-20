@@ -46,8 +46,8 @@ async def test_selected_price_is_never_replaced_by_unit_aware_reference(unit, co
         snapshot = await engine.calculate_pricing("Paddy", "Grains", 3, unit, "A", "Madurai", "Madurai", "farmer", selling_price_per_unit_paise=4321)
     assert snapshot["farmer_payout_per_unit_paise"] == 4321
     assert snapshot["reference_price_per_listing_unit_paise"] == converted
-    assert snapshot["commission_per_unit_paise"] == 648
-    assert snapshot["buyer_price_per_unit_paise"] == 4969
+    assert snapshot["commission_per_unit_paise"] == 679
+    assert snapshot["buyer_price_per_unit_paise"] == 5000
     assert snapshot["buyer_total_paise"] == snapshot["farmer_total_payout_paise"] + snapshot["commission_total_paise"]
 
 

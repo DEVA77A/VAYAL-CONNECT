@@ -30,8 +30,8 @@ class Database:
             tz_aware=True,
             maxPoolSize=50,
             minPoolSize=10,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=10000,
+            serverSelectionTimeoutMS=15000,
+            connectTimeoutMS=20000,
             socketTimeoutMS=30000,
             waitQueueTimeoutMS=10000,
         )

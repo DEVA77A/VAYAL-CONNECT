@@ -36,6 +36,7 @@ from app.utils.money import (
     validate_financial_consistency,
     safe_multiply,
     percentage_bps_to_display,
+    round_buyer_price_paise,
 )
 
 logger = logging.getLogger(__name__)
@@ -247,10 +248,13 @@ class PricingEngine:
         bps = config["commission_percentage_bps"] if config else DEFAULT_COMMISSION_BPS
         if type(bps) is not int or not 0 <= bps <= 10000:
             raise FinancialInconsistencyError("Invalid commission configuration.")
-        commission = calculate_percentage(selling_price, bps)
+        base_commission = calculate_percentage(selling_price, bps)
+        unrounded_buyer_price = selling_price + base_commission
+        buyer_price = round_buyer_price_paise(unrounded_buyer_price)
+        commission = buyer_price - selling_price
         return {
             "farmer_payout_per_unit_paise": selling_price,
-            "buyer_price_per_unit_paise": selling_price + commission,
+            "buyer_price_per_unit_paise": buyer_price,
             "commission_per_unit_paise": commission,
             "commission_percentage_bps": bps,
             "commission_config_id": config.get("id") if config else None,
@@ -272,7 +276,12 @@ class PricingEngine:
         """
         commodity = product.get("product_name") or product.get("commodity", "")
         market = product.get("market")
-        district = product.get("district")
+        raw_loc = product.get("district") or product.get("location")
+        from app.utils.tn_locations import resolve_tn_location
+        res_d, res_m, is_tn = resolve_tn_location(raw_loc)
+        district = res_d if (is_tn and res_d and res_d != "Tamil Nadu") else product.get("district")
+        if not market and res_m:
+            market = res_m
         state = product.get("state") or "Tamil Nadu"
         unit = product.get("quantity_unit") or product.get("unit") or "KG"
         variety = product.get("variety")
@@ -413,28 +422,8 @@ class PricingEngine:
 
         # If product is in MARKET_BASED pricing mode:
         if product.get("pricing_mode") == "MARKET_BASED":
-            payout = product.get("farmer_payout_per_unit_paise")
-            # If product has pre-calculated payout from daily batch, use it;
-            # otherwise calculate dynamically using FarmerCostService on the reference price:
-            if payout and payout > 0:
-                base_price = payout
-            elif daily_ref.get("reference_price_available") and (daily_ref.get("reference_price_per_listing_unit_paise") or 0) > 0:
-                try:
-                    from app.services.farmer_cost_service import FarmerCostService
-                    cost_service = FarmerCostService(self.db)
-                    comm = product.get("commodity") or product.get("product_name") or ""
-                    dist = product.get("district") or product.get("location") or ""
-                    u = product.get("quantity_unit") or product.get("unit") or "KG"
-                    ref_paise = daily_ref.get("reference_price_per_listing_unit_paise") or 0
-                    cost_res = await cost_service.calculate_farmer_pricing(
-                        commodity=comm,
-                        unit=u,
-                        district=dist,
-                        wholesale_price_per_kg_paise=ref_paise,
-                    )
-                    base_price = cost_res.get("recommended_farmer_price_paise") or ref_paise
-                except Exception:
-                    base_price = daily_ref["reference_price_per_listing_unit_paise"]
+            if daily_ref.get("reference_price_available") and (daily_ref.get("reference_price_per_listing_unit_paise") or 0) > 0:
+                base_price = daily_ref["reference_price_per_listing_unit_paise"]
             else:
                 base_price = (
                     product.get("farmer_payout_per_unit_paise")

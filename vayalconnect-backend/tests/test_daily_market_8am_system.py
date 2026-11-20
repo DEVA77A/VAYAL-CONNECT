@@ -329,10 +329,10 @@ async def test_market_based_products_update_automatically():
         with patch.object(engine.pricing_repo, "get_active_commission", new=AsyncMock(return_value={"commission_percentage_bps": 500})):
             pricing = await engine.buyer_pricing(product)
 
-            # Buyer price should reflect market reference (4000) + 5% commission (200) = 4200
+            # Buyer price should reflect market reference (4000) + 5% commission (200) rounded up to next multiple of ₹5 = 4500
             assert pricing["reference_price_per_listing_unit_paise"] == 4000
             assert pricing["farmer_payout_per_unit_paise"] == 4000
-            assert pricing["buyer_price_per_unit_paise"] == 4200
+            assert pricing["buyer_price_per_unit_paise"] == 4500
             assert pricing["reference_price_stale"] is False
 
 
@@ -356,8 +356,8 @@ async def test_farmer_selected_products_remain_unchanged():
         pricing = await engine.buyer_pricing(product)
         # Farmer payout remains exactly ₹55.00 (5500 paise)
         assert pricing["farmer_payout_per_unit_paise"] == 5500
-        # 5% commission on 5500 = 275 => 5775 paise
-        assert pricing["buyer_price_per_unit_paise"] == 5775
+        # 5% commission on 5500 = 275 => 5775 paise rounded up to next multiple of ₹5 = 6000
+        assert pricing["buyer_price_per_unit_paise"] == 6000
 
 
 # ---------------------------------------------------------------------------

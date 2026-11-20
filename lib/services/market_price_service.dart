@@ -46,12 +46,14 @@ class MarketPriceService {
 
   Future<MarketPriceSearchResult> searchMarketPrices(
     String query, {
+    String? location,
     String? state,
     String? district,
     String? market,
   }) async {
     final params = <String, String>{
       'query': query.trim(),
+      if (location?.trim().isNotEmpty == true) 'location': location!.trim(),
       if (state?.trim().isNotEmpty == true) 'state': state!.trim(),
       if (district?.trim().isNotEmpty == true) 'district': district!.trim(),
       if (market?.trim().isNotEmpty == true) 'market': market!.trim(),

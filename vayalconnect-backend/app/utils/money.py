@@ -91,6 +91,25 @@ def validate_financial_consistency(
     return buyer_total_paise == (farmer_total_payout_paise + commission_total_paise)
 
 
+def round_buyer_price_paise(unrounded_buyer_paise: int) -> int:
+    """
+    Round buyer-facing per-unit price UP to the next multiple of ₹5 (500 paise).
+    Business rule: rounded_price = ceil(price / 5) * 5
+
+    Examples:
+      ₹32.30 (3230 paise) -> ₹35.00 (3500 paise)
+      ₹37.20 (3720 paise) -> ₹40.00 (4000 paise)
+      ₹37.54 (3754 paise) -> ₹40.00 (4000 paise)
+      ₹41.10 (4110 paise) -> ₹45.00 (4500 paise)
+      ₹45.00 (4500 paise) -> ₹45.00 (4500 paise)
+      ₹49.99 (4999 paise) -> ₹50.00 (5000 paise)
+      ₹50.00 (5000 paise) -> ₹50.00 (5000 paise)
+    """
+    if unrounded_buyer_paise <= 0:
+        return 0
+    return ((unrounded_buyer_paise + 499) // 500) * 500
+
+
 def safe_multiply(unit_price_paise: int, quantity: int) -> int:
     """
     Safely multiply unit price by quantity.

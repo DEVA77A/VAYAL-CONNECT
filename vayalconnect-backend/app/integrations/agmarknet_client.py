@@ -181,7 +181,11 @@ class AgmarknetClient:
         if commodity:
             params["filters[commodity]"] = commodity
         if district:
-            params["filters[district]"] = district
+            from app.utils.tn_locations import resolve_tn_location
+            res_d, _, is_tn = resolve_tn_location(district)
+            target_d = res_d if (is_tn and res_d and res_d != "Tamil Nadu") else district.strip()
+            if target_d and target_d.lower() != "tamil nadu":
+                params["filters[district]"] = target_d
 
         headers = {
             "User-Agent": "VayalConnect/1.1 (Agricultural Marketplace Backend)",

@@ -57,11 +57,11 @@ async def test_create_order_pricing_calculated_from_product(mock_db):
                                 )
 
                                 # Buyer pays 10 * 4500 = 45000 paise (₹450.00)
-                                assert order["buyer_total_paise"] == 42000
+                                assert order["buyer_total_paise"] == 45000
                                 # Farmer receives 10 * 3500 = 35000 paise (₹350.00)
                                 assert order["farmer_total_payout_paise"] == 35000
                                 # Commission = 10 * 1000 = 10000 paise (₹100.00)
-                                assert order["commission_total_paise"] == 7000
+                                assert order["commission_total_paise"] == 10000
                                 assert order["order_status"] == OrderStatus.PENDING_PAYMENT.value
 
 

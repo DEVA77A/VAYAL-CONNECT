@@ -254,6 +254,18 @@ class MarketPriceSearchResult {
   final int count;
   final List<String> suggestions;
   final String? message;
+  final String? location;
+  final String? district;
+  final String? market;
+  final int? referencePricePerKgPaise;
+  final String? referencePricePerKgDisplay;
+  final int? recommendedFarmerPricePaise;
+  final String? recommendedFarmerPriceDisplay;
+  final String? freshnessStatus;
+  final String? sourceDate;
+  final String? sourceProvider;
+  final bool isFallback;
+  final String? fallbackReason;
 
   MarketPriceSearchResult({
     required this.found,
@@ -264,6 +276,18 @@ class MarketPriceSearchResult {
     this.count = 0,
     this.suggestions = const [],
     this.message,
+    this.location,
+    this.district,
+    this.market,
+    this.referencePricePerKgPaise,
+    this.referencePricePerKgDisplay,
+    this.recommendedFarmerPricePaise,
+    this.recommendedFarmerPriceDisplay,
+    this.freshnessStatus,
+    this.sourceDate,
+    this.sourceProvider,
+    this.isFallback = false,
+    this.fallbackReason,
   });
 
   factory MarketPriceSearchResult.fromJson(Map<String, dynamic> json) {
@@ -288,6 +312,18 @@ class MarketPriceSearchResult {
       count: (json['count'] as num?)?.toInt() ?? items.length,
       suggestions: suggs,
       message: json['message'] as String?,
+      location: json['location'] as String?,
+      district: json['district'] as String?,
+      market: json['market'] as String?,
+      referencePricePerKgPaise: (json['reference_price_per_kg_paise'] as num?)?.toInt(),
+      referencePricePerKgDisplay: json['reference_price_per_kg_display'] as String?,
+      recommendedFarmerPricePaise: (json['recommended_farmer_price_paise'] as num?)?.toInt(),
+      recommendedFarmerPriceDisplay: json['recommended_farmer_price_display'] as String?,
+      freshnessStatus: json['freshness_status'] as String?,
+      sourceDate: json['source_date'] as String?,
+      sourceProvider: json['source_provider'] as String?,
+      isFallback: json['is_fallback'] == true,
+      fallbackReason: json['fallback_reason'] as String?,
     );
   }
 }

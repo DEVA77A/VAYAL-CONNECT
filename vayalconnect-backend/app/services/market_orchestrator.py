@@ -38,6 +38,7 @@ from app.integrations.gemini_market import (
 )
 from app.integrations.tn_market import TamilNaduMarketRetriever, crop_mapping
 from app.repositories.pricing import PricingRepository
+from app.utils.tn_locations import resolve_tn_location, is_valid_tn_location
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,15 @@ class MarketPriceOrchestrator:
         today_str = get_today_kolkata_str()
         target_unit = normalize_unit(unit)
 
+        target_district = district
+        target_market = market
+        if district:
+            res_d, res_m, is_tn = resolve_tn_location(district)
+            if is_tn and res_d and res_d != "Tamil Nadu":
+                target_district = res_d
+                if not target_market and res_m:
+                    target_market = res_m
+
         # -----------------------------------------------------------------
         # STEP 1: Check if fresh verified price already in MongoDB for today
         # -----------------------------------------------------------------
@@ -136,15 +146,18 @@ class MarketPriceOrchestrator:
                     "verification_status": "verified",
                     "arrival_date": today_str,
                 }
-                if district:
-                    query["district"] = {"$regex": f"^{district.strip()}$", "$options": "i"}
+                if target_district and target_district.lower() != "tamil nadu":
+                    query["district"] = {"$regex": f"^{target_district.strip()}$", "$options": "i"}
                 doc = await self.db["market_prices"].find_one(query, sort=[("retrieved_at", -1)])
-                if not doc and district:
+                is_fallback_statewide = False
+                if not doc and target_district:
                     # Fallback to statewide for this commodity today
                     doc = await self.db["market_prices"].find_one(
                         {"commodity": {"$regex": f"^{commodity.strip()}$", "$options": "i"}, "arrival_date": today_str},
                         sort=[("retrieved_at", -1)],
                     )
+                    if doc:
+                        is_fallback_statewide = True
                 if doc:
                     raw_paise = doc.get("price_paise", 0)
                     src_unit = doc.get("unit", "KG")
@@ -160,10 +173,11 @@ class MarketPriceOrchestrator:
                         "reference_price_source_url": doc.get("source_url"),
                         "source_provider": doc.get("source_provider", "AGMARKNET"),
                         "reference_price_stale": False,
-                        "is_fallback": False,
+                        "is_fallback": is_fallback_statewide,
+                        "fallback_reason": "STATEWIDE_FALLBACK" if is_fallback_statewide else None,
                         "reference_commodity": doc.get("commodity", commodity),
-                        "reference_market": doc.get("market", market or "Tamil Nadu"),
-                        "reference_district": doc.get("district", district),
+                        "reference_market": doc.get("market", target_market or "Tamil Nadu"),
+                        "reference_district": doc.get("district", target_district),
                         "reference_state": doc.get("state", state),
                         "market_price_status_message": "Updated today from official agricultural market data.",
                     }
@@ -178,10 +192,22 @@ class MarketPriceOrchestrator:
             try:
                 records, meta = await self.agmarknet.fetch_prices(
                     commodity=commodity,
-                    district=district,
+                    district=target_district,
                     state=state,
                     limit=50,
                 )
+                is_fallback_statewide = False
+                if not records and target_district and target_district.lower() != "tamil nadu":
+                    # Fallback to statewide query if district returned no records
+                    records, meta = await self.agmarknet.fetch_prices(
+                        commodity=commodity,
+                        district=None,
+                        state=state,
+                        limit=50,
+                    )
+                    if records:
+                        is_fallback_statewide = True
+
                 if records:
                     if self.repo:
                         await self.repo.store_market_prices_bulk(records)
@@ -200,10 +226,11 @@ class MarketPriceOrchestrator:
                         "reference_price_source_url": f"https://api.data.gov.in/resource/{settings.active_market_resource_id}",
                         "source_provider": "AGMARKNET",
                         "reference_price_stale": False,
-                        "is_fallback": False,
+                        "is_fallback": is_fallback_statewide,
+                        "fallback_reason": "STATEWIDE_FALLBACK" if is_fallback_statewide else None,
                         "reference_commodity": best.get("commodity", commodity),
-                        "reference_market": best.get("market", market or "Tamil Nadu"),
-                        "reference_district": best.get("district", district),
+                        "reference_market": best.get("market", target_market or "Tamil Nadu"),
+                        "reference_district": best.get("district", target_district),
                         "reference_state": best.get("state", state),
                         "market_price_status_message": "Updated today from Government AGMARKNET data.",
                     }
@@ -475,7 +502,9 @@ class MarketPriceOrchestrator:
                     continue
                 if c not in target_crops:
                     target_crops.append(c)
-                d = (p.get("district") or p.get("location") or "Tamil Nadu").strip()
+                d_raw = (p.get("district") or p.get("location") or "Tamil Nadu").strip()
+                res_d, _, is_tn = resolve_tn_location(d_raw)
+                d = res_d if (is_tn and res_d and res_d != "Tamil Nadu") else d_raw
                 v = (p.get("variety") or "").strip()
                 u = normalize_unit(p.get("quantity_unit") or p.get("unit") or "KG")
                 gk = (c.lower(), d.lower(), v.lower(), u)
